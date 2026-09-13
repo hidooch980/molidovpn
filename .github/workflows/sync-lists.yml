@@ -2,6 +2,8 @@ name: Sync server and policy lists
 
 # Keeps our own copy of the upstream MSN-GUARD lists, so the app never depends on
 # the upstream repository staying online. The app reads remote/* from this repo.
+# Also appends MolidoVPN's own tested servers that fit the SHARD transport
+# (VLESS/Trojan over WebSocket+TLS behind Cloudflare), capped so they cannot crowd out upstream nodes.
 on:
   schedule:
     - cron: '17 */6 * * *'
@@ -19,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Download upstream lists (keep the old copy if a download fails)
         run: |
           base=https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote
@@ -30,11 +33,83 @@ jobs:
               echo "download failed: $f (kept previous copy)"
             fi
           done
+
+      - name: Append MolidoVPN servers that fit SHARD
+        run: |
+          python3 - <<'PY'
+          import ipaddress, socket, urllib.parse, urllib.request
+
+          MAX_EXTRA = 30
+          SOURCES = [
+              "https://molido-sub.hidooch980.workers.dev/",
+              "https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub.txt",
+          ]
+
+          def fetch(url):
+              req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+              return urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+
+          cf = [ipaddress.ip_network(n) for n in fetch("https://www.cloudflare.com/ips-v4").split()]
+
+          def behind_cloudflare(name):
+              try:
+                  ip = ipaddress.ip_address(socket.gethostbyname(name))
+              except Exception:
+                  return False
+              return any(ip in net for net in cf)
+
+          body = ""
+          for src in SOURCES:
+              try:
+                  body = fetch(src)
+                  if "://" in body:
+                      break
+              except Exception as e:
+                  print("source failed:", src, e)
+          if "://" not in body:
+              import base64
+              try:
+                  body = base64.b64decode(body + "=" * (-len(body) % 4)).decode("utf-8", "ignore")
+              except Exception:
+                  body = ""
+
+          shard = open("remote/shard-nodes.txt", encoding="utf-8").read()
+          existing = {l.split("#")[0] for l in shard.splitlines() if "://" in l}
+
+          extra = []
+          for line in body.splitlines():
+              line = line.strip()
+              scheme = line.split("://", 1)[0].lower()
+              if scheme not in ("vless", "trojan"):
+                  continue
+              u = urllib.parse.urlsplit(line)
+              q = dict(urllib.parse.parse_qsl(u.query))
+              if q.get("type", "tcp").lower() != "ws" or q.get("security", "").lower() != "tls":
+                  continue
+              host = q.get("host") or q.get("sni") or u.hostname
+              if not host or not u.port or not behind_cloudflare(host):
+                  continue
+              core = line.split("#")[0]
+              if core in existing:
+                  continue
+              existing.add(core)
+              extra.append(core + "#MolidoVPN")
+              if len(extra) >= MAX_EXTRA:
+                  break
+
+          marker = "# --- MolidoVPN servers ---"
+          shard = shard.split(marker)[0].rstrip("\n") + "\n"
+          if extra:
+              shard += marker + "\n" + "\n".join(extra) + "\n"
+          open("remote/shard-nodes.txt", "w", encoding="utf-8").write(shard)
+          print("appended", len(extra), "MolidoVPN nodes")
+          PY
+
       - name: Commit changes
         run: |
           git config user.name "molido-bot"
           git config user.email "molido-bot@users.noreply.github.com"
           git add remote
           git diff --cached --quiet && echo "no changes" && exit 0
-          git commit -q -m "Sync lists from upstream $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git commit -q -m "Sync lists $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push -q
