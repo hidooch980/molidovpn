@@ -31,6 +31,12 @@ android {
         versionCode = (project.findProperty("molidoVersionCode") as String?)?.toInt() ?: 10000
         versionName = (project.findProperty("molidoVersionName") as String?) ?: "2.0.0"
 
+        // Phones only: the Rust core is built for ARM. Without this the Psiphon AAR's x86 libs made
+        // x86 devices/emulators pick an ABI that has no libaether.so and crash at start.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
     }
 
     splits {
