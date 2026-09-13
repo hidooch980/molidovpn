@@ -3432,7 +3432,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
-        content.addView(navRow(Strings.t("Telegram Channel"), iconRes = R.drawable.ic_telegram) {
+        content.addView(navRow(Strings.t("MolidoVPN website"), iconRes = R.drawable.ic_github) {
             openLink("https://hidooch980.github.io/mobin-vpn/")
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,

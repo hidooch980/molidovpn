@@ -1,0 +1,40 @@
+name: Sync server and policy lists
+
+# Keeps our own copy of the upstream MSN-GUARD lists, so the app never depends on
+# the upstream repository staying online. The app reads remote/* from this repo.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-lists
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download upstream lists (keep the old copy if a download fails)
+        run: |
+          base=https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote
+          for f in shard-nodes.txt policy.json smart-split.json; do
+            if curl -fsSL --retry 3 -o "/tmp/$f" "$base/$f" && [ -s "/tmp/$f" ]; then
+              case "$f" in *.json) python3 -m json.tool "/tmp/$f" >/dev/null || { echo "invalid $f, skipped"; continue; } ;; esac
+              cp "/tmp/$f" "remote/$f"
+            else
+              echo "download failed: $f (kept previous copy)"
+            fi
+          done
+      - name: Commit changes
+        run: |
+          git config user.name "molido-bot"
+          git config user.email "molido-bot@users.noreply.github.com"
+          git add remote
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -q -m "Sync lists from upstream $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push -q

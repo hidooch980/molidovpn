@@ -395,6 +395,7 @@ object Strings {
         "Snowflake" to Triple("Snowflake", "پل Snowflake", "Snowflake"),
         "Source on GitHub" to Triple("Source on GitHub", "سورس‌کد در گیت‌هاب", "GitHub 开源项目"),
         "Telegram Channel" to Triple("Telegram Channel", "کانال تلگرام", "Telegram 频道"),
+        "MolidoVPN website" to Triple("MolidoVPN website", "سایت MolidoVPN", "MolidoVPN 网站"),
         "South Africa" to Triple("South Africa", "آفریقای جنوبی", "南非"),
         "South Korea" to Triple("South Korea", "کره جنوبی", "韩国"),
         "Spain" to Triple("Spain", "اسپانیا", "西班牙"),
