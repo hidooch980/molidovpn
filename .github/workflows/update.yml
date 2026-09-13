@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # lets a run start the next one (GitHub's */15 cron is often delayed or skipped)
 
 concurrency:
   group: update-subscription
@@ -82,3 +83,17 @@ jobs:
           git add -A
           git commit -q -m "subscription update $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sub:sub
+
+  # Self-scheduling loop: wait, then start the next run. The cron above stays as a backup if the chain breaks.
+  schedule-next:
+    needs: update
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start the next update in ~15 minutes
+        run: |
+          sleep 840
+          gh workflow run update.yml -R "$GITHUB_REPOSITORY" --ref main
