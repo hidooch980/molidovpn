@@ -44,19 +44,8 @@ jobs:
         with:
           workspaces: core/aether -> target
 
-      - name: Prebuilt Psiphon, Tor and Xray from upstream MSN-GUARD
-        run: |
-          set -e
-          base=https://github.com/mbm110/MSN-GUARD/raw/master/app
-          mkdir -p app/libs
-          curl -fL --retry 3 -o app/libs/psiphontunnel-2.0.39.aar "$base/libs/psiphontunnel-2.0.39.aar"
-          for abi in arm64-v8a armeabi-v7a; do
-            mkdir -p "app/src/main/jniLibs/$abi"
-            for lib in libtor.so libobfs4proxy.so libxray.so; do
-              curl -fL --retry 3 -o "app/src/main/jniLibs/$abi/$lib" "$base/src/main/jniLibs/$abi/$lib"
-            done
-          done
-
+      - name: Prebuilt Psiphon, Tor and Xray (our mirror, checksum verified)
+        run: bash tools/fetch-binaries.sh
       - name: Signing key (same as earlier MolidoVPN releases)
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
