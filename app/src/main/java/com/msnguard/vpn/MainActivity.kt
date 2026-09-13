@@ -3427,7 +3427,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
         content.addView(navRow(Strings.t("Source on GitHub"), iconRes = R.drawable.ic_github) {
-            openLink("https://github.com/mbm110/MolidoVPN")
+            openLink("https://github.com/mbm110/MSN-GUARD")
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,

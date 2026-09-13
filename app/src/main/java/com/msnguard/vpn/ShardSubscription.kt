@@ -49,7 +49,7 @@ object ShardSubscription {
      * directly; they keep working, they just do not follow our edits.
      */
     const val SUBSCRIPTION_URL =
-        "https://raw.githubusercontent.com/mbm110/MolidoVPN/master/remote/shard-nodes.txt"
+        "https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote/shard-nodes.txt"
 
     /** Seed list in assets, so the first ever connect works with no network. */
     private const val SEED_ASSET = "shard-seed.txt"

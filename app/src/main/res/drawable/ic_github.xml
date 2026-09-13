@@ -2,7 +2,7 @@
   The GitHub Octocat mark.
 
   Was ic_forgejo (a generic globe-ish glyph inherited from upstream) next to a
-  row that links to github.com/mbm110/MolidoVPN — wrong platform mark on a
+  row that links to github.com/mbm110/MSN-GUARD — wrong platform mark on a
   GitHub link. This is the official Octocat silhouette path, single colour so
   setColorFilter() in OrbitSettingsRow still tints it with the accent.
 -->

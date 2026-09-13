@@ -86,7 +86,7 @@ object RemotePolicy {
      * fetching the node list from it since 1.7.0.
      */
     private const val POLICY_URL =
-        "https://raw.githubusercontent.com/mbm110/MolidoVPN/master/remote/policy.json"
+        "https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote/policy.json"
 
     private const val CACHE_FILE = "remote-policy.json"
     private const val ETAG_PREF = "policy_etag"

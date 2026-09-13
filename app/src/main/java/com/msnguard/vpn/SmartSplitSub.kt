@@ -45,7 +45,7 @@ object SmartSplitSub {
      * change; the publisher's names never appear in a URL the phone dials.
      */
     const val SUBSCRIPTION_URL =
-        "https://raw.githubusercontent.com/mbm110/MolidoVPN/master/remote/smart-split.json"
+        "https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote/smart-split.json"
 
     /** Seed in assets, so a first-ever connect works with no network. */
     private const val SEED_ASSET = "smart-split-seed.json"
