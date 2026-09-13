@@ -1,0 +1,12 @@
+# One raw subscription URL per line. Lines starting with # are ignored.
+# Check output README (sub branch) to see how many alive configs each source gives.
+https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt
+https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt
+https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/V2Ray-Config.txt
+https://raw.githubusercontent.com/Awmiroosen/awmirx-v2ray/main/v2ray_configs.txt
+https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_base64.txt
+https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub
+https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray
+https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/all
+https://raw.githubusercontent.com/free18/v2ray/main/v2ray.txt
+https://raw.githubusercontent.com/Kolandone/v2raycollector/main/mixed_iran.txt

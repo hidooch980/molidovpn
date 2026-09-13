@@ -1,0 +1,57 @@
+name: Update VPN Subscription
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-subscription
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # Set repository variable RUNNER to a self-hosted runner label (e.g. one inside Iran) to test from there.
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Install sing-box (latest 1.11.x)
+        run: |
+          case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+          TAG=$(gh release list -R SagerNet/sing-box --exclude-pre-releases --limit 100 --json tagName \
+                --jq '[.[].tagName | select(startswith("v1.11."))][0]')
+          VER=${TAG#v}
+          gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-linux-${ARCH}.tar.gz" -O sb.tgz
+          tar xzf sb.tgz
+          echo "SINGBOX_BIN=$PWD/sing-box-${VER}-linux-${ARCH}/sing-box" >> "$GITHUB_ENV"
+
+      - name: Download GeoIP database (fallback location lookup)
+        continue-on-error: true
+        run: curl -fsSL -o GeoLite2-Country.mmdb https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb
+
+      - name: Run scanner
+        run: python scanner.py
+
+      - name: Publish to 'sub' branch (no history, keeps repo small)
+        run: |
+          cd output
+          git init -q -b sub
+          git config user.name "vpn-bot"
+          git config user.email "vpn-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "subscription update $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sub:sub
