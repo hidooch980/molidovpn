@@ -57,7 +57,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(dedupe_key(a), dedupe_key(parse_uri(VLESS_WS.replace("#x", "#y"))))
 
     def test_rename(self):
-        name = "🇩🇪 Germany 01 | vless | 142ms"
+        name = "🇩🇪 Germany 01 | vless"
         self.assertEqual(unquote(rename_uri(VLESS_REALITY, name).split("#")[1]), name)
         vm = rename_uri(VMESS, name)
         self.assertEqual(json.loads(base64.b64decode(vm[8:]))["ps"], name)

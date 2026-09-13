@@ -13,14 +13,14 @@ sorts them and publishes subscription links — all inside GitHub Actions, free.
 5. Real test: each config runs in sing-box and an HTTPS request goes through it to
    Cloudflare's trace page. That gives the true latency **and** the exit country
    (even for CDN configs). GeoIP database is used only as a fallback.
-6. Names like `🇩🇪 Germany 01 | vless | 142ms`, grouped by country (A→Z), fastest first inside each.
+6. Names like `🇩🇪 Germany 01 | vless`, grouped by country (A→Z), fastest first inside each.
 
 ## Setup
 ```bash
 gh auth login
 bash setup.sh vpn-sub
 ```
-The workflow runs every 30 minutes. Results go to the **`sub` branch**, force-pushed
+The workflow runs every 15 minutes. Results go to the **`sub` branch**, force-pushed
 without history, so the repo never grows.
 
 ## Links

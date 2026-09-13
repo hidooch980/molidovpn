@@ -7,7 +7,7 @@ VPN Config Aggregator v2
 4. Cheap TCP pre-filter (TCP protocols only; hysteria2/tuic skip it)
 5. Real test through sing-box: HTTPS request via each proxy to Cloudflare trace
    -> measures real latency AND the real exit country (works for CDN configs too)
-6. Rename every config "🇩🇪 Germany 01 | vless | 142ms", group by country, sort by latency
+6. Rename every config "🇩🇪 Germany 01 | vless", group by country, sort by latency
 7. Write output/ (sub, base64, fastest, per-country, per-protocol, sing-box JSON, stats)
 """
 
@@ -246,7 +246,7 @@ def publish(nodes: list[Node], stats: dict, mode: str):
     ordered = []
     for code in order:
         for i, n in enumerate(sorted(by_country[code], key=lambda n: n.latency), 1):
-            n.name = f"{countries.flag(code)} {countries.name(code)} {i:02d} | {n.proto} | {n.latency:.0f}ms"
+            n.name = f"{countries.flag(code)} {countries.name(code)} {i:02d} | {n.proto}"
             ordered.append(n)
 
     if os.path.isdir(OUT_DIR):
