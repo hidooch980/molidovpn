@@ -16,7 +16,7 @@ jobs:
   update:
     # Set repository variable RUNNER to a self-hosted runner label (e.g. one inside Iran) to test from there.
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
     steps:

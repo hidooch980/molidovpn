@@ -43,7 +43,7 @@ Two fixes: use the url-test group in your client (Hiddify/NekoBox/sing-box `auto
 `RUNNER` to its label — the same workflow then tests from there.
 
 ## Tuning (env vars)
-`MAX_OUTPUT` (500), `MAX_REAL_TEST` (3000), `OUT_DIR` (output), `SINGBOX_BIN`, `GEOIP_DB`.
+`MAX_OUTPUT` (500), `MAX_REAL_TEST` (6000), `OUT_DIR` (output), `SINGBOX_BIN`, `GEOIP_DB`.
 
 ## Run locally
 ```bash
