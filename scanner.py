@@ -352,10 +352,62 @@ of {s['alive']} alive / {s['unique']} unique · fastest {s['fastest_ms']} ms · 
 """)
 
 
+# ---------------------------------------------------------------- source health
+
+HEALTH_URL = os.environ.get("HEALTH_URL", "")
+DISCOVER_FILE = "discover.txt"
+DEAD_AFTER_RUNS = 8          # consecutive runs with 0 alive -> source paused
+RETRY_EVERY_RUNS = 48        # paused sources are retried about every 12 hours
+PROMOTE_AFTER_RUNS = 3       # candidate with enough alive configs this many runs -> active
+PROMOTE_MIN_ALIVE = 10
+
+
+def load_health() -> dict:
+    if not HEALTH_URL:
+        return {}
+    try:
+        with urllib.request.urlopen(HEALTH_URL, timeout=FETCH_TIMEOUT) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return {}
+
+
+def pick_sources(base: list[str], candidates: list[str], health: dict) -> tuple[list[str], list[str]]:
+    """Active = listed + promoted candidates, minus paused dead ones (retried now and then).
+    Unpromoted candidates are probed too so good new sources are found automatically."""
+    run = health.get("_run", 0) + 1
+    health["_run"] = run
+    chosen, paused = [], []
+    for url in dict.fromkeys(base + candidates):
+        h = health.get(url, {})
+        if h.get("zero_runs", 0) >= DEAD_AFTER_RUNS and run % RETRY_EVERY_RUNS:
+            paused.append(url)
+            continue
+        chosen.append(url)
+    return chosen, paused
+
+
+def update_health(health: dict, stats: dict, candidates: list[str]):
+    for url, s in stats["sources"].items():
+        h = health.setdefault(url, {"zero_runs": 0, "good_runs": 0})
+        alive = s["alive"]
+        h["zero_runs"] = 0 if alive else h.get("zero_runs", 0) + 1
+        if url in candidates:
+            h["good_runs"] = h.get("good_runs", 0) + 1 if alive >= PROMOTE_MIN_ALIVE else 0
+            h["promoted"] = h["good_runs"] >= PROMOTE_AFTER_RUNS or h.get("promoted", False)
+        h["last_alive"] = alive
+
+
 def main():
     with open(SOURCES_FILE, encoding="utf-8") as f:
-        sources = [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
-    stats = {"last_run_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "sources": {}}
+        base = [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
+    candidates = []
+    if os.path.exists(DISCOVER_FILE):
+        with open(DISCOVER_FILE, encoding="utf-8") as f:
+            candidates = [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
+    health = load_health()
+    sources, paused = pick_sources(base, candidates, health)
+    stats = {"last_run_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "sources": {}, "paused_sources": paused}
 
     print(f"Fetching {len(sources)} sources...")
     nodes = collect(sources, stats)
@@ -380,6 +432,10 @@ def main():
     geo_fallback(alive)
     print(f"Alive: {len(alive)}")
     publish(alive, stats, mode)
+    update_health(health, stats, candidates)
+    with open(f"{OUT_DIR}/health.json", "w", encoding="utf-8") as f:
+        json.dump(health, f, indent=1)
+    print(f"Paused dead sources: {len(paused)}")
     print("Done.")
 
 

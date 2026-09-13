@@ -4,8 +4,9 @@ import base64
 import json
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-SUPPORTED_PREFIXES = ("vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://", "tuic://")
-UDP_TYPES = {"hysteria2", "tuic"}
+SUPPORTED_PREFIXES = ("vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://", "tuic://",
+                      "anytls://", "wireguard://", "wg://", "socks://", "socks5://")
+UDP_TYPES = {"hysteria2", "tuic", "wireguard"}
 UTLS_FINGERPRINTS = {"chrome", "firefox", "edge", "safari", "360", "qq", "ios", "android", "random", "randomized"}
 
 
@@ -171,9 +172,52 @@ def parse_tuic(uri: str) -> dict:
             "udp_relay_mode": _q(q, "udp_relay_mode", "native"), "tls": tls}
 
 
+def parse_anytls(uri: str) -> dict:
+    p, host, port, user, q = _common_url(uri)
+    if not user:
+        raise ValueError("missing password")
+    return {"type": "anytls", "server": host, "server_port": port, "password": user,
+            "tls": {"enabled": True, "server_name": _q(q, "sni") or host,
+                    "insecure": _q(q, "insecure") in ("1", "true") or _q(q, "allowInsecure") in ("1", "true")}}
+
+
+def parse_wireguard(uri: str) -> dict:
+    p, host, port, private_key, q = _common_url(uri.replace("wg://", "wireguard://", 1))
+    peer = _q(q, "publickey") or _q(q, "public_key") or _q(q, "peer_public_key")
+    addresses = [a.strip() for a in (_q(q, "address") or _q(q, "ip")).split(",") if a.strip()]
+    if not private_key or not peer or not addresses:
+        raise ValueError("bad wireguard")
+    addresses = [a if "/" in a else (a + ("/128" if ":" in a else "/32")) for a in addresses]
+    out = {"type": "wireguard", "server": host, "server_port": port, "private_key": private_key,
+           "peer_public_key": peer, "local_address": addresses, "mtu": int(_q(q, "mtu", "1280") or 1280)}
+    if _q(q, "presharedkey"):
+        out["pre_shared_key"] = _q(q, "presharedkey")
+    reserved = _q(q, "reserved")
+    if reserved:
+        out["reserved"] = [int(x) for x in reserved.split(",")]
+    return out
+
+
+def parse_socks(uri: str) -> dict:
+    p, host, port, user, q = _common_url(uri.replace("socks5://", "socks://", 1))
+    out = {"type": "socks", "server": host, "server_port": port, "version": "5"}
+    if user:
+        if ":" not in user:
+            user = b64decode(user)
+        username, _, password = user.partition(":")
+        out.update({"username": username, "password": password})
+    return out
+
+
 def parse_uri(uri: str) -> dict | None:
     """Return a sing-box outbound (without tag), or None when unsupported/invalid."""
     try:
+        if uri.startswith("anytls://"):
+            return parse_anytls(uri)
+        if uri.startswith(("wireguard://", "wg://")):
+            return parse_wireguard(uri)
+        if uri.startswith(("socks://", "socks5://")):
+            return parse_socks(uri)
         if uri.startswith("vmess://"):
             return parse_vmess(uri)
         if uri.startswith(("vless://", "trojan://")):

@@ -45,6 +45,17 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse_uri(HY2)["obfs"]["password"], "o")
         self.assertEqual(parse_uri(TUIC)["password"], "pw")
 
+    def test_anytls_wireguard_socks(self):
+        a = parse_uri("anytls://pw@a.example.com:443?sni=s.example.com#a")
+        self.assertEqual((a["type"], a["password"], a["tls"]["server_name"]), ("anytls", "pw", "s.example.com"))
+        w = parse_uri("wireguard://cHJpdmF0ZQ%3D%3D@8.8.4.4:51820?publickey=cGVlcg%3D%3D&address=10.0.0.2,fd00::2&reserved=1,2,3#w")
+        self.assertEqual((w["private_key"], w["peer_public_key"]), ("cHJpdmF0ZQ==", "cGVlcg=="))
+        self.assertEqual((w["local_address"], w["reserved"]), (["10.0.0.2/32", "fd00::2/128"], [1, 2, 3]))
+        s = parse_uri("socks://" + base64.b64encode(b"u:p").decode() + "@1.1.1.1:1080#s")
+        self.assertEqual((s["username"], s["password"]), ("u", "p"))
+        self.assertEqual(parse_uri("socks5://2.2.2.2:1080")["server_port"], 1080)
+        self.assertIsNone(parse_uri("wireguard://key@h.com:51820?address=10.0.0.2"))
+
     def test_invalid_rejected(self):
         for bad in ("vless://@1.2.3.4:443", "vmess://notbase64", f"vless://{UUID}@h:443?type=xhttp",
                     f"vless://{UUID}@h:443?security=reality", "trojan://x@h:99999"):
