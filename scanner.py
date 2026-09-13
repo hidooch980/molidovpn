@@ -7,7 +7,7 @@ VPN Config Aggregator v2
 4. Cheap TCP pre-filter (TCP protocols only; hysteria2/tuic skip it)
 5. Real test through sing-box: HTTPS request via each proxy to Cloudflare trace
    -> measures real latency AND the real exit country (works for CDN configs too)
-6. Rename every config "🇩🇪 Germany 01 | vless", group by country, sort by latency
+6. Rename every config "Mobin ✦ 🇩🇪 Germany 01 · VLESS", group by country, sort by latency
 7. Write output/ (sub, base64, fastest, per-country, per-protocol, sing-box JSON, stats)
 """
 
@@ -37,6 +37,8 @@ FETCH_TIMEOUT = 20
 TCP_TIMEOUT = 3.0
 TCP_CONCURRENCY = 300
 MAX_REAL_TEST = int(os.environ.get("MAX_REAL_TEST", "6000"))
+BRAND = os.environ.get("BRAND", "Mobin")
+MAX_PER_SERVER = 3
 BATCH_SIZE = 200
 BASE_PORT = 20000
 PROXY_TIMEOUT = 8
@@ -117,6 +119,21 @@ async def tcp_filter(nodes: list[Node]) -> list[Node]:
     alive = sorted((n for n in tcp_nodes if n.tcp_ms is not None), key=lambda n: n.tcp_ms)
     udp = [n for n in nodes if n.outbound["type"] in UDP_TYPES]
     return alive + udp
+
+
+def diversify(nodes: list[Node]) -> list[Node]:
+    """Cap configs per server and round-robin across sources, so thousands of configs
+    pointing at the same CDN IPs (fast TCP, mostly dead) don't crowd out real servers."""
+    per_server, by_source = Counter(), defaultdict(list)
+    for n in nodes:
+        server = n.outbound["server"]
+        if per_server[server] < MAX_PER_SERVER:
+            per_server[server] += 1
+            by_source[n.source].append(n)
+    queues, result = list(by_source.values()), []
+    for i in range(max((len(q) for q in queues), default=0)):
+        result.extend(q[i] for q in queues if i < len(q))
+    return result
 
 
 # ---------------------------------------------------------------- real test via sing-box
@@ -246,7 +263,7 @@ def publish(nodes: list[Node], stats: dict, mode: str):
     ordered = []
     for code in order:
         for i, n in enumerate(sorted(by_country[code], key=lambda n: n.latency), 1):
-            n.name = f"{countries.flag(code)} {countries.name(code)} {i:02d} | {n.proto}"
+            n.name = f"{BRAND} ✦ {countries.flag(code)} {countries.name(code)} {i:02d} · {n.proto.upper()}"
             ordered.append(n)
 
     if os.path.isdir(OUT_DIR):
@@ -321,7 +338,7 @@ def main():
     print(f"Unique parsed configs: {len(nodes)}")
 
     print("TCP pre-filter...")
-    candidates = asyncio.run(tcp_filter(nodes))[:MAX_REAL_TEST]
+    candidates = diversify(asyncio.run(tcp_filter(nodes)))[:MAX_REAL_TEST]
     print(f"Candidates for real test: {len(candidates)}")
 
     if SINGBOX:

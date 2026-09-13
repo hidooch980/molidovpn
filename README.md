@@ -13,7 +13,7 @@ sorts them and publishes subscription links — all inside GitHub Actions, free.
 5. Real test: each config runs in sing-box and an HTTPS request goes through it to
    Cloudflare's trace page. That gives the true latency **and** the exit country
    (even for CDN configs). GeoIP database is used only as a fallback.
-6. Names like `🇩🇪 Germany 01 | vless`, grouped by country (A→Z), fastest first inside each.
+6. Names like `Mobin ✦ 🇩🇪 Germany 01 · VLESS` (change with env `BRAND`), grouped by country (A→Z), fastest first inside each.
 
 ## Setup
 ```bash
