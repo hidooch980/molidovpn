@@ -137,10 +137,11 @@ class AppUpdater(private val activity: Activity) {
     }
 
     private fun assetForAbi(assets: org.json.JSONArray, abi: String): Pair<String, String>? {
+        // MolidoVPN release assets are named MobinVPN-android-arm64.apk / -armv7.apk / -universal.apk.
         val token = when (abi) {
-            "arm64-v8a" -> "arm64-v8a"
-            "armeabi-v7a" -> "armeabi-v7a"
-            else -> abi
+            "arm64-v8a" -> "android-arm64"
+            "armeabi-v7a" -> "android-armv7"
+            else -> "android-universal"
         }
         for (index in 0 until assets.length()) {
             val asset = assets.getJSONObject(index)
