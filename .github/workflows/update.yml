@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
   actions: write # lets a run start the next one (GitHub's */15 cron is often delayed or skipped)
 
 concurrency:
@@ -83,6 +85,13 @@ jobs:
           git add -A
           git commit -q -m "subscription update $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sub:sub
+
+      # Same files on GitHub Pages (hidooch980.github.io/vpn-sub/...) — a second address when raw.githubusercontent.com is blocked.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: output
+      - uses: actions/deploy-pages@v4
+        continue-on-error: true
 
   # Self-scheduling loop: wait, then start the next run. The cron above stays as a backup if the chain breaks.
   schedule-next:
