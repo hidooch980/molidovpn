@@ -30,9 +30,10 @@ object AppLanguage {
      * memory after the first load.
      */
     fun current(context: Context? = null): String {
-        val ctx = context ?: appContext ?: return "en"
+        // MolidoVPN: Persian unless the user picked another language (or "system") in settings.
+        val ctx = context ?: appContext ?: return "fa"
         val stored = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString(PREF, null) ?: return fromSystem(ctx)
+            .getString(PREF, null) ?: return "fa"
         return if (stored in SUPPORTED) stored else fromSystem(ctx)
     }
 
