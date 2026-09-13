@@ -39,6 +39,17 @@ jobs:
           tar xzf sb.tgz
           echo "SINGBOX_BIN=$PWD/sing-box-${VER}-linux-${ARCH}/sing-box" >> "$GITHUB_ENV"
 
+      - name: Install latest sing-box (compatibility check for Hiddify and other new clients)
+        continue-on-error: true
+        run: |
+          case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+          TAG=$(gh release view -R SagerNet/sing-box --json tagName --jq .tagName)
+          VER=${TAG#v}
+          mkdir -p latest && cd latest
+          gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-linux-${ARCH}.tar.gz" -O sb.tgz
+          tar xzf sb.tgz
+          echo "SINGBOX_LATEST_BIN=$PWD/sing-box-${VER}-linux-${ARCH}/sing-box" >> "$GITHUB_ENV"
+
       - name: Download GeoIP database (fallback location lookup)
         continue-on-error: true
         run: curl -fsSL -o GeoLite2-Country.mmdb https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb

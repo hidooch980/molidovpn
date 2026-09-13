@@ -31,6 +31,7 @@ from parsers import UDP_TYPES, dedupe_key, extract_configs, parse_uri, rename_ur
 SOURCES_FILE = "sources.txt"
 OUT_DIR = os.environ.get("OUT_DIR", "output")
 SINGBOX = os.environ.get("SINGBOX_BIN") or shutil.which("sing-box")
+SINGBOX_LATEST = os.environ.get("SINGBOX_LATEST_BIN")
 GEOIP_DB = os.environ.get("GEOIP_DB", "GeoLite2-Country.mmdb")
 
 FETCH_TIMEOUT = 20
@@ -46,6 +47,9 @@ TEST_WORKERS = 64
 TEST_URL = "https://www.cloudflare.com/cdn-cgi/trace"
 MAX_OUTPUT = int(os.environ.get("MAX_OUTPUT", "500"))
 FASTEST_COUNT = 100
+# Small list for iPhone/Hiddify: iOS VPN extensions have a tight memory limit.
+LITE_COUNT = 40
+LITE_PER_COUNTRY = 6
 
 
 @dataclass
@@ -147,17 +151,17 @@ def _config(batch: list[Node]) -> dict:
     return {"log": {"level": "panic"}, "inbounds": inbounds, "outbounds": outbounds, "route": {"rules": rules}}
 
 
-def _check(batch: list[Node], path: str) -> tuple[bool, str]:
+def _check(batch: list[Node], path: str, binary: str | None = None) -> tuple[bool, str]:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_config(batch), f)
-    r = subprocess.run([SINGBOX, "check", "-c", path], capture_output=True, text=True)
+    r = subprocess.run([binary or SINGBOX, "check", "-c", path], capture_output=True, text=True)
     return r.returncode == 0, r.stdout + r.stderr
 
 
-def _valid_subset(batch: list[Node], path: str) -> list[Node]:
+def _valid_subset(batch: list[Node], path: str, binary: str | None = None) -> list[Node]:
     """Drop nodes that make sing-box reject the config (it validates the whole file)."""
     while batch:
-        ok, err = _check(batch, path)
+        ok, err = _check(batch, path, binary)
         if ok:
             return batch
         m = re.search(r"outbounds\[(\d+)\]", err)
@@ -167,8 +171,20 @@ def _valid_subset(batch: list[Node], path: str) -> list[Node]:
         if len(batch) == 1:
             return []
         mid = len(batch) // 2
-        return _valid_subset(batch[:mid], path) + _valid_subset(batch[mid:], path)
+        return _valid_subset(batch[:mid], path, binary) + _valid_subset(batch[mid:], path, binary)
     return batch
+
+
+def compat_filter(nodes: list[Node]) -> list[Node]:
+    """Clients like Hiddify run a newer sing-box; one config it rejects stops their whole core."""
+    if not SINGBOX_LATEST or not nodes:
+        return nodes
+    tmp = os.path.join(tempfile.gettempdir(), "vpnagg-compat.json")
+    kept = []
+    for b in range(0, len(nodes), BATCH_SIZE):
+        kept.extend(_valid_subset(nodes[b:b + BATCH_SIZE], tmp, SINGBOX_LATEST))
+    print(f"  compatible with latest sing-box: {len(kept)}/{len(nodes)}")
+    return kept
 
 
 def _probe(args):
@@ -273,6 +289,15 @@ def publish(nodes: list[Node], stats: dict, mode: str):
     write_lines(f"{OUT_DIR}/sub.txt", renamed(ordered))
     write_lines(f"{OUT_DIR}/sub_base64.txt", [base64.b64encode("\n".join(renamed(ordered)).encode()).decode()])
     write_lines(f"{OUT_DIR}/fastest.txt", renamed(sorted(ordered, key=lambda n: n.latency)[:FASTEST_COUNT]))
+
+    lite, per_country = [], Counter()
+    for n in sorted(ordered, key=lambda n: n.latency):
+        if len(lite) < LITE_COUNT and per_country[n.country] < LITE_PER_COUNTRY:
+            per_country[n.country] += 1
+            lite.append(n)
+    lite.sort(key=ordered.index)
+    write_lines(f"{OUT_DIR}/lite.txt", renamed(lite))
+    write_lines(f"{OUT_DIR}/lite_base64.txt", [base64.b64encode("\n".join(renamed(lite)).encode()).decode()])
     for code in order:
         write_lines(f"{OUT_DIR}/country/{code or 'XX'}.txt", renamed(by_country[code]))
     for proto in sorted({n.proto for n in ordered}):
@@ -351,6 +376,7 @@ def main():
             n.latency = n.tcp_ms
         mode = "tcp-only"
 
+    alive = compat_filter(alive)
     geo_fallback(alive)
     print(f"Alive: {len(alive)}")
     publish(alive, stats, mode)
