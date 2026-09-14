@@ -177,9 +177,10 @@ class MsnGuardTileService : TileService() {
 
     private val selectedProtocolcoreName: String
         get() = getSharedPreferences(SETTINGS, MODE_PRIVATE)
-            .getString(DEFAULT_PROTOCOL, Protocol.WIREGUARD.coreName)
-            ?.let { name -> Protocol.entries.find { it.coreName == name } }
-            ?.coreName ?: Protocol.WIREGUARD.coreName
+            .getString(DEFAULT_PROTOCOL, Protocol.AUTO.coreName)
+            ?.let { name -> if (name == "shard" || name == "shard-gaming") "shard" else name }
+            ?.let { name -> Protocol.entries.find { it.coreName == name }?.coreName ?: if (name == "shard") name else null }
+            ?: Protocol.AUTO.coreName
 
     private fun defaultScan(): ScanTarget {
         val name = getSharedPreferences(SETTINGS, MODE_PRIVATE).getString(DEFAULT_SCAN, ScanTarget.IPV4.coreName)
@@ -271,6 +272,9 @@ class MsnGuardTileService : TileService() {
             // laid out from the order, but the two enums are read as one list by
             // anyone maintaining them, and the tile's default is the first entry's
             // sibling on the main screen.
+            // "auto" is resolved by MsnGuardVpnService's Auto selection (tests every
+            // transport, connects with the best). New-install default.
+            AUTO("Auto", "auto", "Tests every connection type and connects with the best one"),
             WIREGUARD("WireGuard", "wireguard", "WireGuard tunnel"),
             MASQUE("MASQUE", "masque", "HTTP/3 tunnel"),
             WARP_IN_WARP("WARP-on-WARP", "gool", "Double-layer tunnel"),

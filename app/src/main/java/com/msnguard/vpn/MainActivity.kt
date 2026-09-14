@@ -100,7 +100,11 @@ class MainActivity : Activity() {
     private lateinit var pageHost: FrameLayout
     private lateinit var appUpdater: AppUpdater
     private var predictiveBackCallback: Any? = null
-    private var selectedProtocol = Protocol.WIREGUARD
+    private var selectedProtocol = Protocol.AUTO
+    /** Home-screen DNS chip under the rail; opens the same sheet as Settings. */
+    private var homeDnsChip: TextView? = null
+    /** Settings DNS row while the settings page is built, so a home pick repaints it. */
+    private var settingsDnsRow: OrbitSettingsRow? = null
     // v1.8.7: English keeps the exact v1.8.5 layout; fa/zh get tighter text
     // blocks and a dial no smaller than the English one. See fitConsoleToViewport.
     private val localizedTypography: Boolean get() = AppLanguage.current() != "en"
@@ -1460,6 +1464,30 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             transportRailHeight,
         ).apply { topMargin = dp(12) })
+
+        // Compact DNS control right under the mode chips. Same sheet and same
+        // preference as the Settings row (openDnsPicker); locked with the rail in
+        // setModeEnabled. Lives inside the console column, so fitConsoleToViewport
+        // already counts its height when it sizes the dial on short screens.
+        val dnsChip = TextView(this@MainActivity).apply {
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setSingleLine(true)
+            setTextColor(MUTED)
+            background = roundedBackground(SURFACE_VARIANT, 16, SURFACE_VARIANT)
+            setPadding(dp(14), 0, dp(14), 0)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { if (it.isEnabled) openDnsPicker() }
+        }
+        homeDnsChip = dnsChip
+        dnsChip.isEnabled = modeControlsEnabled
+        dnsChip.alpha = if (modeControlsEnabled) 1f else 0.5f
+        refreshDnsLabels()
+        addView(dnsChip, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(34),
+        ).apply { topMargin = dp(8) })
 
         // Below the rail, not on it: the rail picks the transport, this wraps the
         // Psiphon one in WARP. Same dp(56) as the action bar so every full-width
@@ -2958,7 +2986,8 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
         lateinit var dnsRow: OrbitSettingsRow
-        dnsRow = navRow(Strings.t("DNS"), dnsSummary()) { chooseDns { dnsRow.setValue(dnsSummary()) } }
+        dnsRow = navRow(Strings.t("DNS"), dnsSummary()) { openDnsPicker() }
+        settingsDnsRow = dnsRow
         content.addView(dnsRow, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -6083,6 +6112,10 @@ class MainActivity : Activity() {
         // The rail is asked as well as the flag: it is the one control whose enabled
         // state can be out of step with [modeControlsEnabled] after a page rebuild,
         // and a return that left it wrong would lock or unlock it for good.
+        homeDnsChip?.let { chip ->
+            chip.isEnabled = enabled
+            chip.alpha = if (enabled) 1f else 0.5f
+        }
         if (modeControlsEnabled == enabled && transportRail.isEnabled == enabled) return
         transportRail.isEnabled = enabled
         // Arming or disarming mid-session would leave the running tunnel and the
@@ -6616,12 +6649,12 @@ class MainActivity : Activity() {
 
     /**
      * CI hook: optional extra `molido_mode` = `auto` selects (and persists) the
-     * saved pick (WireGuard if none). Other values (including the removed
+     * Auto connection mode ([Protocol.AUTO]). Other values (including the removed
      * `gaming`) are ignored.
      */
     private fun applyLaunchMode(intent: Intent?, beforeUi: Boolean) {
         val target = when (intent?.getStringExtra(EXTRA_MOLIDO_MODE)) {
-            "auto" -> savedProtocol()
+            "auto" -> Protocol.AUTO
             else -> return
         }
         if (beforeUi) {
@@ -6632,13 +6665,23 @@ class MainActivity : Activity() {
     }
 
     private fun savedProtocol(): Protocol {
-        val raw = preferences().getString(DEFAULT_PROTOCOL, Protocol.WIREGUARD.coreName)
+        // Nothing saved = new install = Auto. Existing users keep their saved pick.
+        val raw = preferences().getString(DEFAULT_PROTOCOL, Protocol.AUTO.coreName)
         // Migration: the removed gaming mode was SHARD with a different race.
         if (raw == "shard-gaming") {
             preferences().edit().putString(DEFAULT_PROTOCOL, Protocol.SHARD.coreName).apply()
         }
         val name = if (raw == "shard-gaming") Protocol.SHARD.coreName else raw
-        return Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.WIREGUARD
+        return Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.AUTO
+    }
+
+    /** Opens the DNS sheet; shared by the home chip and the Settings row. */
+    private fun openDnsPicker() = chooseDns { refreshDnsLabels() }
+
+    /** Repaints every visible DNS label after a pick. */
+    private fun refreshDnsLabels() {
+        homeDnsChip?.text = Strings.tf("DNS: %s", dnsSummary())
+        settingsDnsRow?.setValue(dnsSummary())
     }
 
 
@@ -6795,6 +6838,12 @@ class MainActivity : Activity() {
         // move for a user who does not know what any of these words mean. MASQUE
         // follows because it survives the carriers WireGuard is blocked on, and the
         // one-time Auto Scan ([AUTO_SCAN_LADDER]) walks them in exactly this order.
+        //
+        // AUTO now leads and is the new-install default: the service tests every
+        // transport (MsnGuardVpnService auto selection) and connects with the best.
+        // It is not on AUTO_SCAN_LADDER, so the UI-side one-time scan never runs
+        // on top of it.
+        AUTO("Auto", "auto", "Tests every connection type and connects with the best one"),
         WIREGUARD("WireGuard", "wireguard", "WireGuard tunnel"),
         MASQUE("MASQUE", "masque", "HTTP/3 tunnel"),
         WARP_IN_WARP("WARP-on-WARP", "gool", "Double-layer tunnel"),

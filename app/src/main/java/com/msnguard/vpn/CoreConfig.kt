@@ -118,12 +118,14 @@ object CoreConfig {
             // the callers, but this one is a pure function of the MASQUE
             // selection, so it belongs with the selection.
             val effectiveProtocol = if (
-                (protocol ?: text("default_protocol", "wireguard")) == "masque" &&
+                (protocol ?: text("default_protocol", "auto")) == "masque" &&
                 mimArmed(context)
             ) {
                 MIM_PROTOCOL
             } else {
-                protocol ?: text("default_protocol", "wireguard")
+                // "auto" (the new-install default) is resolved by the service's
+                // Auto selection; the core never sees it.
+                protocol ?: text("default_protocol", "auto")
             }
             put("protocol", effectiveProtocol)
             // Where the core's own SOCKS listener goes.

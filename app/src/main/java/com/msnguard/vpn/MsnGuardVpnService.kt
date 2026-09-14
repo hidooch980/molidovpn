@@ -1946,6 +1946,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 // manual retry would be treated as "still sealed from the old drop".
                 killSwitchSealed.set(false)
                 reconnectAttempts = 0
+                // A concrete transport picked by the user ends any Auto session:
+                // retries must redial what they chose, not re-run the selection.
+                if (!isAutoConfig(config)) cancelAutoSelection()
                 startTunnel(config)
             }
             // Android "Always-on VPN" starts the service with the VpnService
@@ -1975,6 +1978,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 // session. Left latched, failAndStop would rebuild it on the way out
                 // and the device would stay sealed after the user asked to stop.
                 killSwitchSealed.set(false)
+                cancelAutoSelection()
                 cancelAutoReconnect()
                 stopTunnel()
             }
@@ -2078,10 +2082,12 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
     }
 
     override fun onDestroy() {
+        cancelAutoSelection()
         cancelAutoReconnect()
         stopTorProgressPolling()
         stopTunnel(notify = false)
         cancelLadderTimer()
+        autoExecutor.shutdownNow()
         ladderScheduler.shutdownNow()
         worker.shutdownNow()
         super.onDestroy()
@@ -2104,6 +2110,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         // Nor the seal — the permission it would be rebuilt on is gone, so a rebuild
         // could only fail, and failing there stops the service anyway.
         killSwitchSealed.set(false)
+        cancelAutoSelection()
         cancelAutoReconnect()
         stopTunnel()
         super.onRevoke()
@@ -2211,6 +2218,11 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                             ConnectionLog.record("Chain: outer WARP leg exits at $ip (not the app's exit)")
                         }
                         return
+                    }
+                    // Auto selection: the core's exit probe is a real request
+                    // through the tunnel, so its arrival is the latency proof.
+                    if (ip.isNotBlank() && autoTrialActive.get() && autoTrialExitIpAt == 0L) {
+                        autoTrialExitIpAt = SystemClock.elapsedRealtime()
                     }
                     if (ip.isNotBlank()) {
                         currentVpnIp = ip
@@ -3233,6 +3245,12 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
      */
     private fun scheduleAutoReconnect(reason: String) {
         if (userInitiatedStop.get()) return
+        // During Auto selection a failing candidate is a test result, not a drop:
+        // the selection thread moves on instead of re-dialling the dead transport.
+        if (autoTrialActive.get()) {
+            autoTrialFailed = true
+            return
+        }
         // failAndStop can tear the service down (onDestroy shuts the scheduler) before
         // it asks for a reconnect; scheduling on a dead executor used to crash the app.
         if (ladderScheduler.isShutdown) {
@@ -3653,7 +3671,333 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
      * Start a tunnel. Always whole-device VPN mode — proxy mode was removed, so
      * there is no longer a `vpnMode` parameter to branch on.
      */
+    // ------------------------------------------------------------ Auto selection
+    //
+    // Protocol "auto" never reaches a core. It is resolved here, SEQUENTIALLY: one
+    // VPN interface and one native core per process means two full tunnels cannot
+    // be tested side by side, so each candidate is brought up, proved with a real
+    // request through it, measured, and torn down by the next candidate's handover.
+    //
+    //  Phase A (fast): WireGuard, MASQUE, SHARD. Latency = CONNECTED -> the core's
+    //    in-tunnel exit probe (or downstream bytes) for WireGuard/MASQUE; a timed
+    //    HTTPS probe through xray's SOCKS port for SHARD. Lowest wins.
+    //  Phase B (only when A found nothing): WoW, Psiphon, Tor; first to connect wins.
+    //
+    // The last winner is tried first; if it still works within 25% of its previous
+    // latency the rest are skipped. Full re-test at most every 6 h, after a failure,
+    // or when a drop re-runs the selection (auto-reconnect keeps "auto" as its config).
+    //
+    // Lifecycle safety reuses the quick-reconnect latch: [reconnectRequested] is held
+    // across every candidate so failAndStop / the native finally keep the service
+    // alive instead of stopSelf()-ing it between candidates.
+
+    private data class AutoCandidate(val coreName: String, val label: String, val budgetMs: Long)
+
+    private val autoExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val autoRunning = AtomicBoolean(false)
+    /** True for the whole selection; gates the sendStatus/scheduleAutoReconnect intercepts. */
+    private val autoTrialActive = AtomicBoolean(false)
+    @Volatile private var autoToken = 0
+    @Volatile private var autoTrialFailed = false
+    @Volatile private var autoTrialConnectedAt = 0L
+    @Volatile private var autoTrialExitIpAt = 0L
+    @Volatile private var autoTrialName = ""
+    /** The "auto" config; kept as [storedConfig] so drops re-run the selection. */
+    @Volatile private var autoBaseConfig: String? = null
+
+    private val autoPrefLastWinner = "auto_last_winner"
+    private val autoPrefLastLatency = "auto_last_latency_ms"
+    private val autoPrefLastFullTest = "auto_last_full_test_at"
+    private val autoRetestMs = 6L * 60 * 60 * 1000
+    private val autoHandoverMs = 1_000L
+    private val autoLogTag = "MolidoAuto"
+
+    private fun isAutoConfig(config: String): Boolean =
+        config.substringAfter("\"protocol\":\"").substringBefore('"') == "auto"
+
+    private fun cancelAutoSelection() {
+        autoToken++
+        autoBaseConfig = null
+        autoTrialActive.set(false)
+    }
+
+    /** CONNECTING broadcast that bypasses the sendStatus intercept. */
+    private fun autoBroadcast(text: String, progress: Int = -1) {
+        Log.i(LOG_TAG, "status=$STATUS_CONNECTING detail=$text")
+        if (progress >= 0) connectProgress = progress
+        sendBroadcast(Intent(ACTION_STATUS)
+            .setPackage(packageName)
+            .putExtra(EXTRA_STATUS, STATUS_CONNECTING)
+            .putExtra(EXTRA_PROGRESS, connectProgress)
+            .putExtra(EXTRA_DETAIL, text))
+    }
+
+    private fun autoPhaseA(): List<AutoCandidate> {
+        val proxy = CoreConfig.proxyOnly(this)
+        return listOfNotNull(
+            AutoCandidate("wireguard", "WireGuard", 10_000L),
+            AutoCandidate("masque", "MASQUE", if (CoreConfig.mimArmed(this)) 20_000L else 12_000L),
+            // SHARD has no proxy mode (refused in startTunnel).
+            if (proxy) null else AutoCandidate("shard", "SHARD", 16_000L),
+        )
+    }
+
+    private fun autoPhaseB(): List<AutoCandidate> {
+        val proxy = CoreConfig.proxyOnly(this)
+        return listOfNotNull(
+            AutoCandidate("gool", "WARP-on-WARP", 30_000L),
+            AutoCandidate("psiphon", "Psiphon", 45_000L),
+            // Tor has no proxy mode (refused in startTunnel).
+            if (proxy) null else AutoCandidate("tor", "Tor", 60_000L),
+        )
+    }
+
+    private fun beginAutoSelection(config: String) {
+        if (connected.get()) return
+        if (!autoRunning.compareAndSet(false, true)) {
+            ConnectionLog.record("Auto: selection already running")
+            return
+        }
+        autoBaseConfig = config
+        storedConfig = config
+        val token = ++autoToken
+        // A retry after a drop (or after a failed selection) re-tests everything.
+        val attempts = reconnectAttempts
+        stopRequested.set(false)
+        startAsForeground()
+        autoTrialActive.set(true)
+        autoBroadcast(Strings.tf("Testing %s…", Strings.t("Auto")))
+        try {
+            autoExecutor.execute { runAutoSelection(token, forceFull = attempts > 0, attempts = attempts) }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            autoTrialActive.set(false)
+            autoRunning.set(false)
+        }
+    }
+
+    /** Tears down whatever candidate is up and waits for the core to be out of the way. */
+    private fun autoHandover(token: Int): Boolean {
+        if (connected.get() || NativeCore.isRunning() || Tun2SocksManager.isRunning) {
+            reconnectRequested.set(true)
+            stopTunnel(notify = false, teardownService = false)
+        }
+        var waited = 0L
+        while ((NativeCore.isRunning() || connected.get()) && waited < RECONNECT_CORE_WAIT_MS) {
+            Thread.sleep(RECONNECT_POLL_MS)
+            waited += RECONNECT_POLL_MS
+        }
+        // Lets the previous native worker's finally consume its latch before the
+        // next candidate re-arms it.
+        Thread.sleep(autoHandoverMs)
+        return token == autoToken && !userInitiatedStop.get() && !connected.get()
+    }
+
+    /**
+     * Brings [candidate] up and returns its latency in ms, or null when it did not
+     * carry traffic inside its budget. With [measure] false (Phase B) the value is
+     * just the time to connect.
+     */
+    private fun runAutoTrial(candidate: AutoCandidate, token: Int, measure: Boolean): Long? {
+        if (!autoHandover(token)) return null
+        autoTrialFailed = false
+        autoTrialConnectedAt = 0L
+        autoTrialExitIpAt = 0L
+        autoTrialName = candidate.label
+        reconnectRequested.set(true)
+        autoBroadcast(Strings.tf("Testing %s…", candidate.label))
+        val startedAt = SystemClock.elapsedRealtime()
+        if (token != autoToken || userInitiatedStop.get()) return null
+        try {
+            startTunnel(CoreConfig.json(this, candidate.coreName))
+        } catch (e: Exception) {
+            ConnectionLog.record("Auto: ${candidate.label} could not start: ${e.message}")
+            return null
+        }
+        val deadline = startedAt + candidate.budgetMs
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (token != autoToken || userInitiatedStop.get()) return null
+            if (autoTrialFailed || !connected.get()) return null
+            if (autoTrialConnectedAt > 0L) {
+                return if (measure) measureAutoLatency(candidate, token) else autoTrialConnectedAt - startedAt
+            }
+            Thread.sleep(250L)
+        }
+        return null
+    }
+
+    private fun measureAutoLatency(candidate: AutoCandidate, token: Int): Long? {
+        val connectedAt = autoTrialConnectedAt
+        if (candidate.coreName == "shard") {
+            val t0 = SystemClock.elapsedRealtime()
+            return if (ShardManager.isHealthy()) SystemClock.elapsedRealtime() - t0 else null
+        }
+        if (proxyMode) {
+            // SOCKS tunnel type: the listener is the data path, so probe through it.
+            val t0 = SystemClock.elapsedRealtime()
+            val ok = ShardProbe.check(CoreConfig.proxyListenPort(this), 6_000)
+            return if (ok) SystemClock.elapsedRealtime() - t0 else null
+        }
+        // Native TUN: our own package is off the TUN, so the proof is measured by the
+        // core from inside it — its exit probe, or downstream bytes crossing.
+        val rxAtConnect = currentRx
+        val proofDeadline = SystemClock.elapsedRealtime() + 8_000L
+        while (SystemClock.elapsedRealtime() < proofDeadline) {
+            if (token != autoToken || userInitiatedStop.get()) return null
+            if (autoTrialFailed || !connected.get()) return null
+            val exitAt = autoTrialExitIpAt
+            if (exitAt > 0L) return (exitAt - connectedAt).coerceAtLeast(1L)
+            if (currentRx - rxAtConnect >= 2_048L) {
+                return (SystemClock.elapsedRealtime() - connectedAt).coerceAtLeast(1L)
+            }
+            Thread.sleep(100L)
+        }
+        return null
+    }
+
+    private fun runAutoSelection(token: Int, forceFull: Boolean, attempts: Int) {
+        val results = LinkedHashMap<String, String>()
+        var winner: AutoCandidate? = null
+        var winnerMs = -1L
+        var live: AutoCandidate? = null
+        var fullTest = false
+        try {
+            val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+            val phaseA = autoPhaseA()
+            val phaseB = autoPhaseB()
+            val lastName = prefs.getString(autoPrefLastWinner, null)
+            val lastMs = prefs.getLong(autoPrefLastLatency, -1L)
+            val sinceFull = System.currentTimeMillis() - prefs.getLong(autoPrefLastFullTest, 0L)
+            val remembered = (phaseA + phaseB).firstOrNull { it.coreName == lastName }
+            var rememberedMs: Long? = null
+
+            if (!forceFull && sinceFull in 0 until autoRetestMs && remembered != null) {
+                val fast = remembered in phaseA
+                rememberedMs = runAutoTrial(remembered, token, measure = fast)
+                if (token != autoToken) return
+                results[remembered.label] = rememberedMs?.let { "${it}ms" } ?: "fail"
+                live = if (rememberedMs != null) remembered else null
+                val ms = rememberedMs
+                if (ms != null && (!fast || lastMs <= 0L || ms <= lastMs * 5 / 4)) {
+                    winner = remembered
+                    winnerMs = ms
+                }
+            }
+
+            if (winner == null) {
+                fullTest = true
+                for (candidate in phaseA) {
+                    val ms = if (candidate == remembered && results.containsKey(candidate.label)) {
+                        rememberedMs
+                    } else {
+                        runAutoTrial(candidate, token, measure = true).also {
+                            if (token != autoToken) return
+                            results[candidate.label] = it?.let { v -> "${v}ms" } ?: "fail"
+                            live = if (it != null) candidate else null
+                        }
+                    }
+                    if (ms != null && (winnerMs < 0L || ms < winnerMs)) {
+                        winner = candidate
+                        winnerMs = ms
+                    }
+                }
+            }
+
+            if (winner == null) {
+                for (candidate in phaseB) {
+                    if (candidate == remembered && results[candidate.label] == "fail") continue
+                    val ms = runAutoTrial(candidate, token, measure = false)
+                    if (token != autoToken) return
+                    results[candidate.label] = ms?.let { "${it}ms" } ?: "fail"
+                    live = if (ms != null) candidate else null
+                    if (ms != null) {
+                        winner = candidate
+                        winnerMs = ms
+                        break
+                    }
+                }
+            }
+
+            val summary = "results: " + results.entries.joinToString(", ") { "${it.key}=${it.value}" } +
+                " winner=${winner?.label ?: "none"}" + (if (winner != null) " (${winnerMs}ms)" else "") +
+                (if (fullTest) " [full test]" else " [fast path]")
+            Log.i(autoLogTag, summary)
+            ConnectionLog.record("Auto $summary")
+
+            val chosen = winner
+            if (chosen == null) {
+                prefs.edit().remove(autoPrefLastFullTest).apply()
+                finishAutoWithoutWinner(token, attempts)
+                return
+            }
+            prefs.edit()
+                .putString(autoPrefLastWinner, chosen.coreName)
+                .putLong(autoPrefLastLatency, winnerMs)
+                .apply { if (fullTest) putLong(autoPrefLastFullTest, System.currentTimeMillis()) }
+                .apply()
+
+            val bestText = Strings.tf("Best: %s (%sms)", chosen.label, winnerMs)
+            if (live == chosen && connected.get() && !autoTrialFailed) {
+                // The winner is the candidate that is up right now: keep it.
+                autoTrialActive.set(false)
+                reconnectRequested.set(false)
+                sendStatus(STATUS_CONNECTED, bestText)
+                return
+            }
+            autoBroadcast(bestText)
+            if (!autoHandover(token)) {
+                if (token == autoToken && !userInitiatedStop.get()) finishAutoWithoutWinner(token, attempts)
+                return
+            }
+            autoTrialActive.set(false)
+            reconnectRequested.set(false)
+            sendStatus(STATUS_CONNECTING, Strings.tf("Connecting with the best: %s…", chosen.label))
+            startTunnel(CoreConfig.json(this, chosen.coreName))
+        } catch (_: InterruptedException) {
+            // Service destroyed.
+        } catch (e: Exception) {
+            ConnectionLog.record("Auto selection crashed: ${e.message}")
+            if (token == autoToken) {
+                try {
+                    finishAutoWithoutWinner(token, attempts)
+                } catch (_: Exception) {
+                }
+            }
+        } finally {
+            // Never leave the status intercept armed after the thread is gone.
+            if (token == autoToken) autoTrialActive.set(false)
+            autoRunning.set(false)
+        }
+    }
+
+    /** Nothing worked: tear down, then retry later (drops keep "auto") or report. */
+    private fun finishAutoWithoutWinner(token: Int, attempts: Int) {
+        val armed = killSwitchArmed()
+        autoHandover(token)
+        autoTrialActive.set(false)
+        reconnectRequested.set(false)
+        if (token != autoToken || userInitiatedStop.get()) return
+        // Trials re-armed the watchdog, which zeroes the backoff counter; restore it
+        // so repeated full failures back off instead of looping every 5 s.
+        reconnectAttempts = attempts
+        val detail = Strings.t("No connection type worked on this network")
+        if (willAutoReconnect()) {
+            sealWithKillSwitch(armed)
+            scheduleAutoReconnect(detail)
+            registerConnectivityCallback()
+            return
+        }
+        sendStatus(STATUS_FAILED, detail)
+        if (sealWithKillSwitch(armed)) return
+        autoBaseConfig = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     private fun startTunnel(config: String) {
+        if (isAutoConfig(config)) {
+            beginAutoSelection(config)
+            return
+        }
         if (!connected.compareAndSet(false, true)) return
         // Claims the service for this session. Every worker below captures the value
         // it saw here, so a teardown block that runs late can recognise that a newer
@@ -3663,7 +4007,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         reconnectTask?.cancel(false)
         reconnectTask = null
         nativeExitWasUnexpected = false
-        storedConfig = config
+        // Under Auto the stored config stays "auto", so a drop / quick reconnect
+        // re-runs the selection instead of redialling one transport.
+        storedConfig = autoBaseConfig ?: config
         currentProtocol = config.substringAfter("\"protocol\":\"").substringBefore('"').uppercase()
         reportPending = true
         attemptStartedAt = SystemClock.elapsedRealtime()
@@ -4325,6 +4671,28 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 ConnectionReports.report(this, node, ok, ms)
             } catch (_: Exception) {
             }
+        }
+        // Auto selection owns the UI while it tests candidates: a candidate's
+        // CONNECTED is a test result (the UI's verification gate must only run on
+        // the winner), its FAILED/DISCONNECTED are swallowed, and progress lines
+        // are shown as "Testing X…".
+        if (autoTrialActive.get()) {
+            when (status) {
+                STATUS_CONNECTED -> {
+                    if (autoTrialConnectedAt == 0L) autoTrialConnectedAt = SystemClock.elapsedRealtime()
+                    autoBroadcast(Strings.tf("Testing %s…", autoTrialName))
+                }
+                STATUS_FAILED -> {
+                    autoTrialFailed = true
+                    ConnectionLog.record("Auto: $autoTrialName failed${detail?.let { " — $it" } ?: ""}")
+                }
+                STATUS_DISCONNECTED -> Unit
+                else -> autoBroadcast(
+                    Strings.tf("Testing %s…", autoTrialName) + (detail?.let { " · $it" } ?: ""),
+                    progress,
+                )
+            }
+            return
         }
         // Stamp the connect moment here rather than at each call site: there are
         // several paths to CONNECTED (native tunnel ready, Psiphon proxy ready,

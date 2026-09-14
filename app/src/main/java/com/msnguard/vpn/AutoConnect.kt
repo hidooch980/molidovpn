@@ -38,7 +38,7 @@ object AutoConnect {
         )
         val picked = prefs.getString(
             MsnGuardTileService.DEFAULT_PROTOCOL,
-            MsnGuardTileService.Companion.Protocol.WIREGUARD.coreName,
+            MsnGuardTileService.Companion.Protocol.AUTO.coreName,
         )
         return if (armed && picked == MsnGuardTileService.Companion.Protocol.PSIPHON.coreName) {
             CoreConfig.json(context, MsnGuardVpnService.CHAIN_PROTOCOL_MARKER.lowercase())
