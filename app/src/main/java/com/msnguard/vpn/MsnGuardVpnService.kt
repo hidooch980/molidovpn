@@ -3835,6 +3835,57 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         )
     }
 
+    /**
+     * UDP reachability for this network, cached 30 min per CleanIpScanner key.
+     * Blocked = a protected DNS query to 1.1.1.1:53 gets no answer in 1.5 s. A UDP
+     * packet to the WARP endpoint 162.159.192.1:2408 is also sent and logged, but
+     * WARP never answers a non-handshake datagram, so it cannot prove UDP works.
+     */
+    private fun udpBlocked(): Boolean {
+        val key = CleanIpScanner.networkKey(this)
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val at = prefs.getLong("udp_at_$key", 0L)
+        if (System.currentTimeMillis() - at in 0 until 30 * 60 * 1000L) {
+            return prefs.getBoolean("udp_blocked_$key", false)
+        }
+        val dnsOk = try {
+            java.net.DatagramSocket().use { socket ->
+                protect(socket)
+                socket.soTimeout = 1_500
+                // Minimal A query for cloudflare.com, id 0x4d47.
+                val query = byteArrayOf(
+                    0x4d, 0x47, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x0a, 'c'.code.toByte(), 'l'.code.toByte(), 'o'.code.toByte(), 'u'.code.toByte(),
+                    'd'.code.toByte(), 'f'.code.toByte(), 'l'.code.toByte(), 'a'.code.toByte(),
+                    'r'.code.toByte(), 'e'.code.toByte(),
+                    0x03, 'c'.code.toByte(), 'o'.code.toByte(), 'm'.code.toByte(), 0x00,
+                    0x00, 0x01, 0x00, 0x01,
+                )
+                socket.send(java.net.DatagramPacket(query, query.size, InetAddress.getByName("1.1.1.1"), 53))
+                val buffer = ByteArray(512)
+                val reply = java.net.DatagramPacket(buffer, buffer.size)
+                socket.receive(reply)
+                reply.length >= 12 && buffer[0] == 0x4d.toByte() && buffer[1] == 0x47.toByte()
+            }
+        } catch (_: Exception) {
+            false
+        }
+        val warpSent = try {
+            java.net.DatagramSocket().use { socket ->
+                protect(socket)
+                val probe = ByteArray(32)
+                socket.send(java.net.DatagramPacket(probe, probe.size, InetAddress.getByName("162.159.192.1"), 2408))
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+        val blocked = !dnsOk
+        Log.i("MolidoUdp", "net=$key dns=${if (dnsOk) "ok" else "fail"} warpSend=$warpSent blocked=$blocked")
+        prefs.edit().putLong("udp_at_$key", System.currentTimeMillis()).putBoolean("udp_blocked_$key", blocked).apply()
+        return blocked
+    }
+
     private fun autoPhaseB(): List<AutoCandidate> {
         val proxy = CoreConfig.proxyOnly(this)
         return listOfNotNull(
@@ -3955,7 +4006,12 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         var fullTest = false
         try {
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-            val phaseA = autoPhaseA()
+            // UDP blocked on this network: WireGuard and MASQUE (both UDP) cannot work.
+            val phaseA = if (udpBlocked()) {
+                autoPhaseA().filter { it.coreName != "wireguard" && it.coreName != "masque" }
+            } else {
+                autoPhaseA()
+            }
             val phaseB = autoPhaseB()
             // Learned winner for (operator, 3-hour bucket) first, global last winner second.
             val learnKey = autoLearnKey()
