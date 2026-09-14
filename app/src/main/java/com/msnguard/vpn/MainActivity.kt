@@ -607,6 +607,7 @@ class MainActivity : Activity() {
             letterSpacing = spacing(0.08f)
         }
         applyLaunchMode(intent, beforeUi = true)
+        applyLaunchDns(intent)
         selectedProtocol = savedProtocol()
         chipProtocol.text = selectedProtocol.label.uppercase()
         // One accent per tile, as in the approved mock: download mint, upload
@@ -2771,6 +2772,12 @@ class MainActivity : Activity() {
         }
 
         content.addView(options)
+        if (gamingDnsHintApplies()) {
+            content.addView(label(Strings.t("Tip: for games, try a gaming DNS (Radar Game, Electro, Shecan, 403)"), 13f, MUTED), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(16); leftMargin = dp(4) })
+        }
         page.addView(content, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -2922,6 +2929,18 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        lateinit var dnsRow: OrbitSettingsRow
+        dnsRow = navRow(Strings.t("DNS"), dnsSummary()) { chooseDns { dnsRow.setValue(dnsSummary()) } }
+        content.addView(dnsRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        if (gamingDnsHintApplies()) {
+            content.addView(label(Strings.t("Tip: for games, try a gaming DNS (Radar Game, Electro, Shecan, 403)"), 13f, MUTED), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(6); leftMargin = dp(4) })
+        }
         // The switch this writes existed before, fed only the removed proxy mode's
         // SOCKS bind, and was deleted because in VPN mode it changed nothing the
         // user could see. It changes something now: the service applies the
@@ -6525,7 +6544,59 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyLaunchMode(intent, beforeUi = false)
+        applyLaunchDns(intent)
     }
+
+    /** CI hook: `molido_dns` selects (and persists) a DNS preset; unknown values ignored. */
+    private fun applyLaunchDns(intent: Intent?) {
+        val key = intent?.getStringExtra(EXTRA_MOLIDO_DNS) ?: return
+        val preset = DnsSettings.byKey(key) ?: return
+        DnsSettings.setPreset(this, preset)
+    }
+
+    private fun gamingDnsHintApplies(): Boolean =
+        selectedProtocol == Protocol.GAMING && DnsSettings.preset(this) == DnsSettings.Preset.AUTO
+
+    private fun dnsSummary(): String {
+        val preset = DnsSettings.preset(this)
+        return when {
+            preset.gaming -> "${Strings.t("Gaming DNS")} · ${preset.label}"
+            else -> preset.label
+        }
+    }
+
+    /**
+     * DNS picker. The Iranian gaming presets come last and carry a "Gaming DNS"
+     * prefix, which is how they are grouped under their own heading in this sheet.
+     */
+    private fun chooseDns(onDone: () -> Unit) = showChoiceSheet(
+        title = Strings.t("DNS"),
+        subtitle = Strings.t("Resolvers used for name lookups while connected"),
+        options = DnsSettings.Preset.entries.map { it.key },
+        selected = DnsSettings.preset(this).key,
+        label = { key ->
+            val preset = DnsSettings.byKey(key)
+            when {
+                preset == null -> key
+                preset.gaming -> "${Strings.t("Gaming DNS")} · ${preset.label}"
+                else -> preset.label
+            }
+        },
+        description = { key ->
+            val preset = DnsSettings.byKey(key)
+            when {
+                preset == null -> ""
+                preset == DnsSettings.Preset.AUTO -> Strings.t("Default resolvers for each connection mode")
+                preset.gaming -> preset.servers.joinToString(" / ") + " · " +
+                    Strings.t("For online games: lower ping to Iranian game servers; may not work outside Iran")
+                else -> ""
+            }
+        },
+        onSelected = { key ->
+            DnsSettings.setPreset(this, DnsSettings.byKey(key) ?: DnsSettings.Preset.AUTO)
+            onDone()
+        }
+    )
 
     /**
      * CI hook: optional extra `molido_mode` = `gaming` | `auto` only selects (and
@@ -7062,6 +7133,7 @@ class MainActivity : Activity() {
         const val KILL_SWITCH = "kill_switch"
         const val PRE_GAMING_PROTOCOL = "pre_gaming_protocol"
         const val EXTRA_MOLIDO_MODE = "molido_mode"
+        const val EXTRA_MOLIDO_DNS = "molido_dns"
         /** Whether Psiphon-over-WARP is armed for the next connect. */
         const val CHAIN_ARMED = "chain_armed"
 

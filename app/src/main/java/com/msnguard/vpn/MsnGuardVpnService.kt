@@ -2300,12 +2300,10 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                         .addAddress(address.ipAddress, address.prefixLength)
                         .addRoute("0.0.0.0", 0)
                         .addRoute(address.subnet, address.prefixLength)
-                        .addDnsServer(address.router)
                         // Same reasoning as the plain Psiphon path: public resolvers
                         // plus our own exclusion, so both legs can resolve names
                         // over the carrier link before any tunnel exists.
-                        .addDnsServer("1.1.1.1")
-                        .addDnsServer("8.8.8.8")
+                        .applyUdpgwDns(address.router, "chain")
                         // Same reason as the plain Psiphon path: the Split screen's
                         // choice has to apply to chained runs too, and our own package
                         // stays off the TUN in every mode.
@@ -2421,6 +2419,11 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     // resolves its own gateway names in the core, off the TUN, so
                     // it needs nothing added here either.
                     .addDnsServer(address.router)
+                    .also {
+                        // Tor's DNSPort stays the only resolver whatever the DNS
+                        // choice: any other resolver would leak lookups outside Tor.
+                        logDns("tor", listOf(address.router), "preset=ignored reason=anonymity")
+                    }
                     // LAN destinations leave the circuit when the user turns this on
                     // — that is the point of the setting, and on this transport it is
                     // also an anonymity decision, so it stays opt-in and off by
@@ -2584,7 +2587,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     // dials its node by hostname over the carrier link (our own UID
                     // is off the TUN), so nothing in the connect path needs the
                     // TUN's resolver before the tunnel exists.
-                    .addDnsServer(address.router)
+                    .applyShardDns(address.router)
                     .applyLanAccess(tun = address)
                     .applySplitTunneling()
                     .establish() ?: error("Android could not establish the VPN interface")
@@ -3829,7 +3832,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                         .addAddress(address.ipAddress, address.prefixLength)
                         .addRoute("0.0.0.0", 0)
                         .addRoute(address.subnet, address.prefixLength)
-                        .addDnsServer(address.router)
+                        .applyUdpgwDns(address.router, "psiphon")
                         // --- Strategy A: break the DNS bootstrap deadlock ---
                         // With only address.router as a resolver, every DNS
                         // query goes lwIP → udpgw → Psiphon. Before a tunnel
@@ -3845,8 +3848,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                         // keeps our own process off the TUN entirely — Psiphon's
                         // queries leave over the carrier link and resolve
                         // normally, so the fronted protocols become usable.
-                        .addDnsServer("1.1.1.1")
-                        .addDnsServer("8.8.8.8")
+                        // (1.1.1.1 / 8.8.8.8 are added by applyUdpgwDns.)
                         // Split tunnelling was ignored on this path: it only ever
                         // excluded our own package, so a user who picked apps in the
                         // Split screen and then connected with Psiphon silently got
@@ -5069,7 +5071,94 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             addresses.gatewayProxy.contains("172.18.")
     }
 
+    /**
+     * Psiphon / chain DNS. Automatic: router + 1.1.1.1 + 8.8.8.8 exactly as before.
+     * Gaming presets are listed instead of the router and routed outside the tunnel.
+     */
+    private fun Builder.applyUdpgwDns(router: String, path: String): Builder {
+        val chosen = chosenDns(path)
+        if (chosen != null && chosen.second) {
+            addChosenDns(chosen.first, true)
+            // Public pair kept for Psiphon's bootstrap (our own UID is off the TUN).
+            addDnsServer("1.1.1.1")
+            addDnsServer("8.8.8.8")
+            logDns(path, chosen.first + listOf("1.1.1.1", "8.8.8.8"), "direct=true")
+            return this
+        }
+        addDnsServer(router)
+        addDnsServer("1.1.1.1")
+        addDnsServer("8.8.8.8")
+        logDns(
+            path,
+            listOf(router, "1.1.1.1", "8.8.8.8"),
+            "preset=auto",
+        )
+        return this
+    }
+
+    /**
+     * SHARD DNS. Automatic: lwIP's resolver, forwarded through the node to
+     * 1.1.1.1 / 8.8.8.8 as before. Gaming presets: listed as the only resolvers
+     * and routed outside the tunnel.
+     */
+    private fun Builder.applyShardDns(router: String): Builder {
+        val chosen = chosenDns("shard")
+        if (chosen == null) {
+            addDnsServer(router)
+            logDns("shard", listOf("1.1.1.1", "8.8.8.8"), "preset=auto")
+            return this
+        }
+        addChosenDns(chosen.first, true)
+        logDns("shard", chosen.first, "direct=true")
+        return this
+    }
+
+    /**
+     * The user's DNS choice for this session. Null means Automatic (callers keep
+     * today's resolvers). Gaming presets need excludeRoute (API 33+); below that
+     * they fall back to Automatic and the reason is logged.
+     */
+    private fun chosenDns(path: String): Pair<List<String>, Boolean>? {
+        val preset = DnsSettings.preset(this)
+        val servers = preset.servers
+        if (preset == DnsSettings.Preset.AUTO || servers.isEmpty()) return null
+        if (preset.gaming && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            ConnectionLog.record("DNS ${preset.key}: needs Android 13+ to route outside the tunnel; using Automatic")
+            Log.i("MolidoDns", "path=$path preset=${preset.key} fallback=auto reason=api<33")
+            return null
+        }
+        return servers to preset.gaming
+    }
+
+    /** Adds [servers]; for gaming DNS each IP is also routed outside the tunnel. */
+    private fun Builder.addChosenDns(servers: List<String>, gaming: Boolean): Builder {
+        servers.forEach { ip ->
+            val address = InetAddress.getByName(ip)
+            addDnsServer(address)
+            if (gaming && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                excludeRoute(IpPrefix(address, 32))
+            }
+        }
+        return this
+    }
+
+    private fun logDns(path: String, servers: List<String>, note: String = "") {
+        Log.i("MolidoDns", "path=$path servers=${servers.joinToString(",")}" + if (note.isNotEmpty()) " $note" else "")
+    }
+
     private fun Builder.applyDns(config: String, addresses: NativeCore.TunnelAddresses): Builder {
+        val chosen = chosenDns("core")
+        if (chosen != null) {
+            val servers = chosen.first
+            val gaming = chosen.second
+            addChosenDns(servers, gaming)
+            if (addresses.ipv6.isNotBlank() && !gaming) {
+                runCatching { addDnsServer(InetAddress.getByName("2606:4700:4700::1111")) }
+            }
+            ConnectionLog.record("DNS set by user choice: " + servers.joinToString(", ") + if (gaming) " (outside tunnel)" else "")
+            logDns("core", servers, if (gaming) "direct=true" else "")
+            return this
+        }
         // OURS, kept over upstream's version — this is load-bearing for Psiphon.
         //
         // Carrier DNS on Iranian mobile networks is both censored and rejected by
@@ -5104,6 +5193,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             .forEach { addDnsServer(it) }
 
         ConnectionLog.record("DNS forced to public resolvers, carrier DNS excluded")
+        logDns("core", listOf("1.1.1.1", "8.8.8.8"), "preset=auto")
         return this
     }
 }
