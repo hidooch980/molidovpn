@@ -624,6 +624,8 @@ object Strings {
         "Restore by paste" to Triple("Restore by paste", "بازیابی با چسباندن", "粘贴恢复"),
         "Paste settings text" to Triple("Paste settings text", "متن تنظیمات را بچسبانید", "粘贴设置文本"),
         "Settings copied — this text holds no passwords" to Triple("Settings copied — this text holds no passwords", "تنظیمات کپی شد — این متن هیچ رمزی ندارد", "设置已复制 — 此文本不含密码"),
+        "Data saver" to Triple("Data saver", "حالت کم‌مصرف", "省流模式"),
+        "DATA_SAVER_SUBTITLE" to Triple("SHARD/V2Ray: blocks QUIC so apps use TCP (less data). Cannot lower image or video quality.", "SHARD/V2Ray: QUIC را می‌بندد تا برنامه‌ها از TCP استفاده کنند (مصرف کمتر). کیفیت عکس و ویدیو را کم نمی‌کند.", "SHARD/V2Ray：屏蔽 QUIC，让应用改用 TCP（更省流量）。无法降低图片或视频画质。"),
         // Connection extras (IR direct, MTU, speed test, schedule, backup).
     )
 

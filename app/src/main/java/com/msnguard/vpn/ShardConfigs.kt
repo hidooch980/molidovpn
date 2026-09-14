@@ -747,11 +747,25 @@ object ShardConfigs {
             // the default outbound and everything goes through the node. blackhole is
             // present only so a future rule has something to point at.
             put("outbounds", outbounds)
+            // Data saver: QUIC (UDP/443) is blackholed first, so apps fall back to
+            // TCP — less data and a steadier path through the tunnel.
+            val quicBlock = dataSaverEnabled(context)
+            fun withQuicBlock(rules: JSONArray): JSONArray = if (!quicBlock) rules else JSONArray().apply {
+                put(JSONObject().apply {
+                    put("type", "field")
+                    put("network", "udp")
+                    put("port", "443")
+                    put("outboundTag", "blackhole")
+                })
+                for (i in 0 until rules.length()) put(rules.get(i))
+            }
             if (smartSplit != null) {
                 put("dns", smartSplitDns(context))
-                put("routing", JSONObject().put("rules", smartSplitRules(context)))
+                put("routing", JSONObject().put("rules", withQuicBlock(smartSplitRules(context))))
             } else if (iranDirect) {
-                put("routing", JSONObject().put("rules", iranDirectRules(irGeo)))
+                put("routing", JSONObject().put("rules", withQuicBlock(iranDirectRules(irGeo))))
+            } else if (quicBlock) {
+                put("routing", JSONObject().put("rules", withQuicBlock(JSONArray())))
             }
         }.toString()
     }
@@ -1187,6 +1201,12 @@ object ShardConfigs {
      *   is not a browser: a default-deny would break every app whose protocol the
      *   sniffer does not recognise, and this config is carrying the whole device.
      */
+    /** Settings key for "data saver" (QUIC block on SHARD/V2Ray). Default off. */
+    const val DATA_SAVER_PREF = "data_saver"
+
+    fun dataSaverEnabled(context: Context): Boolean =
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(DATA_SAVER_PREF, false)
+
     /**
      * [IranDirect] rules for a node-only config: Iranian names (and, with the geo
      * files present, Iranian addresses) leave directly; everything else keeps the

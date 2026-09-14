@@ -3184,7 +3184,21 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
-        // Further connection toggles (MTU, data saver) follow.
+        // Data saver: blocks QUIC in SHARD/V2Ray so apps use TCP. Image quality
+        // cannot be reduced by a tunnel, so that is all this does.
+        content.addView(OrbitToggleRow(
+            this,
+            palette,
+            Strings.t("Data saver"),
+            Strings.t("DATA_SAVER_SUBTITLE"),
+            ShardConfigs.dataSaverEnabled(this),
+        ) { on ->
+            preferences().edit().putBoolean(ShardConfigs.DATA_SAVER_PREF, on).apply()
+            ConnectionLog.record("Data saver " + (if (on) "on" else "off") + " — applies on the next connect")
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Held in a field, not a local: the mode screen is a separate page that
         // writes the preference and pops back here, so the row that shows the
         // current mode has to be repaintable from outside this builder. Without
