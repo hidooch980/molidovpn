@@ -2435,6 +2435,46 @@ class MainActivity : Activity() {
         }
     }
 
+    /** "Test servers from my internet": runs [NodeTest] in a dialog with Stop. */
+    private fun runNodeTest() {
+        if (TunnelStatus.isActive() && !CoreConfig.proxyOnly(this)) {
+            toastShort(Strings.t("Disconnect the VPN first — the test must use your own internet"))
+            return
+        }
+        val body = TextView(this).apply {
+            textSize = 14f
+            textDirection = View.TEXT_DIRECTION_LTR
+            setPadding(dp(24), dp(12), dp(24), dp(8))
+            text = Strings.t("Testing…")
+        }
+        var finished = false
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("Test servers from my internet"))
+            .setView(body)
+            .setNegativeButton(Strings.t("Stop")) { _, _ -> NodeTest.cancel() }
+            .setOnDismissListener { if (!finished) NodeTest.cancel() }
+            .create()
+        dialog.show()
+        fun render(tallies: Map<String, NodeTest.Tally>, done: Int, total: Int): String =
+            "$done / $total\n\n" + tallies.entries.sortedBy { it.key }.joinToString("\n") {
+                "${it.key}: ${it.value.ok.get()} / ${it.value.total.get()}"
+            }
+        Thread({
+            val result = runCatching {
+                NodeTest.run(this) { t, done, total ->
+                    val text = render(t, done, total)
+                    runOnUiThread { body.text = text }
+                }
+            }
+            runOnUiThread {
+                finished = true
+                result.exceptionOrNull()?.let { body.text = Strings.tf("Test failed: %s", it.message.toString()) }
+                if (result.getOrNull()?.isEmpty() == true) body.text = Strings.t("No servers available")
+                dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE)?.text = Strings.t("Close")
+            }
+        }, "node-test").start()
+    }
+
     /** Restores settings from pasted backup text (validated by [SettingsBackup.restore]). */
     private fun restoreSettingsFromPaste() {
         if (TunnelStatus.isActive() || visualState == OrbitDialView.State.CONNECTING) {
@@ -3630,6 +3670,13 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
+        // Probe the V2Ray + SHARD pool from this internet connection (NodeTest).
+        content.addView(navRow(Strings.t("Test servers from my internet"), Strings.t("V2Ray + SHARD, per protocol")) {
+            runNodeTest()
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Schedule: daily auto-connect / auto-disconnect times (ConnectSchedule).
         fun scheduleRow(title: String, key: String): OrbitSettingsRow {
             var row: OrbitSettingsRow? = null
