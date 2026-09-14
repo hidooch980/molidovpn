@@ -643,6 +643,34 @@ object ShardManager {
         return start(context, verboseLog, port)
     }
 
+    @Volatile
+    private var lastPrewarmAt = 0L
+
+    /**
+     * Pre-race the top slice while no SHARD session exists, so the health memory
+     * already knows a working node when the user taps Connect.
+     *
+     * Same lock as [start]/[rotate], so it can never run under a live session; a
+     * connect that arrives mid-pre-warm waits for at most one race budget. At most
+     * once per 30 min per process; the job adds its own conditions.
+     */
+    @Synchronized
+    fun prewarm(context: Context): Boolean {
+        if (isRunning || process != null) return false
+        val now = System.currentTimeMillis()
+        if (now - lastPrewarmAt in 0 until 30 * 60 * 1000L) return false
+        lastPrewarmAt = now
+        stopRequestedDuringStart = false
+        val pool = ShardEdges.expand(context, ShardSubscription.nodes(context))
+        if (pool.isEmpty()) return false
+        val ranked = diversify(ShardHealth.rank(context, pool))
+        val winner = race(context, ranked.take(RACE_WIDTH))
+        ConnectionLog.record(
+            "$TAG pre-warm " + (winner?.let { "found ${LogRedactor.nodeTag(it.key)}" } ?: "found nothing")
+        )
+        return winner != null
+    }
+
     /**
      * Is the live tunnel still carrying traffic?
      *

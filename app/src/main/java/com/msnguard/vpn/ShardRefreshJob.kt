@@ -41,6 +41,23 @@ import android.content.Context
 class ShardRefreshJob : android.app.job.JobService() {
 
     override fun onStartJob(params: JobParameters?): Boolean {
+        val jobId = params?.jobId ?: JOB_ID
+        if (jobId == PREWARM_UNMETERED_ID || jobId == PREWARM_CHARGING_ID) {
+            // Pre-warm: only while nothing is connected, on its own thread.
+            if (TunnelStatus.isActive()) return false
+            val app = applicationContext
+            Thread({
+                try {
+                    CleanIpScanner.scanIfDue(app)
+                    ShardManager.prewarm(app)
+                } catch (e: Exception) {
+                    ConnectionLog.record("SHARD pre-warm failed: ${e.message}")
+                } finally {
+                    jobFinished(params, false)
+                }
+            }, "shard-prewarm").apply { isDaemon = true }.start()
+            return true
+        }
         // Edges and geo-blocked hosts ride the same window. Fire-and-forget: it
         // does not gate jobFinished, because the subscription fetch below is the
         // one whose result the pool actually waits on.
@@ -73,6 +90,10 @@ class ShardRefreshJob : android.app.job.JobService() {
     companion object {
 
         private const val JOB_ID = 0x5A4D
+        /** Pre-warm jobs: one on unmetered (Wi-Fi), one while charging. */
+        private const val PREWARM_UNMETERED_ID = 0x5A4E
+        private const val PREWARM_CHARGING_ID = 0x5A4F
+        private const val PREWARM_PERIOD_MS = 30 * 60 * 1000L
 
         /**
          * How often the OS may run us. Six hours matches
@@ -132,6 +153,25 @@ class ShardRefreshJob : android.app.job.JobService() {
                 // foreground refresh in MainActivity still keeps the list current
                 // for anyone who opens the app.
                 ConnectionLog.record("ShardRefreshJob could not be scheduled: ${e.message}")
+            }
+            val component = ComponentName(context, ShardRefreshJob::class.java)
+            val prewarmJobs = listOf(
+                JobInfo.Builder(PREWARM_UNMETERED_ID, component)
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
+                    .setPeriodic(PREWARM_PERIOD_MS)
+                    .build(),
+                JobInfo.Builder(PREWARM_CHARGING_ID, component)
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                    .setRequiresCharging(true)
+                    .setPeriodic(PREWARM_PERIOD_MS)
+                    .build(),
+            )
+            prewarmJobs.forEach { prewarm ->
+                try {
+                    scheduler.schedule(prewarm)
+                } catch (e: Exception) {
+                    ConnectionLog.record("SHARD pre-warm job could not be scheduled: ${e.message}")
+                }
             }
         }
     }
