@@ -2415,6 +2415,59 @@ class MainActivity : Activity() {
             .onFailure { toastShort(Strings.t("This device has no file picker")) }
     }
 
+    /**
+     * Copies the settings backup JSON to the clipboard and offers the share sheet.
+     * Same content as [exportSettings]: preferences only, never credentials.
+     */
+    private fun shareSettingsText() {
+        val json = runCatching { SettingsBackup.export(this, appVersion()) }.getOrElse {
+            toastShort(Strings.tf("Could not read the settings: %s", it.message.toString()))
+            return
+        }
+        getSystemService(ClipboardManager::class.java)
+            ?.setPrimaryClip(ClipData.newPlainText("MolidoVPN settings", json))
+        toastShort(Strings.t("Settings copied — this text holds no passwords"))
+        runCatching {
+            startActivity(Intent.createChooser(
+                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, json),
+                Strings.t("Copy or share settings"),
+            ))
+        }
+    }
+
+    /** Restores settings from pasted backup text (validated by [SettingsBackup.restore]). */
+    private fun restoreSettingsFromPaste() {
+        if (TunnelStatus.isActive() || visualState == OrbitDialView.State.CONNECTING) {
+            toastShort(Strings.t("Disconnect first — a restore changes what the tunnel uses"))
+            return
+        }
+        val input = android.widget.EditText(this).apply {
+            minLines = 4
+            maxLines = 10
+            hint = Strings.t("Paste settings text")
+            textDirection = View.TEXT_DIRECTION_LTR
+            getSystemService(ClipboardManager::class.java)?.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString()
+                ?.takeIf { it.contains(SettingsBackup.APP_MARKER) }
+                ?.let { setText(it) }
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("Restore by paste"))
+            .setView(input)
+            .setNegativeButton(Strings.t("Cancel"), null)
+            .setPositiveButton(Strings.t("Apply")) { _, _ ->
+                val outcome = runCatching { SettingsBackup.restore(this, input.text.toString()) }.getOrElse {
+                    toastShort(it.message ?: Strings.t("This file is not a settings backup"))
+                    return@setPositiveButton
+                }
+                ConnectionLog.record("Settings restored from pasted text: ${outcome.restored} value(s)")
+                toastShort(Strings.tf("Restored %s settings from v%s", outcome.restored, outcome.version))
+                recreate()
+            }
+            .show()
+    }
+
     /** Writes [pendingBackupJson] into the document the picker returned. */
     private fun writeBackup(uri: Uri) {
         val payload = pendingBackupJson
@@ -3616,6 +3669,15 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
         content.addView(navRow(Strings.t("Restore settings"), Strings.t("From a backup file")) { importSettings() }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        // Text backup: the same non-secret JSON, copied/shared instead of saved to a file.
+        content.addView(navRow(Strings.t("Copy or share settings"), Strings.t("As text, no passwords")) { shareSettingsText() }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        content.addView(navRow(Strings.t("Restore by paste"), Strings.t("Paste settings text")) { restoreSettingsFromPaste() }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })

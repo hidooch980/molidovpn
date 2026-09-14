@@ -619,6 +619,11 @@ object Strings {
         "direct" to Triple("direct", "مستقیم", "直连"),
         "Scheduled connect" to Triple("Scheduled connect", "اتصال زمان‌بندی‌شده", "定时连接"),
         "Scheduled disconnect" to Triple("Scheduled disconnect", "قطع زمان‌بندی‌شده", "定时断开"),
+        "Copy or share settings" to Triple("Copy or share settings", "کپی یا اشتراک تنظیمات", "复制或分享设置"),
+        "As text, no passwords" to Triple("As text, no passwords", "به‌صورت متن، بدون رمز", "文本形式，不含密码"),
+        "Restore by paste" to Triple("Restore by paste", "بازیابی با چسباندن", "粘贴恢复"),
+        "Paste settings text" to Triple("Paste settings text", "متن تنظیمات را بچسبانید", "粘贴设置文本"),
+        "Settings copied — this text holds no passwords" to Triple("Settings copied — this text holds no passwords", "تنظیمات کپی شد — این متن هیچ رمزی ندارد", "设置已复制 — 此文本不含密码"),
         // Connection extras (IR direct, MTU, speed test, schedule, backup).
     )
 
