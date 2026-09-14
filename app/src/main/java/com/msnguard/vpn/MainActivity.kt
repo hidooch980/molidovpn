@@ -530,6 +530,7 @@ class MainActivity : Activity() {
         )
 
         appUpdater = AppUpdater(this)
+        if (savedInstanceState == null) appUpdater.checkForUpdate(silent = true)
         // Registers the periodic SHARD list refresh. Idempotent, so calling it on
         // every launch is how the job gets re-registered after an app update — a
         // package replace clears JobScheduler's registrations for the app.

@@ -50,22 +50,29 @@ class AppUpdater(private val activity: Activity) {
     private var progressDialog: AlertDialog? = null
     private var busy = false
 
-    fun checkForUpdate() {
+    /** [silent]: the launch-time check — no spinner, and only speaks up when a newer version exists. */
+    fun checkForUpdate(silent: Boolean = false) {
         if (busy) return
         busy = true
-        showProgress(Strings.t("Checking for updates"))
+        if (!silent) showProgress(Strings.t("Checking for updates"))
         worker.execute {
             val result = runCatching(::latestRelease)
             activity.runOnUiThread {
                 dismissProgress()
                 busy = false
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                val release = result.getOrNull()
+                if (silent) {
+                    if (release != null && isNewer(release.version, appVersion())) announceUpdate(release)
+                    return@runOnUiThread
+                }
                 result.onFailure { showMessage(Strings.t("Update check failed"), it.message ?: Strings.t("Try again later")) }
-                    .onSuccess { release ->
+                    .onSuccess { found ->
                         when {
-                            release == null -> showMessage(Strings.t("No update available"), Strings.t("No compatible release was found"))
-                            !isNewer(release.version, appVersion()) ->
+                            found == null -> showMessage(Strings.t("No update available"), Strings.t("No compatible release was found"))
+                            !isNewer(found.version, appVersion()) ->
                                 showMessage(Strings.t("You're up to date"), Strings.tf("MolidoVPN %s is installed", appVersion()))
-                            else -> announceUpdate(release)
+                            else -> announceUpdate(found)
                         }
                     }
             }
@@ -113,8 +120,21 @@ class AppUpdater(private val activity: Activity) {
         false
     }
 
+    /** Our Cloudflare worker first (reachable where GitHub is filtered), then GitHub itself. */
     private fun latestRelease(): Release? {
-        val connection = (URL(RELEASE_URL).openConnection() as HttpURLConnection).apply {
+        var lastError: Exception? = null
+        for (url in listOf(MIRROR_RELEASE_URL, RELEASE_URL)) {
+            try {
+                return fetchRelease(url)
+            } catch (error: Exception) {
+                lastError = error
+            }
+        }
+        throw lastError ?: IllegalStateException("no release source")
+    }
+
+    private fun fetchRelease(url: String): Release? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 20_000
             setRequestProperty("Accept", "application/vnd.github+json")
@@ -204,7 +224,8 @@ class AppUpdater(private val activity: Activity) {
 
     private companion object {
         const val RELEASE_HOST = "api.github.com"
-        const val RELEASE_URL = "https://$RELEASE_HOST/repos/hidooch980/mobin-vpn/releases/latest"
+        const val MIRROR_RELEASE_URL = "https://molido-sub.hidooch980.workers.dev/app/latest.json"
+        const val RELEASE_URL ="https://$RELEASE_HOST/repos/hidooch980/mobin-vpn/releases/latest"
         const val RELEASES_PAGE_URL = "https://github.com/hidooch980/mobin-vpn/releases/latest"
 
         fun isNewer(remote: String, local: String): Boolean {
