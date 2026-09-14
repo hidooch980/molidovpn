@@ -3903,6 +3903,10 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         val proxy = CoreConfig.proxyOnly(this)
         return listOfNotNull(
             AutoCandidate("gool", "WARP-on-WARP", 30_000L),
+            // Smart chain: the existing Psiphon-over-WARP chain, tried with its own
+            // budget after Phase A failed and before plain Psiphon/Tor. Same
+            // lowercase marker the tile/auto-connect pass as a protocol.
+            AutoCandidate(CHAIN_PROTOCOL_MARKER.lowercase(), "Psiphon over WARP", 40_000L),
             AutoCandidate("psiphon", "Psiphon", 45_000L),
             // Tor has no proxy mode (refused in startTunnel).
             if (proxy) null else AutoCandidate("tor", "Tor", 60_000L),
