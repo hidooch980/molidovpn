@@ -599,11 +599,19 @@ object ShardConfigs {
         smartSplit: SmartSplit.FragmentProfile? = null,
         irDirect: Boolean = false,
         irGeo: Boolean = false,
+        extra: List<ShardNode> = emptyList(),
     ): String {
         // "Iranian sites direct" without Smart Split (which has its own IR rules).
         val iranDirect = irDirect && smartSplit == null
+        // Multi-path: winner + other live responders behind a leastPing balancer.
+        // Not combined with Smart Split, whose own rule table owns the catch-all.
+        val balanced = smartSplit == null && extra.isNotEmpty()
         val outbounds = JSONArray()
             .put(outbound(context, node, "proxy"))
+        if (balanced) {
+            extra.forEachIndexed { i, n -> outbounds.put(outbound(context, n, "proxy-${i + 1}")) }
+        }
+        outbounds
             .put(
                 JSONObject().apply {
                     put("tag", "blackhole")
@@ -762,6 +770,30 @@ object ShardConfigs {
             if (smartSplit != null) {
                 put("dns", smartSplitDns(context))
                 put("routing", JSONObject().put("rules", withQuicBlock(smartSplitRules(context))))
+            } else if (balanced) {
+                val selectors = JSONArray().put("proxy")
+                extra.indices.forEach { selectors.put("proxy-${it + 1}") }
+                put("observatory", JSONObject().apply {
+                    put("subjectSelector", selectors)
+                    put("probeURL", "https://www.gstatic.com/generate_204")
+                    put("probeInterval", "30s")
+                    put("enableConcurrency", true)
+                })
+                val rules = withQuicBlock(if (iranDirect) iranDirectRules(irGeo) else JSONArray())
+                rules.put(JSONObject().apply {
+                    put("type", "field")
+                    put("network", "tcp,udp")
+                    put("balancerTag", "multi")
+                })
+                put("routing", JSONObject().apply {
+                    put("rules", rules)
+                    put("balancers", JSONArray().put(JSONObject().apply {
+                        put("tag", "multi")
+                        put("selector", selectors)
+                        put("strategy", JSONObject().put("type", "leastPing"))
+                        put("fallbackTag", "proxy")
+                    }))
+                })
             } else if (iranDirect) {
                 put("routing", JSONObject().put("rules", withQuicBlock(iranDirectRules(irGeo))))
             } else if (quicBlock) {

@@ -3171,6 +3171,20 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        // Multi-path (SHARD / V2Ray): leastPing balancer over the live race responders.
+        content.addView(OrbitToggleRow(
+            this,
+            palette,
+            Strings.t("Multi-path connection"),
+            Strings.t("MULTI_PATH_SUBTITLE"),
+            MultiPath.enabled(this),
+        ) { on ->
+            MultiPath.setEnabled(this, on)
+            ConnectionLog.record("Multi-path " + (if (on) "on" else "off") + " — applies on the next connect")
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         content.addView(OrbitToggleRow(
             this,
             palette,

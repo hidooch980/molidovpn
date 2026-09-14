@@ -608,6 +608,8 @@ object Strings {
         "فارسی" to Triple("فارسی", "فارسی", "波斯语"),
         "↑ UP" to Triple("↑ UP", "↑ آپلود", "↑ 上传"),
         "↓ DOWN" to Triple("↓ DOWN", "↓ دانلود", "↓ 下载"),
+        "Multi-path connection" to Triple("Multi-path connection", "اتصال چندمسیره", "多路径连接"),
+        "MULTI_PATH_SUBTITLE" to Triple("SHARD/V2Ray: spread traffic over the fastest live servers (leastPing)", "SHARD/V2Ray: ترافیک از سریع‌ترین سرورهای زنده عبور می‌کند (leastPing)", "SHARD/V2Ray：流量走最快的在线服务器（leastPing）"),
         "Iranian sites direct" to Triple("Iranian sites direct", "سایت‌های ایرانی مستقیم", "伊朗网站直连"),
         "IRAN_DIRECT_SUBTITLE" to Triple("Open .ir sites and Iranian IPs without the tunnel (no Smart Split probing)", "سایت‌های .ir و آی‌پی‌های ایران بدون تونل باز می‌شوند (بدون تست Smart Split)", ".ir 网站和伊朗 IP 不走隧道（不进行 Smart Split 探测）"),
         "Auto MTU" to Triple("Auto MTU", "MTU خودکار", "自动 MTU"),

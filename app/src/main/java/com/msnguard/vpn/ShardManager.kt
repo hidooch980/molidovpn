@@ -118,6 +118,10 @@ object ShardManager {
     @Volatile
     private var standbyRaceRunning = false
 
+    /** Other nodes that answered the last connect race (winner excluded); multi-path pool. */
+    @Volatile
+    private var lastResponders: List<ShardNode> = emptyList()
+
     private val running = AtomicBoolean(false)
 
     /**
@@ -505,7 +509,11 @@ object ShardManager {
             logLevel,
             irDirect = irDirect,
             irGeo = irDirect && unpackGeoAssets(context, File(context.filesDir, "shard").apply { mkdirs() }),
+            extra = if (MultiPath.enabled(context)) lastResponders else emptyList(),
         )
+        if (MultiPath.enabled(context) && lastResponders.isNotEmpty()) {
+            ConnectionLog.record("$TAG multi-path: leastPing over ${lastResponders.size + 1} nodes")
+        }
         val configFile = ShardConfigs.writeConfig(context, "tunnel.json", config)
         // Last checkpoint before committing the winner: stop() may have killed the
         // probe process moments ago, and launching the live tunnel into a cancelled
@@ -882,6 +890,9 @@ object ShardManager {
             val runnerUp = java.util.concurrent.atomic.AtomicReference<ShardNode?>(null)
             val latch = java.util.concurrent.CountDownLatch(1)
             val runnerUpLatch = java.util.concurrent.CountDownLatch(1)
+            // Multi-path wants winner + standby + up to 2 more live responders.
+            val responders = java.util.concurrent.ConcurrentLinkedQueue<ShardNode>()
+            val wanted = if (!detached && MultiPath.enabled(context)) 4 else 0
             val pool = java.util.concurrent.Executors.newFixedThreadPool(
                 candidates.size.coerceAtMost(RACE_WIDTH)
             )
@@ -892,7 +903,7 @@ object ShardManager {
                     // work on a metered link — stop rather than finish politely.
                     // Runner-up standby: probes keep going until a SECOND node
                     // answered, so a later stall can switch without a re-race.
-                    if (runnerUp.get() != null) return@execute
+                    if (runnerUp.get() != null && responders.size >= wanted) return@execute
                     // A stop during the race abandons every probe immediately;
                     // ShardProbe.check blocks up to PROBE_TIMEOUT_MS and the
                     // user is already waiting on this connect being over.
@@ -902,6 +913,7 @@ object ShardManager {
                     val elapsed = (System.currentTimeMillis() - started).toInt()
                     if (ok) {
                         ShardHealth.recordSuccess(context, node, elapsed)
+                        responders.add(node)
                         // compareAndSet, so the genuinely first success wins even
                         // when two finish in the same millisecond.
                         if (winner.compareAndSet(null, node)) {
@@ -929,6 +941,9 @@ object ShardManager {
             pool.shutdownNow()
 
             val chosen = winner.get()
+            if (!detached) {
+                lastResponders = if (chosen == null) emptyList() else responders.filter { it.key != chosen.key }.take(3)
+            }
             standbyNode = runnerUp.get()?.takeIf { chosen != null }
             standbyNode?.let {
                 ConnectionLog.record("$TAG standby ${LogRedactor.nodeTag(it.key)}")
@@ -962,5 +977,21 @@ object ShardManager {
                 killProcess()
             }
         }
+    }
+}
+
+/**
+ * "Multi-path connection" (default off): the live SHARD/V2Ray config balances
+ * over the race winner and up to three other live responders with xray's
+ * observatory + leastPing balancer. Off keeps the single-outbound config.
+ */
+object MultiPath {
+    const val PREF = "multi_path"
+
+    fun enabled(context: Context): Boolean =
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(PREF, false)
+
+    fun setEnabled(context: Context, on: Boolean) {
+        context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean(PREF, on).apply()
     }
 }
