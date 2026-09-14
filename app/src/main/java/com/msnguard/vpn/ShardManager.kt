@@ -101,6 +101,23 @@ object ShardManager {
      */
     private const val MAX_RACE_SLICES = 3
 
+    /** How long a race keeps collecting after its winner, for a runner-up standby. */
+    private const val RUNNER_UP_GRACE_MS = 1_500L
+
+    /** Port block of the background standby re-race; disjoint from [PROBE_BASE_PORT]. */
+    private const val STANDBY_PROBE_BASE_PORT = 21300
+
+    /**
+     * Second-best node of the last race, or null. [rotate] switches to it first -
+     * one launch, no race - and then re-races in the background for a new one.
+     */
+    @Volatile
+    var standbyNode: ShardNode? = null
+        private set
+
+    @Volatile
+    private var standbyRaceRunning = false
+
     private val running = AtomicBoolean(false)
 
     /**
@@ -195,6 +212,30 @@ object ShardManager {
         }, "shard-log").apply { isDaemon = true }.also { it.start() }
 
         return true
+    }
+
+    /**
+     * Launch a probe xray that is NOT the session's [process] - used by the
+     * background standby re-race, which runs beside a live tunnel. Its output is
+     * drained (a full pipe stalls xray) but not logged.
+     */
+    private fun launchDetached(context: Context, configFile: File): Process? {
+        val binary = binary(context)
+        if (!binary.exists()) return null
+        val builder = ProcessBuilder(binary.absolutePath, "run", "-c", configFile.absolutePath)
+        builder.directory(configFile.parentFile)
+        builder.redirectErrorStream(true)
+        builder.environment()["HOME"] = context.filesDir.absolutePath
+        builder.environment()["XRAY_LOCATION_ASSET"] = configFile.parent
+        val started = runCatching { builder.start() }.getOrNull() ?: return null
+        Thread({
+            runCatching {
+                val buf = ByteArray(4096)
+                val input = started.inputStream
+                while (input.read(buf) >= 0) { /* drain */ }
+            }
+        }, "shard-standby-log").apply { isDaemon = true }.start()
+        return started
     }
 
     /**
@@ -640,11 +681,75 @@ object ShardManager {
         val port = listenPort
         previous?.let { ShardHealth.recordFailure(context, it) }
         ConnectionLog.record("$TAG rotating away from ${previous?.let { LogRedactor.nodeTag(it.key) } ?: "unknown"}")
+        if (switchToStandby(context, verboseLog, port, previous)) return true
         // start() re-ranks, and the failure just recorded pushes the dead node
         // down, so the same node is not chosen again immediately. The port is
         // carried over explicitly: it must not silently revert to the default
         // under a proxy-mode session whose clients are pointed at another one.
         return start(context, verboseLog, port, sessionV2ray)
+    }
+
+    /**
+     * Relaunch the tunnel on [standbyNode] without racing. True when it carries a
+     * real request; false leaves the caller to the ordinary re-race in [start].
+     */
+    private fun switchToStandby(context: Context, verboseLog: Boolean, port: Int, previous: ShardNode?): Boolean {
+        val standby = standbyNode ?: return false
+        standbyNode = null
+        if (previous != null && standby.key == previous.key) return false
+        ConnectionLog.record("$TAG switching to standby ${LogRedactor.nodeTag(standby.key)}")
+        killProcess()
+        stopRequestedDuringStart = false
+        val listenHost = if (CoreConfig.lanSharingEnabled(context)) "0.0.0.0" else "127.0.0.1"
+        val logLevel = if (verboseLog) "info" else "warning"
+        // Smart Split keeps its cached profile only; no measuring on a hot swap.
+        val profile = if (!sessionV2ray && SmartSplit.enabled(context)) SmartSplit.cachedProfile(context) else null
+        val config = ShardConfigs.tunnelConfig(context, standby, listenHost, port, logLevel, smartSplit = profile)
+        val file = ShardConfigs.writeConfig(context, "tunnel.json", config)
+        if (!launch(context, file, TAG)) return false
+        if (!awaitListener(port) || !ShardProbe.check(port, PROBE_TIMEOUT_MS)) {
+            ConnectionLog.record("$TAG standby did not carry traffic; re-racing")
+            ShardHealth.recordFailure(context, standby)
+            killProcess()
+            return false
+        }
+        running.set(true)
+        activeNode = standby
+        ConnectionLog.record("$TAG up on $port via standby ${LogRedactor.nodeTag(standby.key)}")
+        refreshStandbyInBackground(context)
+        return true
+    }
+
+    /**
+     * Find a new [standbyNode] while the tunnel stays up, on a private probe
+     * process and port block. Never takes the [start]/[rotate] lock.
+     */
+    fun refreshStandbyInBackground(context: Context) {
+        if (standbyRaceRunning) return
+        standbyRaceRunning = true
+        val app = context.applicationContext
+        Thread({
+            try {
+                val active = activeNode
+                val source = if (sessionV2ray) V2raySubscription.shardNodes(app) else ShardSubscription.nodes(app)
+                val ranked = diversify(ShardHealth.rank(app, ShardEdges.expand(app, source)))
+                    .filter { active == null || it.key != active.key }
+                    .take(RACE_WIDTH)
+                if (active != null && ranked.isNotEmpty() && isRunning) {
+                    // The detached race stores its runner-up; here the WINNER is
+                    // the standby we want, so keep it explicitly.
+                    val found = race(app, ranked, STANDBY_PROBE_BASE_PORT, detached = true)
+                    if (isRunning && found != null && activeNode?.key == active.key) {
+                        standbyNode = found
+                        ConnectionLog.record("$TAG new standby ${LogRedactor.nodeTag(found.key)}")
+                    }
+                }
+            } catch (e: Exception) {
+                ConnectionLog.record("$TAG standby re-race failed: ${e.message}")
+            } finally {
+                standbyRaceRunning = false
+            }
+        }, "shard-standby").apply { isDaemon = true }.start()
     }
 
     /** Whether the current/last session raced the V2Ray servers pool; kept for [rotate]. */
@@ -704,11 +809,26 @@ object ShardManager {
      *
      * @return the winner, or null if nothing answered inside the budget.
      */
-    private fun race(context: Context, candidates: List<ShardNode>): ShardNode? {
+    private fun race(
+        context: Context,
+        candidates: List<ShardNode>,
+        basePort: Int = PROBE_BASE_PORT,
+        detached: Boolean = false,
+    ): ShardNode? {
         if (candidates.isEmpty()) return null
-        val config = ShardConfigs.probeConfig(context, candidates, PROBE_BASE_PORT)
-        val configFile = ShardConfigs.writeConfig(context, "probe.json", config)
-        if (!launch(context, configFile, "$TAG/probe")) return null
+        val config = ShardConfigs.probeConfig(context, candidates, basePort)
+        val configFile = ShardConfigs.writeConfig(
+            context, if (detached) "standby-probe.json" else "probe.json", config
+        )
+        // A detached race runs NEXT TO a live tunnel, so it must not touch the
+        // [process] field: it owns a private process on a separate port block.
+        var detachedProc: Process? = null
+        if (detached) {
+            detachedProc = launchDetached(context, configFile) ?: return null
+        } else if (!launch(context, configFile, "$TAG/probe")) {
+            return null
+        }
+        val cancelled = { if (detached) !isRunning else stopRequestedDuringStart }
 
         try {
             // xray binds its listeners a moment after exec. Waiting for the first
@@ -718,8 +838,8 @@ object ShardManager {
             // (and emulators) took longer than 4 s to bind, failing the whole connect.
             val deadline = System.currentTimeMillis() + 12000
             while (System.currentTimeMillis() < deadline) {
-                if (stopRequestedDuringStart) return null
-                if (portAccepts(PROBE_BASE_PORT, 300)) {
+                if (cancelled()) return null
+                if (portAccepts(basePort, 300)) {
                     ready = true
                     break
                 }
@@ -733,7 +853,9 @@ object ShardManager {
 
             val winner = java.util.concurrent.atomic.AtomicReference<ShardNode?>(null)
             val winnerLatency = java.util.concurrent.atomic.AtomicInteger(0)
+            val runnerUp = java.util.concurrent.atomic.AtomicReference<ShardNode?>(null)
             val latch = java.util.concurrent.CountDownLatch(1)
+            val runnerUpLatch = java.util.concurrent.CountDownLatch(1)
             val pool = java.util.concurrent.Executors.newFixedThreadPool(
                 candidates.size.coerceAtMost(RACE_WIDTH)
             )
@@ -742,13 +864,15 @@ object ShardManager {
                 pool.execute {
                     // Once someone has won, the remaining probes are pointless
                     // work on a metered link — stop rather than finish politely.
-                    if (winner.get() != null) return@execute
+                    // Runner-up standby: probes keep going until a SECOND node
+                    // answered, so a later stall can switch without a re-race.
+                    if (runnerUp.get() != null) return@execute
                     // A stop during the race abandons every probe immediately;
                     // ShardProbe.check blocks up to PROBE_TIMEOUT_MS and the
                     // user is already waiting on this connect being over.
-                    if (stopRequestedDuringStart) return@execute
+                    if (cancelled()) return@execute
                     val started = System.currentTimeMillis()
-                    val ok = ShardProbe.check(PROBE_BASE_PORT + index, PROBE_TIMEOUT_MS)
+                    val ok = ShardProbe.check(basePort + index, PROBE_TIMEOUT_MS)
                     val elapsed = (System.currentTimeMillis() - started).toInt()
                     if (ok) {
                         ShardHealth.recordSuccess(context, node, elapsed)
@@ -757,6 +881,8 @@ object ShardManager {
                         if (winner.compareAndSet(null, node)) {
                             winnerLatency.set(elapsed)
                             latch.countDown()
+                        } else if (runnerUp.compareAndSet(null, node)) {
+                            runnerUpLatch.countDown()
                         }
                     } else {
                         ShardHealth.recordFailure(context, node)
@@ -764,10 +890,23 @@ object ShardManager {
                 }
             }
 
+            val raceStarted = System.currentTimeMillis()
             latch.await(RACE_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (winner.get() != null) {
+                // Up to RUNNER_UP_GRACE_MS more for a standby, never past the budget.
+                val left = RACE_BUDGET_MS - (System.currentTimeMillis() - raceStarted)
+                val grace = minOf(RUNNER_UP_GRACE_MS, left)
+                if (grace > 0 && !cancelled()) {
+                    runnerUpLatch.await(grace, java.util.concurrent.TimeUnit.MILLISECONDS)
+                }
+            }
             pool.shutdownNow()
 
             val chosen = winner.get()
+            standbyNode = runnerUp.get()?.takeIf { chosen != null }
+            standbyNode?.let {
+                ConnectionLog.record("$TAG standby ${LogRedactor.nodeTag(it.key)}")
+            }
             if (chosen == null) {
                 lastError = "no node answered"
                 ConnectionLog.record("$TAG race found nothing in ${RACE_BUDGET_MS}ms")
@@ -786,7 +925,16 @@ object ShardManager {
             // stopRequestedDuringStart, and this finally runs on every normal,
             // successful slice too — latching here would cancel the connect that
             // was about to launch its winner.
-            killProcess()
+            if (detached) {
+                detachedProc?.let { proc ->
+                    runCatching {
+                        proc.destroy()
+                        if (!proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) proc.destroyForcibly()
+                    }
+                }
+            } else {
+                killProcess()
+            }
         }
     }
 }
