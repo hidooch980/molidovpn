@@ -3234,6 +3234,12 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
      */
     private fun scheduleAutoReconnect(reason: String) {
         if (userInitiatedStop.get()) return
+        // failAndStop can tear the service down (onDestroy shuts the scheduler) before
+        // it asks for a reconnect; scheduling on a dead executor used to crash the app.
+        if (ladderScheduler.isShutdown) {
+            ConnectionLog.record("Auto reconnect skipped: service is shutting down")
+            return
+        }
         val config = storedConfig
         if (config == null) {
             ConnectionLog.record("Auto reconnect: no stored config; giving up")
@@ -3249,15 +3255,20 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         sendStatus(STATUS_CONNECTING, Strings.tf("Reconnecting after %s…", reason))
         ConnectionLog.record("Auto reconnect #$reconnectAttempts in ${delay}s")
         reconnectTask?.cancel(false)
-        reconnectTask = ladderScheduler.schedule({
-            try {
-                if (userInitiatedStop.get() || connected.get()) return@schedule
-                startTunnel(config)
-            } catch (e: Exception) {
-                ConnectionLog.record("Auto reconnect failed to start: ${e.message}")
-                scheduleAutoReconnect("start failure")
-            }
-        }, delay, TimeUnit.SECONDS)
+        reconnectTask = try {
+            ladderScheduler.schedule({
+                try {
+                    if (userInitiatedStop.get() || connected.get()) return@schedule
+                    startTunnel(config)
+                } catch (e: Exception) {
+                    ConnectionLog.record("Auto reconnect failed to start: ${e.message}")
+                    scheduleAutoReconnect("start failure")
+                }
+            }, delay, TimeUnit.SECONDS)
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            ConnectionLog.record("Auto reconnect skipped: scheduler stopped")
+            null
+        }
     }
 
     private fun cancelAutoReconnect() {
@@ -3275,7 +3286,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         connectivityCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 // Connectivity restored - reset backoff and try immediately if we're in auto-reconnect
-                if (willAutoReconnect() && !connected.get() && !userInitiatedStop.get()) {
+                if (willAutoReconnect() && !connected.get() && !userInitiatedStop.get() && !ladderScheduler.isShutdown) {
                     ConnectionLog.record("NetworkCallback: connectivity restored, resetting backoff and retrying")
                     reconnectAttempts = 0
                     reconnectTask?.cancel(false)

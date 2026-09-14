@@ -701,7 +701,9 @@ object ShardManager {
             // xray binds its listeners a moment after exec. Waiting for the first
             // port instead of sleeping a fixed amount keeps a fast device fast.
             var ready = false
-            val deadline = System.currentTimeMillis() + 4000
+            // 12 s, not 4: the gaming race launches a large probe config, and slower phones
+            // (and emulators) took longer than 4 s to bind, failing the whole connect.
+            val deadline = System.currentTimeMillis() + 12000
             while (System.currentTimeMillis() < deadline) {
                 if (stopRequestedDuringStart) return null
                 if (portAccepts(PROBE_BASE_PORT, 300)) {
