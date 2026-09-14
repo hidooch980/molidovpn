@@ -56,6 +56,7 @@ object Strings {
         "Tests every connection type and connects with the best one" to Triple("Tests every connection type and connects with the best one", "همه روش‌های اتصال را تست می‌کند و با بهترین وصل می‌شود", "测试所有连接方式并使用最佳的一个"),
         "Testing %s…" to Triple("Testing %s…", "در حال تست %s…", "正在测试 %s…"),
         "Best: %s (%sms)" to Triple("Best: %s (%sms)", "بهترین: %s (%sms)", "最佳: %s (%sms)"),
+        "Exit is in Iran; some services (e.g. Gemini) won't work" to Triple("Exit is in Iran; some services (e.g. Gemini) won't work", "خروجی ایران است؛ بعضی سرویس‌ها (مثل Gemini) کار نمی‌کنند", "出口位于伊朗；部分服务（如 Gemini）无法使用"),
         "Best: %s" to Triple("Best: %s", "بهترین: %s", "最佳: %s"),
         "Connecting with the best: %s…" to Triple("Connecting with the best: %s…", "در حال اتصال با بهترین: %s…", "正在使用最佳方式连接: %s…"),
         "No connection type worked on this network" to Triple("No connection type worked on this network", "هیچ روش اتصالی روی این شبکه کار نکرد", "此网络上没有可用的连接方式"),

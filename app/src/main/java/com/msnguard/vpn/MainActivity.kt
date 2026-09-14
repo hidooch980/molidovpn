@@ -1641,6 +1641,7 @@ class MainActivity : Activity() {
                 }
                 ipRetryAttempt = 0
                 exitNodeCard.render(ip, country.takeIf { it.isNotBlank() }, isTunnelActive())
+                if (ip != "IP unavailable") onCountryKnown(country)
                 if (isTunnelActive() && ip != "IP unavailable") {
                     updateNotificationHealth(ip = ip)
                     // Tor is the case that needs this: Cloudflare reports loc=T1
@@ -1808,12 +1809,34 @@ class MainActivity : Activity() {
                 if (country.isNullOrBlank()) return@runOnUiThread
                 coreExitCountry = country
                 exitNodeCard.render(ip, country, isTunnelActive())
+                onCountryKnown(country)
                 // The notification names the exit country too. Psiphon reports
                 // its own through onConnectedServerRegion and wins; this is the
                 // fallback for transports that cannot self-report.
                 updateNotificationHealth(country = country)
             }
         }.start()
+    }
+
+    /**
+     * Before connecting the looked-up country is the device's own ("YOUR IP"); the
+     * service's Auto reads it to test SHARD/V2Ray first for Iranian users. While a
+     * WARP-family tunnel (or Auto) is up, an IR exit gets a one-line warning: WARP
+     * exits in the user's own country, so sanctioned services still see Iran.
+     */
+    private fun onCountryKnown(country: String) {
+        if (!IpFormatter.isRealCountry(country)) return
+        val code = country.uppercase()
+        if (!isTunnelActive()) {
+            getSharedPreferences("settings", MODE_PRIVATE).edit()
+                .putString(MsnGuardVpnService.PREF_HOME_COUNTRY, code).apply()
+            return
+        }
+        if (code != "IR" || selectedProtocol.coreName !in IRAN_EXIT_WARN_CORES) return
+        val warning = Strings.t("Exit is in Iran; some services (e.g. Gemini) won't work")
+        val current = connectionDetail.text?.toString().orEmpty()
+        if (current.contains(warning)) return
+        connectionDetail.text = if (current.isBlank()) warning else "$current\n$warning"
     }
 
     /** Two-letter country code for [ip], or null when no endpoint answers. */
@@ -7632,6 +7655,8 @@ class MainActivity : Activity() {
         )
         /** Matches `"country":"IR"` and `"country_code":"IR"` alike. */
         val COUNTRY_CODE_JSON = Regex("\"country(?:_code)?\"\\s*:\\s*\"([A-Za-z]{2})\"")
+        /** Protocol.coreName values whose IR exit shows the Iran-exit warning. */
+        val IRAN_EXIT_WARN_CORES = setOf("wireguard", "masque", "gool", "auto")
         const val IP_TIMEOUT_MS = 5_000
         const val IP_FETCH_ATTEMPTS = 3
         const val IP_RETRY_DELAY_MS = 300L

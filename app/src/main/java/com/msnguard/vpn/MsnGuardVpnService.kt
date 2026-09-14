@@ -823,6 +823,8 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
 
         /** Exit address measured by the core from inside the tunnel. */
         const val EXTRA_EXIT_IP = "exit_ip"
+        /** Device's own public country (pre-connect "YOUR IP" lookup), written by the UI. */
+        const val PREF_HOME_COUNTRY = "auto_home_country"
         const val STATUS_CONNECTING = "connecting"
         const val STATUS_STARTING = "starting"
         const val STATUS_SCANNING = "scanning"
@@ -3804,7 +3806,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
     }
 
     /** Keeps the 16 most recently written (operator, hour/3) keys. */
-    private fun autoLearn(prefs: android.content.SharedPreferences, key: String, transport: String, ms: Long) {
+    private fun autoLearn(prefs: android.content.SharedPreferences, key: String, transport: String, ms: Long, country: String = "") {
         try {
             val old = JSONObject(prefs.getString(autoPrefLearn, "{}") ?: "{}")
             old.remove(key)
@@ -3813,10 +3815,99 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             while (it.hasNext()) keys.add(it.next())
             val out = JSONObject()
             keys.takeLast(15).forEach { k -> out.put(k, old.get(k)) }
-            out.put(key, JSONObject().put("t", transport).put("ms", ms).put("at", System.currentTimeMillis()))
+            out.put(key, JSONObject().put("t", transport).put("ms", ms).put("c", country).put("at", System.currentTimeMillis()))
             prefs.edit().putString(autoPrefLearn, out.toString()).apply()
         } catch (_: Exception) {
         }
+    }
+
+    private val autoPrefLastCountry = "auto_last_exit_country"
+
+    /**
+     * Iranian user: SIM/network MCC 432, or the pre-connect "YOUR IP" lookup said IR.
+     * WARP (WireGuard/MASQUE/WoW) exits in the user's own country, so for them
+     * those transports leave sanctioned services (Gemini etc.) still seeing Iran.
+     */
+    private fun autoHomeIsIran(prefs: android.content.SharedPreferences): Boolean {
+        val mcc = try {
+            val tm = getSystemService(android.telephony.TelephonyManager::class.java)
+            (tm?.networkOperator?.takeIf { it.length >= 5 } ?: tm?.simOperator.orEmpty()).take(3)
+        } catch (_: Exception) {
+            ""
+        }
+        return mcc == "432" || prefs.getString(PREF_HOME_COUNTRY, null) == "IR"
+    }
+
+    /** Country learned with [key] (operator, hour/3), or null. */
+    private fun autoLearnedCountry(prefs: android.content.SharedPreferences, key: String): String? = try {
+        JSONObject(prefs.getString(autoPrefLearn, "{}") ?: "{}").optJSONObject(key)
+            ?.optString("c")?.takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * Exit country of the candidate that is up right now, or "" when unknown.
+     * SHARD/V2Ray: Cloudflare trace through xray's SOCKS port (`loc=`). Native TUN
+     * transports: our package is off the TUN, so geolocate the core-measured exit
+     * address over the carrier (same endpoints the exit card uses).
+     */
+    private fun autoExitCountry(candidate: AutoCandidate): String {
+        return try {
+            val code = if (candidate.coreName == "shard" || candidate.coreName == "v2ray") {
+                autoTraceCountry(java.net.Proxy(java.net.Proxy.Type.SOCKS,
+                    java.net.InetSocketAddress("127.0.0.1", ShardManager.listenPort)))
+            } else if (proxyMode) {
+                autoTraceCountry(java.net.Proxy(java.net.Proxy.Type.SOCKS,
+                    java.net.InetSocketAddress("127.0.0.1", CoreConfig.proxyListenPort(this))))
+            } else {
+                val ip = lastExitIp
+                if (ip.isBlank()) "" else autoGeoCountry(ip)
+            }
+            if (IpFormatter.isRealCountry(code)) code.uppercase() else ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun autoTraceCountry(proxy: java.net.Proxy): String {
+        for (url in arrayOf("https://1.1.1.1/cdn-cgi/trace", "https://www.cloudflare.com/cdn-cgi/trace")) {
+            try {
+                val c = java.net.URL(url).openConnection(proxy) as java.net.HttpURLConnection
+                c.connectTimeout = 5_000
+                c.readTimeout = 5_000
+                try {
+                    if (c.responseCode !in 200..299) continue
+                    val body = c.inputStream.bufferedReader().use { it.readText() }
+                    val loc = body.lineSequence().firstOrNull { it.startsWith("loc=") }?.substringAfter('=')?.trim()
+                    if (!loc.isNullOrEmpty()) return loc
+                } finally {
+                    c.disconnect()
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return ""
+    }
+
+    private fun autoGeoCountry(ip: String): String {
+        // Same endpoints as MainActivity.COUNTRY_LOOKUP_URLS (its companion is private).
+        for (template in arrayOf("https://get.geojs.io/v1/ip/country/%s.json", "https://ipwho.is/%s?fields=country_code")) {
+            try {
+                val c = java.net.URL(template.format(ip)).openConnection() as java.net.HttpURLConnection
+                c.connectTimeout = 5_000
+                c.readTimeout = 5_000
+                try {
+                    if (c.responseCode !in 200..299) continue
+                    val body = c.inputStream.bufferedReader().use { it.readText() }
+                    Regex("\"country(?:_code)?\"\\s*:\\s*\"([A-Za-z]{2})\"").find(body)?.groupValues?.get(1)?.let { return it }
+                } finally {
+                    c.disconnect()
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return ""
     }
 
     private fun isAutoConfig(config: String): Boolean =
@@ -4033,11 +4124,22 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         try {
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
             // UDP blocked on this network: WireGuard and MASQUE (both UDP) cannot work.
-            val phaseA = if (udpBlocked()) {
+            val phaseAAll = if (udpBlocked()) {
                 autoPhaseA().filter { it.coreName != "wireguard" && it.coreName != "masque" }
             } else {
                 autoPhaseA()
             }
+            // Iranian user: WARP exits in IR, so test the transports that exit abroad first.
+            val homeIran = autoHomeIsIran(prefs)
+            val phaseA = if (homeIran) {
+                phaseAAll.sortedBy { if (it.coreName == "shard" || it.coreName == "v2ray") 0 else 1 }
+            } else {
+                phaseAAll
+            }
+            Log.i(autoLogTag, "homeIran=$homeIran order=${phaseA.joinToString { it.label }}")
+            val countries = HashMap<String, String>()
+            var irWinner: AutoCandidate? = null
+            var irWinnerMs = -1L
             val phaseB = autoPhaseB()
             // Learned winner for (operator, 3-hour bucket) first, global last winner second.
             val learnKey = autoLearnKey()
@@ -4045,19 +4147,29 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             val lastName = learned?.first ?: prefs.getString(autoPrefLastWinner, null)
             val lastMs = learned?.second ?: prefs.getLong(autoPrefLastLatency, -1L)
             val sinceFull = System.currentTimeMillis() - prefs.getLong(autoPrefLastFullTest, 0L)
+            // Country the remembered winner exited in; an IR-exit winner never takes the
+            // fast path, so the full test gets a chance to find a non-IR exit.
+            val lastCountry = (if (learned != null) autoLearnedCountry(prefs, learnKey)
+                else prefs.getString(autoPrefLastCountry, null)).orEmpty()
             val remembered = (phaseA + phaseB).firstOrNull { it.coreName == lastName }
             var rememberedMs: Long? = null
 
-            if (!forceFull && sinceFull in 0 until autoRetestMs && remembered != null) {
+            if (!forceFull && sinceFull in 0 until autoRetestMs && remembered != null && lastCountry != "IR") {
                 val fast = remembered in phaseA
                 rememberedMs = runAutoTrial(remembered, token, measure = fast)
                 if (token != autoToken) return
                 results[remembered.label] = rememberedMs?.let { "${it}ms" } ?: "fail"
                 live = if (rememberedMs != null) remembered else null
                 val ms = rememberedMs
-                if (ms != null && (!fast || lastMs <= 0L || ms <= lastMs * 5 / 4)) {
-                    winner = remembered
-                    winnerMs = ms
+                if (ms != null) {
+                    val cc = autoExitCountry(remembered)
+                    if (token != autoToken) return
+                    countries[remembered.label] = cc
+                    if (cc == "IR") results[remembered.label] = "${ms}ms IR"
+                    if (cc != "IR" && (!fast || lastMs <= 0L || ms <= lastMs * 5 / 4)) {
+                        winner = remembered
+                        winnerMs = ms
+                    }
                 }
             }
 
@@ -4071,9 +4183,22 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                             if (token != autoToken) return
                             results[candidate.label] = it?.let { v -> "${v}ms" } ?: "fail"
                             live = if (it != null) candidate else null
+                            if (it != null) {
+                                val cc = autoExitCountry(candidate)
+                                if (token != autoToken) return
+                                countries[candidate.label] = cc
+                                if (cc == "IR") results[candidate.label] = "${it}ms IR"
+                            }
                         }
                     }
-                    if (ms != null && (winnerMs < 0L || ms < winnerMs)) {
+                    if (ms == null) continue
+                    if (countries[candidate.label] == "IR") {
+                        // Iran exit: only a fallback while any non-IR candidate works.
+                        if (irWinnerMs < 0L || ms < irWinnerMs) {
+                            irWinner = candidate
+                            irWinnerMs = ms
+                        }
+                    } else if (winnerMs < 0L || ms < winnerMs) {
                         winner = candidate
                         winnerMs = ms
                     }
@@ -4088,11 +4213,30 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     results[candidate.label] = ms?.let { "${it}ms" } ?: "fail"
                     live = if (ms != null) candidate else null
                     if (ms != null) {
+                        val cc = autoExitCountry(candidate)
+                        if (token != autoToken) return
+                        countries[candidate.label] = cc
+                        if (cc == "IR") {
+                            results[candidate.label] = "${ms}ms IR"
+                            if (irWinner == null) {
+                                irWinner = candidate
+                                irWinnerMs = ms
+                            }
+                            continue
+                        }
                         winner = candidate
                         winnerMs = ms
                         break
                     }
                 }
+            }
+
+            // Every working candidate exits in Iran: use the best of them, with a warning.
+            var iranExit = false
+            if (winner == null && irWinner != null) {
+                winner = irWinner
+                winnerMs = irWinnerMs
+                iranExit = true
             }
 
             val summary = "results: " + results.entries.joinToString(", ") { "${it.key}=${it.value}" } +
@@ -4110,11 +4254,14 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             prefs.edit()
                 .putString(autoPrefLastWinner, chosen.coreName)
                 .putLong(autoPrefLastLatency, winnerMs)
+                .putString(autoPrefLastCountry, countries[chosen.label].orEmpty())
                 .apply { if (fullTest) putLong(autoPrefLastFullTest, System.currentTimeMillis()) }
                 .apply()
-            autoLearn(prefs, learnKey, chosen.coreName, winnerMs)
+            autoLearn(prefs, learnKey, chosen.coreName, winnerMs, countries[chosen.label].orEmpty())
 
-            val bestText = Strings.tf("Best: %s (%sms)", chosen.label, winnerMs)
+            val bestText = Strings.tf("Best: %s (%sms)", chosen.label, winnerMs) +
+                (if (iranExit) " · " + Strings.t("Exit is in Iran; some services (e.g. Gemini) won't work") else "")
+            if (iranExit) Log.w(autoLogTag, "every working candidate exits in IR; using ${chosen.label}")
             if (live == chosen && connected.get() && !autoTrialFailed) {
                 // The winner is the candidate that is up right now: keep it.
                 autoTrialActive.set(false)
