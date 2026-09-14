@@ -3774,6 +3774,37 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
     private val autoHandoverMs = 1_000L
     private val autoLogTag = "MolidoAuto"
 
+    private val autoPrefLearn = "auto_learn"
+
+    private fun autoLearnKey(): String {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return "${ConnectionReports.operator(this)}_${hour / 3}"
+    }
+
+    private fun autoLearned(prefs: android.content.SharedPreferences, key: String): Pair<String, Long>? = try {
+        JSONObject(prefs.getString(autoPrefLearn, "{}") ?: "{}").optJSONObject(key)?.let { e ->
+            e.optString("t").takeIf { t -> t.isNotEmpty() }?.let { t -> t to e.optLong("ms", -1L) }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Keeps the 16 most recently written (operator, hour/3) keys. */
+    private fun autoLearn(prefs: android.content.SharedPreferences, key: String, transport: String, ms: Long) {
+        try {
+            val old = JSONObject(prefs.getString(autoPrefLearn, "{}") ?: "{}")
+            old.remove(key)
+            val keys = ArrayList<String>()
+            val it = old.keys()
+            while (it.hasNext()) keys.add(it.next())
+            val out = JSONObject()
+            keys.takeLast(15).forEach { k -> out.put(k, old.get(k)) }
+            out.put(key, JSONObject().put("t", transport).put("ms", ms).put("at", System.currentTimeMillis()))
+            prefs.edit().putString(autoPrefLearn, out.toString()).apply()
+        } catch (_: Exception) {
+        }
+    }
+
     private fun isAutoConfig(config: String): Boolean =
         config.substringAfter("\"protocol\":\"").substringBefore('"') == "auto"
 
@@ -3926,8 +3957,11 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
             val phaseA = autoPhaseA()
             val phaseB = autoPhaseB()
-            val lastName = prefs.getString(autoPrefLastWinner, null)
-            val lastMs = prefs.getLong(autoPrefLastLatency, -1L)
+            // Learned winner for (operator, 3-hour bucket) first, global last winner second.
+            val learnKey = autoLearnKey()
+            val learned = autoLearned(prefs, learnKey)
+            val lastName = learned?.first ?: prefs.getString(autoPrefLastWinner, null)
+            val lastMs = learned?.second ?: prefs.getLong(autoPrefLastLatency, -1L)
             val sinceFull = System.currentTimeMillis() - prefs.getLong(autoPrefLastFullTest, 0L)
             val remembered = (phaseA + phaseB).firstOrNull { it.coreName == lastName }
             var rememberedMs: Long? = null
@@ -3996,6 +4030,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 .putLong(autoPrefLastLatency, winnerMs)
                 .apply { if (fullTest) putLong(autoPrefLastFullTest, System.currentTimeMillis()) }
                 .apply()
+            autoLearn(prefs, learnKey, chosen.coreName, winnerMs)
 
             val bestText = Strings.tf("Best: %s (%sms)", chosen.label, winnerMs)
             if (live == chosen && connected.get() && !autoTrialFailed) {
