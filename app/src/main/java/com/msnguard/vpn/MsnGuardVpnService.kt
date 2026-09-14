@@ -164,6 +164,12 @@ private class PsiphonStrategy(
 class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.HostService {
     private val worker: ExecutorService = Executors.newSingleThreadExecutor()
     private val connected = AtomicBoolean(false)
+
+    /** Anonymous report: set per connect attempt, consumed by the first CONNECTED/FAILED. */
+    @Volatile
+    private var reportPending = false
+    @Volatile
+    private var attemptStartedAt = 0L
     private val stopRequested = AtomicBoolean(false)
     private val vpnModeActive = AtomicBoolean(false)
     private var tun: ParcelFileDescriptor? = null
@@ -1942,6 +1948,21 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 reconnectAttempts = 0
                 startTunnel(config)
             }
+            // Android "Always-on VPN" starts the service with the VpnService
+            // interface action (or, after a restart, a null intent). Connect with
+            // the tile's config instead of ignoring it.
+            VpnService.SERVICE_INTERFACE, null -> {
+                if (!connected.get()) {
+                    try {
+                        userInitiatedStop.set(false)
+                        killSwitchSealed.set(false)
+                        reconnectAttempts = 0
+                        startTunnel(AutoConnect.configJson(this))
+                    } catch (e: Exception) {
+                        Log.w(LOG_TAG, "Always-on connect failed: ${e.message}")
+                    }
+                }
+            }
             ACTION_DISCONNECT -> {
                 // The one place that means "the user wants this off". Auto-reconnect
                 // reads this latch and stays out of the way.
@@ -2572,6 +2593,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 sendStatus(STATUS_CONNECTING, Strings.t("Finding a fast node…"), 15)
                 ConnectionLog.record("SHARD: TUN ready — racing the pool")
 
+                ShardManager.gamingMode = currentProtocol.contains("GAMING")
                 if (!ShardManager.start(this, verboseShardLog())) {
                     error(
                         ShardManager.lastError.ifBlank { "No public node could be reached" }
@@ -3630,6 +3652,8 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         nativeExitWasUnexpected = false
         storedConfig = config
         currentProtocol = config.substringAfter("\"protocol\":\"").substringBefore('"').uppercase()
+        reportPending = true
+        attemptStartedAt = SystemClock.elapsedRealtime()
         currentVpnIp = ""
         // The country belongs to the session that just ended. Left set, the
         // notification would label a fresh tunnel with the previous exit's
@@ -4273,6 +4297,23 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
 
     private fun sendStatus(status: String, detail: String? = null, progress: Int = -1) {
         Log.i(LOG_TAG, "status=$status${detail?.let { " detail=$it" } ?: ""}")
+        if (reportPending && (status == STATUS_CONNECTED || status == STATUS_FAILED)) {
+            reportPending = false
+            try {
+                val ok = status == STATUS_CONNECTED
+                val shardKey = if (ok && currentProtocol.contains("SHARD")) ShardManager.activeNode?.key else null
+                val node = shardKey?.let { ConnectionReports.fingerprint(it) }
+                    ?: "mode:${currentProtocol.lowercase()}"
+                val ms = if (ok && attemptStartedAt > 0L) {
+                    (SystemClock.elapsedRealtime() - attemptStartedAt).toInt()
+                } else {
+                    null
+                }
+                // ok=true is sent while the tunnel is up; failures are best-effort.
+                ConnectionReports.report(this, node, ok, ms)
+            } catch (_: Exception) {
+            }
+        }
         // Stamp the connect moment here rather than at each call site: there are
         // several paths to CONNECTED (native tunnel ready, Psiphon proxy ready,
         // tun2socks up, reconnect) and every one funnels through sendStatus.

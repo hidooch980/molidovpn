@@ -15,6 +15,8 @@
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Auto-connect after the phone restarts (AutoConnect.kt). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- ACCESS_NETWORK_STATE: LAN sharing asks ConnectivityManager which interfaces
          belong to a cellular or VPN network, so it can refuse to advertise an
          address no LAN client can reach. Without it the query throws
@@ -118,6 +120,15 @@
             exported, and JobScheduler is the only caller; BIND_JOB_SERVICE is the
             permission the platform requires so nothing else can start it.
         -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".ShardRefreshJob"
             android:permission="android.permission.BIND_JOB_SERVICE"

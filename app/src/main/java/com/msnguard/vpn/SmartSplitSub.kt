@@ -47,6 +47,13 @@ object SmartSplitSub {
     const val SUBSCRIPTION_URL =
         "https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/smart-split.json"
 
+    /** Tried in order; the next one is used only when the previous fails. */
+    val SUBSCRIPTION_URLS = listOf(
+        SUBSCRIPTION_URL,
+        "https://cdn.jsdelivr.net/gh/hidooch980/molidovpn-android@main/remote/smart-split.json",
+        "https://molido-sub.hidooch980.workers.dev/remote/smart-split.json",
+    )
+
     /** Seed in assets, so a first-ever connect works with no network. */
     private const val SEED_ASSET = "smart-split-seed.json"
 
@@ -164,7 +171,20 @@ object SmartSplitSub {
      * mistake or a truncated fetch must not disarm the feature.
      */
     private fun refreshBlocking(context: Context) {
-        val connection = URL(SUBSCRIPTION_URL).openConnection() as HttpURLConnection
+        for (url in SUBSCRIPTION_URLS) {
+            val done = try {
+                refreshFrom(context, url)
+            } catch (e: Exception) {
+                ConnectionLog.record("$TAG fetch failed: ${e.message}")
+                false
+            }
+            if (done) return
+        }
+    }
+
+    /** @return true on 304 or a valid body stored; false to try the next URL. */
+    private fun refreshFrom(context: Context, url: String): Boolean {
+        val connection = URL(url).openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
@@ -182,17 +202,17 @@ object SmartSplitSub {
                     .putLong(LAST_CHECK_PREF, System.currentTimeMillis())
                     .apply()
                 ConnectionLog.record("$TAG unchanged (304)")
-                return
+                return true
             }
             if (status != HttpURLConnection.HTTP_OK) {
                 ConnectionLog.record("$TAG HTTP $status")
-                return
+                return false
             }
 
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             if (parse(body) == null) {
                 ConnectionLog.record("$TAG response parsed to 0 profiles — keeping previous cache")
-                return
+                return false
             }
             cacheFile(context).writeText(body)
             prefs(context).edit()
@@ -200,6 +220,7 @@ object SmartSplitSub {
                 .putLong(LAST_CHECK_PREF, System.currentTimeMillis())
                 .apply()
             ConnectionLog.record("$TAG updated — ${parse(body)?.size} profiles")
+            return true
         } finally {
             connection.disconnect()
         }

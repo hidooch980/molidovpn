@@ -606,6 +606,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             letterSpacing = spacing(0.08f)
         }
+        applyLaunchMode(intent, beforeUi = true)
         selectedProtocol = savedProtocol()
         chipProtocol.text = selectedProtocol.label.uppercase()
         // One accent per tile, as in the approved mock: download mint, upload
@@ -1262,6 +1263,7 @@ class MainActivity : Activity() {
         // "WoW" is the table key for the short rail label; the enum's own label
         // is the longer "WARP-on-WARP" which would not fit the rail cells.
         Protocol.WARP_IN_WARP -> Strings.t("WoW")
+        Protocol.GAMING -> Strings.t("Gaming")
         else -> protocol.label
     }
 
@@ -2883,6 +2885,30 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
 
+        val autoConnectRow = createToggleRow(
+            Strings.t("Auto-connect"),
+            Strings.t("Connect automatically after the phone restarts"),
+            preferences().getBoolean(AutoConnect.PREF, AutoConnect.DEFAULT),
+        ) {
+            preferences().edit().putBoolean(AutoConnect.PREF, it).apply()
+        }
+        content.addView(autoConnectRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+
+        val reportsRow = createToggleRow(
+            Strings.t("Anonymous server quality reports"),
+            Strings.t("Only an anonymous server fingerprint, success/failure, latency and network type (Wi-Fi/mobile) are sent; no IP, name or browsing data"),
+            preferences().getBoolean(ConnectionReports.PREF, ConnectionReports.DEFAULT),
+        ) {
+            preferences().edit().putBoolean(ConnectionReports.PREF, it).apply()
+        }
+        content.addView(reportsRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+
         content.addView(sectionLabel(Strings.t("ROUTING & DATA")), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -3768,7 +3794,7 @@ class MainActivity : Activity() {
         // xray binds its SOCKS and HTTP inbounds to 0.0.0.0 while tun2socks keeps
         // dialling loopback, so the phone stays fully routed while a Windows machine
         // uses the same tunnel.
-        Protocol.SHARD -> !CoreConfig.proxyOnly(this)
+        Protocol.SHARD, Protocol.GAMING -> !CoreConfig.proxyOnly(this)
         else -> CoreConfig.proxyOnly(this)
     }
 
@@ -5409,6 +5435,9 @@ class MainActivity : Activity() {
 
     private fun updateConnectionMode(protocol: Protocol) {
         if (selectedProtocol == protocol) return
+        if (protocol == Protocol.GAMING) {
+            preferences().edit().putString(PRE_GAMING_PROTOCOL, selectedProtocol.coreName).apply()
+        }
         selectedProtocol = protocol
         preferences().edit().putString(DEFAULT_PROTOCOL, protocol.coreName).apply()
         // The chain's outer leg follows the rail, so re-record it whenever the
@@ -6492,6 +6521,38 @@ class MainActivity : Activity() {
         preferences().getBoolean("lan_sharing", false),
     )
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyLaunchMode(intent, beforeUi = false)
+    }
+
+    /**
+     * CI hook: optional extra `molido_mode` = `gaming` | `auto` only selects (and
+     * persists) that mode. `auto` restores the pick from before gaming was chosen
+     * (WireGuard if none). Unknown values are ignored.
+     */
+    private fun applyLaunchMode(intent: Intent?, beforeUi: Boolean) {
+        val target = when (intent?.getStringExtra(EXTRA_MOLIDO_MODE)) {
+            "gaming" -> Protocol.GAMING
+            "auto" -> {
+                val previous = preferences().getString(PRE_GAMING_PROTOCOL, null)
+                Protocol.entries.firstOrNull {
+                    it.coreName == previous && it != Protocol.GAMING && it.androidAvailable
+                } ?: Protocol.WIREGUARD
+            }
+            else -> return
+        }
+        if (beforeUi) {
+            if (target == Protocol.GAMING && savedProtocol() != Protocol.GAMING) {
+                preferences().edit().putString(PRE_GAMING_PROTOCOL, savedProtocol().coreName).apply()
+            }
+            preferences().edit().putString(DEFAULT_PROTOCOL, target.coreName).apply()
+        } else {
+            updateConnectionMode(target)
+        }
+    }
+
     private fun savedProtocol(): Protocol {
         val name = preferences().getString(DEFAULT_PROTOCOL, Protocol.WIREGUARD.coreName)
         return Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.WIREGUARD
@@ -6664,7 +6725,15 @@ class MainActivity : Activity() {
          * started for SHARD. The service branches on it before touching
          * NativeCore, the same way the Psiphon and Tor names do.
          */
-        SHARD("SHARD", "shard", "Public nodes, auto-selected; no setup");
+        SHARD("SHARD", "shard", "Public nodes, auto-selected; no setup"),
+
+        /**
+         * SHARD with a gaming race: lowest *stable* latency (re-probed, jitter
+         * ranked, lossy nodes dropped). "shard-gaming" still contains "SHARD", so
+         * every SHARD path in the service applies; SHARD carries full UDP and has
+         * no chained leg, so nothing adds latency.
+         */
+        GAMING("Gaming mode", "shard-gaming", "Lowest stable ping, UDP for games; no extra hops");
 
         val label: String get() = Strings.t(enLabel)
         val description: String get() = Strings.t(enDescription)
@@ -6991,6 +7060,8 @@ class MainActivity : Activity() {
         const val TLS_CURVE_PRESET = "tls_curve_preset"
         const val WIREGUARD_DATA_CHECK = "wireguard_data_check"
         const val KILL_SWITCH = "kill_switch"
+        const val PRE_GAMING_PROTOCOL = "pre_gaming_protocol"
+        const val EXTRA_MOLIDO_MODE = "molido_mode"
         /** Whether Psiphon-over-WARP is armed for the next connect. */
         const val CHAIN_ARMED = "chain_armed"
 

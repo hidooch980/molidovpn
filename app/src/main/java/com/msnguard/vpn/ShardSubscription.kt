@@ -51,6 +51,13 @@ object ShardSubscription {
     const val SUBSCRIPTION_URL =
         "https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/shard-nodes.txt"
 
+    /** Tried in order; the next one is used only when the previous fails. */
+    val SUBSCRIPTION_URLS = listOf(
+        SUBSCRIPTION_URL,
+        "https://cdn.jsdelivr.net/gh/hidooch980/molidovpn-android@main/remote/shard-nodes.txt",
+        "https://molido-sub.hidooch980.workers.dev/remote/shard-nodes.txt",
+    )
+
     /** Seed list in assets, so the first ever connect works with no network. */
     private const val SEED_ASSET = "shard-seed.txt"
 
@@ -169,7 +176,21 @@ object ShardSubscription {
      * foreground does not re-ask, and the cache stays as it is.
      */
     private fun refreshBlocking(context: Context): Int {
-        val connection = URL(SUBSCRIPTION_URL).openConnection() as HttpURLConnection
+        for (url in SUBSCRIPTION_URLS) {
+            val count = try {
+                refreshFrom(context, url)
+            } catch (e: Exception) {
+                ConnectionLog.record("$TAG fetch failed: ${e.message}")
+                null
+            }
+            if (count != null) return count
+        }
+        return cachedCount(context)
+    }
+
+    /** @return the node count on success (200 valid or 304), null to try the next URL. */
+    private fun refreshFrom(context: Context, url: String): Int? {
+        val connection = URL(url).openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
@@ -194,7 +215,7 @@ object ShardSubscription {
             }
             if (status != HttpURLConnection.HTTP_OK) {
                 ConnectionLog.record("$TAG HTTP $status")
-                return cachedCount(context)
+                return null
             }
 
             val body = connection.inputStream.bufferedReader().use { it.readText() }
@@ -205,7 +226,7 @@ object ShardSubscription {
             // has no nodes today, with nothing to point at.
             if (parsed.isEmpty()) {
                 ConnectionLog.record("$TAG response parsed to 0 nodes — keeping previous cache")
-                return cachedCount(context)
+                return null
             }
 
             cacheFile(context).writeText(body)

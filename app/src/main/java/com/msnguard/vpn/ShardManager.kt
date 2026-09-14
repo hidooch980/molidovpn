@@ -127,6 +127,22 @@ object ShardManager {
     var activeNode: ShardNode? = null
         private set
 
+    /**
+     * Gaming mode: set by the service before [start]. The race then collects every
+     * answer inside the budget, re-probes the fastest few several times, drops any
+     * that lose a probe, and picks the lowest average + jitter instead of the first
+     * responder. SHARD carries full UDP (udpgw → UDP ASSOCIATE) and has no chain leg.
+     */
+    @Volatile
+    var gamingMode: Boolean = false
+
+    @Volatile
+    private var gamingStats: Pair<Int, Int>? = null
+
+    private const val GAMING_CANDIDATES = 4
+    private const val GAMING_REPROBES = 4
+    private const val GAMING_PROBE_TIMEOUT_MS = 3_000
+
     /** Last error, so the service can report something specific. */
     @Volatile
     var lastError: String = ""
@@ -458,6 +474,14 @@ object ShardManager {
             running.set(true)
             activeNode = winner
             ConnectionLog.record("$TAG up on $port via ${LogRedactor.nodeTag(winner.key)}")
+            if (gamingMode) {
+                val stats = gamingStats
+                android.util.Log.i(
+                    "MolidoGaming",
+                    "gaming connected node=${ConnectionReports.fingerprint(winner.key)} " +
+                        "avg=${stats?.first ?: -1}ms jitter=${stats?.second ?: -1}ms",
+                )
+            }
             logLanSharing(context, listenHost, port)
             return true
         }
@@ -692,6 +716,11 @@ object ShardManager {
                 return null
             }
 
+            val gaming = gamingMode
+            gamingStats = null
+            // Gaming: every answer inside the budget, as (candidate index, ms).
+            val answered = java.util.concurrent.ConcurrentLinkedQueue<Pair<Int, Int>>()
+            val finished = java.util.concurrent.CountDownLatch(candidates.size)
             val winner = java.util.concurrent.atomic.AtomicReference<ShardNode?>(null)
             val winnerLatency = java.util.concurrent.atomic.AtomicInteger(0)
             val latch = java.util.concurrent.CountDownLatch(1)
@@ -701,9 +730,10 @@ object ShardManager {
 
             candidates.forEachIndexed { index, node ->
                 pool.execute {
+                    try {
                     // Once someone has won, the remaining probes are pointless
                     // work on a metered link — stop rather than finish politely.
-                    if (winner.get() != null) return@execute
+                    if (!gaming && winner.get() != null) return@execute
                     // A stop during the race abandons every probe immediately;
                     // ShardProbe.check blocks up to PROBE_TIMEOUT_MS and the
                     // user is already waiting on this connect being over.
@@ -713,6 +743,7 @@ object ShardManager {
                     val elapsed = (System.currentTimeMillis() - started).toInt()
                     if (ok) {
                         ShardHealth.recordSuccess(context, node, elapsed)
+                        if (gaming) answered.add(index to elapsed)
                         // compareAndSet, so the genuinely first success wins even
                         // when two finish in the same millisecond.
                         if (winner.compareAndSet(null, node)) {
@@ -722,13 +753,25 @@ object ShardManager {
                     } else {
                         ShardHealth.recordFailure(context, node)
                     }
+                    } finally {
+                        finished.countDown()
+                    }
                 }
             }
 
-            latch.await(RACE_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (gaming) {
+                finished.await(RACE_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } else {
+                latch.await(RACE_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
             pool.shutdownNow()
 
-            val chosen = winner.get()
+            val stable = if (gaming && !stopRequestedDuringStart) {
+                pickStable(candidates, answered.toList())
+            } else {
+                null
+            }
+            val chosen = stable ?: winner.get()
             if (chosen == null) {
                 lastError = "no node answered"
                 ConnectionLog.record("$TAG race found nothing in ${RACE_BUDGET_MS}ms")
@@ -749,5 +792,40 @@ object ShardManager {
             // was about to launch its winner.
             killProcess()
         }
+    }
+    /**
+     * Gaming: re-probe the fastest few answered candidates [GAMING_REPROBES] times
+     * each (in parallel across nodes, sequential per node, while the probe process
+     * is still up), drop any with a lost probe, rank by average + jitter.
+     * Jitter = mean absolute difference between consecutive samples.
+     */
+    private fun pickStable(candidates: List<ShardNode>, answered: List<Pair<Int, Int>>): ShardNode? {
+        val top = answered.sortedBy { it.second }.take(GAMING_CANDIDATES)
+        if (top.isEmpty()) return null
+        val results = java.util.concurrent.ConcurrentHashMap<Int, Pair<Int, Int>>()
+        val threads = top.map { (index, _) ->
+            Thread({
+                val samples = ArrayList<Int>(GAMING_REPROBES)
+                for (i in 0 until GAMING_REPROBES) {
+                    if (stopRequestedDuringStart) return@Thread
+                    val started = System.currentTimeMillis()
+                    if (!ShardProbe.check(PROBE_BASE_PORT + index, GAMING_PROBE_TIMEOUT_MS)) return@Thread
+                    samples.add((System.currentTimeMillis() - started).toInt())
+                }
+                val avg = samples.average().toInt()
+                val jitter = if (samples.size < 2) 0 else
+                    samples.zipWithNext { a, b -> kotlin.math.abs(a - b) }.average().toInt()
+                results[index] = avg to jitter
+            }, "shard-gaming-probe").apply { isDaemon = true; start() }
+        }
+        val deadline = System.currentTimeMillis() + GAMING_REPROBES * GAMING_PROBE_TIMEOUT_MS + 1_000L
+        for (t in threads) t.join((deadline - System.currentTimeMillis()).coerceAtLeast(1L))
+        val best = results.entries.minByOrNull { it.value.first + it.value.second } ?: return null
+        gamingStats = best.value
+        ConnectionLog.record(
+            "$TAG gaming pick ${LogRedactor.nodeTag(candidates[best.key].key)} " +
+                "avg=${best.value.first}ms jitter=${best.value.second}ms (${results.size}/${top.size} stable)"
+        )
+        return candidates[best.key]
     }
 }

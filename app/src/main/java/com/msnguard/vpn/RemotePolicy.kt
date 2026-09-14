@@ -88,6 +88,13 @@ object RemotePolicy {
     private const val POLICY_URL =
         "https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/policy.json"
 
+    /** Tried in order; the next one is used only when the previous fails. */
+    val POLICY_URLS = listOf(
+        "https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/policy.json",
+        "https://cdn.jsdelivr.net/gh/hidooch980/molidovpn-android@main/remote/policy.json",
+        "https://molido-sub.hidooch980.workers.dev/remote/policy.json",
+    )
+
     private const val CACHE_FILE = "remote-policy.json"
     private const val ETAG_PREF = "policy_etag"
     private const val LAST_CHECK_PREF = "policy_last_check"
@@ -451,7 +458,20 @@ object RemotePolicy {
     }
 
     private fun refreshBlocking(context: Context) {
-        val connection = URL(POLICY_URL).openConnection() as HttpURLConnection
+        for (url in POLICY_URLS) {
+            val done = try {
+                refreshFrom(context, url)
+            } catch (e: Exception) {
+                ConnectionLog.record("$TAG policy fetch failed: ${e.message}")
+                false
+            }
+            if (done) return
+        }
+    }
+
+    /** @return true when this URL answered usefully (304, or a valid body handled). */
+    private fun refreshFrom(context: Context, url: String): Boolean {
+        val connection = URL(url).openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
@@ -474,7 +494,7 @@ object RemotePolicy {
                 // Nothing changed. Advance the clock so the next resume does not
                 // re-ask, and leave the cache alone.
                 prefs(context).edit().putLong(LAST_CHECK_PREF, System.currentTimeMillis()).apply()
-                return
+                return true
             }
             if (code != HttpURLConnection.HTTP_OK) {
                 ConnectionLog.record("$TAG policy fetch returned $code")
@@ -485,7 +505,7 @@ object RemotePolicy {
                 prefs(context).edit()
                     .putLong(LAST_CHECK_PREF, System.currentTimeMillis())
                     .apply()
-                return
+                return false
             }
             // Bounded read: see MAX_BODY_CHARS.
             val body = connection.inputStream.bufferedReader().use { reader ->
@@ -509,7 +529,7 @@ object RemotePolicy {
                         System.currentTimeMillis() - MIN_INTERVAL_MS + RETRY_AFTER_BAD_MS,
                     )
                     .apply()
-                return
+                return false
             }
             // writeText truncates before it writes, so a kill mid-write leaves a half
             // file — and the ETag stored below would then pin the app to the built-ins
@@ -520,7 +540,7 @@ object RemotePolicy {
             if (!temp.renameTo(target)) {
                 temp.delete()
                 ConnectionLog.record("$TAG could not replace the policy cache")
-                return
+                return true
             }
             cached = parsed
             // Explicit editor: `.apply { }` (scope function) next to `.apply()`
@@ -536,6 +556,7 @@ object RemotePolicy {
                 "$TAG policy updated — ${parsed.edges.size} paths, " +
                     "${parsed.geoBlocked.size} hosts, ${parsed.sanctioned.size} extra"
             )
+            return true
         } finally {
             connection.disconnect()
         }
