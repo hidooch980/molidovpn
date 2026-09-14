@@ -37,7 +37,7 @@ jobs:
       - name: Append MolidoVPN servers that fit SHARD
         run: |
           python3 - <<'PY'
-          import ipaddress, socket, urllib.parse, urllib.request
+          import hashlib, ipaddress, json, socket, urllib.parse, urllib.request
 
           MAX_EXTRA = 30
           SOURCES = [
@@ -78,7 +78,7 @@ jobs:
           shard = open("remote/shard-nodes.txt", encoding="utf-8").read().split(marker)[0].rstrip("\n") + "\n"
           existing = {l.split("#")[0] for l in shard.splitlines() if "://" in l}
 
-          extra = []
+          candidates = []
           for line in body.splitlines():
               line = line.strip()
               scheme = line.split("://", 1)[0].lower()
@@ -95,9 +95,26 @@ jobs:
               if core in existing:
                   continue
               existing.add(core)
-              extra.append(core + "#MolidoVPN")
-              if len(extra) >= MAX_EXTRA:
-                  break
+              candidates.append(core)
+
+          # Prefer nodes that users' apps report as working (anonymous /scores); unknown nodes get 0.5.
+          scores = {}
+          try:
+              scores = json.loads(fetch("https://molido-sub.hidooch980.workers.dev/scores"))
+          except Exception as e:
+              print("scores unavailable:", e)
+
+          def rank(core):
+              fp = hashlib.sha256(core.strip().encode("utf-8")).hexdigest()[:16]
+              s = scores.get(fp)
+              if not isinstance(s, dict) or not isinstance(s.get("score"), (int, float)):
+                  return (1, -0.5)  # unknown: after known-good, before known-bad
+              score = float(s["score"])
+              return (0 if score >= 0.6 else 2, -score)
+
+          candidates.sort(key=rank)  # stable: keeps source order within equal ranks
+          extra = [c + "#MolidoVPN" for c in candidates[:MAX_EXTRA]]
+          print("candidates", len(candidates), "with scores", sum(1 for c in candidates if rank(c)[0] != 1))
 
           if extra:
               shard += marker + "\n" + "\n".join(extra) + "\n"
