@@ -27,6 +27,19 @@ object Tun2SocksManager {
     /** Psiphon's convention; the server intercepts this exact address. */
     private const val UDPGW_SERVER_PORT = 7300
     const val VPN_INTERFACE_MTU = 1500
+
+    /** Cellular TUN MTU under Auto MTU; leaves headroom for carrier encapsulation. */
+    const val CELLULAR_MTU = 1400
+
+    /** Settings key; true (the default) enables per-network MTU on tun2socks TUNs. */
+    const val AUTO_MTU_PREF = "auto_mtu"
+
+    /**
+     * MTU of the current session's TUN. Set by the service right before it builds
+     * the interface, so lwIP and the TUN always agree. Defaults to 1500.
+     */
+    @Volatile
+    var sessionMtu: Int = VPN_INTERFACE_MTU
     const val VPN_INTERFACE_IPV4_NETMASK = "255.255.255.0"
 
     /**
@@ -202,7 +215,7 @@ object Tun2SocksManager {
             try {
                 Tun2SocksJniLoader.runTun2Socks(
                     duplicated.detachFd(),
-                    VPN_INTERFACE_MTU,
+                    sessionMtu,
                     address.router,
                     VPN_INTERFACE_IPV4_NETMASK,
                     null, // IPv4-only routing

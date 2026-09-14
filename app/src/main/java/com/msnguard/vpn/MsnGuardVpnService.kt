@@ -2321,7 +2321,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     ConnectionLog.record("Chain: creating TUN before either tunnel starts")
                     tun = Builder()
                         .setSession("MolidoVPN")
-                        .setMtu(Tun2SocksManager.VPN_INTERFACE_MTU)
+                        .setMtu(tun2socksMtu())
                         .addAddress(address.ipAddress, address.prefixLength)
                         .addRoute("0.0.0.0", 0)
                         .addRoute(address.subnet, address.prefixLength)
@@ -2423,7 +2423,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 ConnectionLog.record("Tor: creating TUN before Tor starts")
                 tun = Builder()
                     .setSession("MolidoVPN")
-                    .setMtu(Tun2SocksManager.VPN_INTERFACE_MTU)
+                    .setMtu(tun2socksMtu())
                     .addAddress(address.ipAddress, address.prefixLength)
                     .addRoute("0.0.0.0", 0)
                     .addRoute(address.subnet, address.prefixLength)
@@ -2599,7 +2599,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 ConnectionLog.record("SHARD: creating TUN before xray starts")
                 tun = Builder()
                     .setSession("MolidoVPN")
-                    .setMtu(Tun2SocksManager.VPN_INTERFACE_MTU)
+                    .setMtu(tun2socksMtu())
                     .addAddress(address.ipAddress, address.prefixLength)
                     .addRoute("0.0.0.0", 0)
                     .addRoute(address.subnet, address.prefixLength)
@@ -4366,7 +4366,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     ConnectionLog.record("Creating TUN interface BEFORE Psiphon starts")
                     tun = Builder()
                         .setSession("MolidoVPN")
-                        .setMtu(Tun2SocksManager.VPN_INTERFACE_MTU)
+                        .setMtu(tun2socksMtu())
                         .addAddress(address.ipAddress, address.prefixLength)
                         .addRoute("0.0.0.0", 0)
                         .addRoute(address.subnet, address.prefixLength)
@@ -5522,6 +5522,22 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
      * bundled geoip.dat) bypass the VPN. Android 13+ only; older versions keep the
      * xray domain rule (SHARD/V2Ray) and route everything else as before.
      */
+    /**
+     * TUN MTU for the tun2socks transports (SHARD/V2Ray, Psiphon, chain, Tor).
+     * Auto MTU (default on): 1400 on cellular, 1500 otherwise. WireGuard/MASQUE
+     * build their own interface and are not affected. Also stored in
+     * [Tun2SocksManager.sessionMtu] so lwIP uses the same value.
+     */
+    private fun tun2socksMtu(): Int {
+        val auto = getSharedPreferences("settings", MODE_PRIVATE)
+            .getBoolean(Tun2SocksManager.AUTO_MTU_PREF, true)
+        val cellular = auto && CleanIpScanner.networkKey(this).startsWith("cell")
+        val mtu = if (cellular) Tun2SocksManager.CELLULAR_MTU else Tun2SocksManager.VPN_INTERFACE_MTU
+        Tun2SocksManager.sessionMtu = mtu
+        ConnectionLog.record("TUN MTU $mtu" + if (auto) " (auto)" else "")
+        return mtu
+    }
+
     private fun Builder.applyIranDirect(): Builder {
         if (!IranDirect.enabled(this@MsnGuardVpnService)) return this
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {

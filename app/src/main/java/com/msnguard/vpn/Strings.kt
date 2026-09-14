@@ -610,6 +610,8 @@ object Strings {
         "↓ DOWN" to Triple("↓ DOWN", "↓ دانلود", "↓ 下载"),
         "Iranian sites direct" to Triple("Iranian sites direct", "سایت‌های ایرانی مستقیم", "伊朗网站直连"),
         "IRAN_DIRECT_SUBTITLE" to Triple("Open .ir sites and Iranian IPs without the tunnel (no Smart Split probing)", "سایت‌های .ir و آی‌پی‌های ایران بدون تونل باز می‌شوند (بدون تست Smart Split)", ".ir 网站和伊朗 IP 不走隧道（不进行 Smart Split 探测）"),
+        "Auto MTU" to Triple("Auto MTU", "MTU خودکار", "自动 MTU"),
+        "AUTO_MTU_SUBTITLE" to Triple("1400 on mobile data, 1500 on Wi-Fi (SHARD, V2Ray, Psiphon, Tor)", "۱۴۰۰ روی اینترنت همراه، ۱۵۰۰ روی وای‌فای (SHARD، V2Ray، سایفون، تور)", "移动数据 1400，Wi-Fi 1500（SHARD、V2Ray、Psiphon、Tor）"),
         // Connection extras (IR direct, MTU, speed test, schedule, backup).
     )
 

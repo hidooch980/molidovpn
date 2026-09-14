@@ -3118,6 +3118,19 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        content.addView(OrbitToggleRow(
+            this,
+            palette,
+            Strings.t("Auto MTU"),
+            Strings.t("AUTO_MTU_SUBTITLE"),
+            preferences().getBoolean(Tun2SocksManager.AUTO_MTU_PREF, true),
+        ) { on ->
+            preferences().edit().putBoolean(Tun2SocksManager.AUTO_MTU_PREF, on).apply()
+            ConnectionLog.record("Auto MTU " + (if (on) "on" else "off") + " — applies on the next connect")
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Further connection toggles (MTU, data saver) follow.
         // Held in a field, not a local: the mode screen is a separate page that
         // writes the preference and pops back here, so the row that shows the
