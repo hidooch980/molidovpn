@@ -775,6 +775,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         uiForeground = true
+        // Background, bounded, at most every 30 min per network: see CleanIpScanner.
+        CleanIpScanner.scanIfDue(this)
         // Restart everything the pause stopped. Each of these is idempotent and
         // cheap; the point is that the screen is correct the instant it appears
         // rather than after one poll interval.

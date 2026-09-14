@@ -87,8 +87,26 @@ object ShardEdges {
     fun pathsPerNode(context: Context): Int {
         // With a custom IP the pool is one address per node — see [expand].
         if (ShardConfigs.hasCustomIp(context)) return 1
-        val edgeList = edges(context)
+        val edgeList = (CleanIpScanner.best(context) + edges(context)).distinct()
         return edgeList.size + 1
+    }
+
+    /**
+     * [count] random host addresses from Cloudflare's published ranges, for
+     * [CleanIpScanner]. Network and broadcast addresses are avoided.
+     */
+    fun sampleCloudflareIps(count: Int, random: java.util.Random = java.util.Random()): List<String> {
+        val out = LinkedHashSet<String>()
+        var guard = 0
+        while (out.size < count && guard++ < count * 4) {
+            val range = CF_RANGES[random.nextInt(CF_RANGES.size)]
+            val span = range.last - range.first + 1
+            if (span < 4) continue
+            val offset = (random.nextDouble() * span).toLong().coerceIn(1L, span - 2)
+            val v = range.first + offset
+            out.add("${(v shr 24) and 255}.${(v shr 16) and 255}.${(v shr 8) and 255}.${v and 255}")
+        }
+        return out.toList()
     }
 
     /**
@@ -161,7 +179,10 @@ object ShardEdges {
             val seen = HashSet<String>()
             return nodes.filter { seen.add(it.key) }
         }
-        val edges = edges(context)
+        // Clean IPs measured on THIS network (CleanIpScanner) lead the edge list, so a
+        // cold pool's first race slots go to addresses known to pass here. Host and
+        // SNI are untouched; the subscription's own address is still always kept.
+        val edges = (CleanIpScanner.best(context) + edges(context)).distinct()
         val out = ArrayList<ShardNode>(nodes.size * (edges.size + 1))
         val seen = HashSet<String>()
         nodes.forEachIndexed { index, node ->

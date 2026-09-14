@@ -49,6 +49,8 @@ class ShardRefreshJob : android.app.job.JobService() {
         // for exactly this: the Node List refresh, manual or periodic, brings
         // the Serverless profiles along.
         SmartSplitSub.refreshIfDue(applicationContext)
+        // Clean edge IPs for whatever network the job runs on (own thread, bounded).
+        CleanIpScanner.scanIfDue(applicationContext)
         ShardSubscription.refreshIfDue(applicationContext) {
             // Never reschedule on failure. The next periodic window is minutes to
             // hours away and the cache is still serviceable; retrying a blocked or
