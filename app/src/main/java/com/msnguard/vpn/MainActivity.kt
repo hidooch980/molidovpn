@@ -2424,15 +2424,43 @@ class MainActivity : Activity() {
             toastShort(Strings.tf("Could not read the settings: %s", it.message.toString()))
             return
         }
-        getSystemService(ClipboardManager::class.java)
-            ?.setPrimaryClip(ClipData.newPlainText("MolidoVPN settings", json))
-        toastShort(Strings.t("Settings copied — this text holds no passwords"))
-        runCatching {
-            startActivity(Intent.createChooser(
-                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, json),
-                Strings.t("Copy or share settings"),
-            ))
+        // QR of the same text next to Copy / Share; null when it exceeds version 15-M.
+        val qr = runCatching { QrCode.encodeText(json) }.getOrNull()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(12), dp(20), dp(4))
         }
+        if (qr != null) {
+            box.addView(ImageView(this).apply {
+                setImageBitmap(qr.toBitmap(scale = 6))
+                scaleType = ScaleType.FIT_CENTER
+                adjustViewBounds = true
+            }, LinearLayout.LayoutParams(dp(240), dp(240)))
+        } else {
+            box.addView(TextView(this).apply {
+                textSize = 13f
+                text = Strings.t("Too large for a QR code — use Copy or Share")
+            })
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("Copy or share settings"))
+            .setView(box)
+            .setNeutralButton(Strings.t("Copy")) { _, _ ->
+                getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("MolidoVPN settings", json))
+                toastShort(Strings.t("Settings copied — this text holds no passwords"))
+            }
+            .setPositiveButton(Strings.t("Share")) { _, _ ->
+                runCatching {
+                    startActivity(Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, json),
+                        Strings.t("Copy or share settings"),
+                    ))
+                }
+            }
+            .setNegativeButton(Strings.t("Close"), null)
+            .show()
     }
 
     /** "Test servers from my internet": runs [NodeTest] in a dialog with Stop. */
@@ -4079,6 +4107,12 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
             textDirection = View.TEXT_DIRECTION_LTR
         }
+        // http://IP:8080 as a QR for the iPhone / laptop camera; hidden without a LAN address.
+        val qrView = ImageView(this).apply {
+            scaleType = ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            visibility = View.GONE
+        }
         fun socksPort(): Int =
             if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY) {
                 ShardManager.SOCKS_PORT
@@ -4097,6 +4131,13 @@ class MainActivity : Activity() {
                 CoreConfig.HTTP_PROXY_PORT,
                 socksPort(),
             )
+            val qr = host?.let { runCatching { QrCode.encodeText("http://$it:${CoreConfig.HTTP_PROXY_PORT}") }.getOrNull() }
+            if (qr != null) {
+                qrView.setImageBitmap(qr.toBitmap(scale = 6))
+                qrView.visibility = View.VISIBLE
+            } else {
+                qrView.visibility = View.GONE
+            }
         }
         val toggle = OrbitToggleRow(
             this,
@@ -4155,6 +4196,10 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        card.addView(qrView, LinearLayout.LayoutParams(dp(160), dp(160)).apply {
+            topMargin = dp(8)
+            gravity = Gravity.CENTER_HORIZONTAL
+        })
 
         card.addView(TextView(this).apply {
             text = Strings.t("PHONE_SHARE_STEPS")

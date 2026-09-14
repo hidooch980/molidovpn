@@ -608,6 +608,8 @@ object Strings {
         "فارسی" to Triple("فارسی", "فارسی", "波斯语"),
         "↑ UP" to Triple("↑ UP", "↑ آپلود", "↑ 上传"),
         "↓ DOWN" to Triple("↓ DOWN", "↓ دانلود", "↓ 下载"),
+        "Share" to Triple("Share", "اشتراک‌گذاری", "分享"),
+        "Too large for a QR code — use Copy or Share" to Triple("Too large for a QR code — use Copy or Share", "برای QR بزرگ است — از کپی یا اشتراک‌گذاری استفاده کنید", "内容过大，无法生成二维码 — 请使用复制或分享"),
         "Test servers from my internet" to Triple("Test servers from my internet", "تست سرورها از اینترنت من", "用我的网络测试服务器"),
         "V2Ray + SHARD, per protocol" to Triple("V2Ray + SHARD, per protocol", "V2Ray و SHARD، به تفکیک پروتکل", "V2Ray + SHARD，按协议"),
         "Disconnect the VPN first — the test must use your own internet" to Triple("Disconnect the VPN first — the test must use your own internet", "اول VPN را قطع کنید — تست باید با اینترنت خودتان انجام شود", "请先断开 VPN — 测试需使用您自己的网络"),
