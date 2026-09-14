@@ -608,6 +608,9 @@ object Strings {
         "فارسی" to Triple("فارسی", "فارسی", "波斯语"),
         "↑ UP" to Triple("↑ UP", "↑ آپلود", "↑ 上传"),
         "↓ DOWN" to Triple("↓ DOWN", "↓ دانلود", "↓ 下载"),
+        "Iranian sites direct" to Triple("Iranian sites direct", "سایت‌های ایرانی مستقیم", "伊朗网站直连"),
+        "IRAN_DIRECT_SUBTITLE" to Triple("Open .ir sites and Iranian IPs without the tunnel (no Smart Split probing)", "سایت‌های .ir و آی‌پی‌های ایران بدون تونل باز می‌شوند (بدون تست Smart Split)", ".ir 网站和伊朗 IP 不走隧道（不进行 Smart Split 探测）"),
+        // Connection extras (IR direct, MTU, speed test, schedule, backup).
     )
 
     /** Translate [key] into the active language, falling back to English. */

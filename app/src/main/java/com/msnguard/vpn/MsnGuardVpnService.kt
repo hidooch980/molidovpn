@@ -2333,6 +2333,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                         // choice has to apply to chained runs too, and our own package
                         // stays off the TUN in every mode.
                         .applyLanAccess(tun = address)
+                        .applyIranDirect()
                         .applySplitTunneling()
                         .establish() ?: error("Android could not establish the VPN interface")
                     vpnModeActive.set(true)
@@ -2455,6 +2456,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     // default. Printers and NAS boxes are not reachable through Tor
                     // in any case, so without it those destinations simply fail.
                     .applyLanAccess(tun = address)
+                    .applyIranDirect()
                     .applySplitTunneling()
                     .establish() ?: error("Android could not establish the VPN interface")
                 vpnModeActive.set(true)
@@ -2614,6 +2616,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                     // TUN's resolver before the tunnel exists.
                     .applyShardDns(address.router)
                     .applyLanAccess(tun = address)
+                    .applyIranDirect()
                     .applySplitTunneling()
                     .establish() ?: error("Android could not establish the VPN interface")
                 vpnModeActive.set(true)
@@ -4391,6 +4394,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                         // choice and still keeps our own process off the TUN in every
                         // mode — which the DNS bootstrap above depends on.
                         .applyLanAccess(tun = address)
+                        .applyIranDirect()
                         .applySplitTunneling()
                         .establish() ?: error("Android could not establish the VPN interface")
                     vpnModeActive.set(true)
@@ -5513,6 +5517,28 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
      * Nothing is lost by skipping it, because selectPrivateAddress only returns a
      * range no live interface is using — never the user's actual LAN.
      */
+    /**
+     * "Iranian sites direct" on a tun2socks TUN: Iranian IPv4 ranges (from the
+     * bundled geoip.dat) bypass the VPN. Android 13+ only; older versions keep the
+     * xray domain rule (SHARD/V2Ray) and route everything else as before.
+     */
+    private fun Builder.applyIranDirect(): Builder {
+        if (!IranDirect.enabled(this@MsnGuardVpnService)) return this
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            ConnectionLog.record("Iranian sites direct: domain rule only below Android 13")
+            return this
+        }
+        var added = 0
+        IranDirect.ipv4Cidrs(this@MsnGuardVpnService).forEach { (address, prefix) ->
+            runCatching {
+                excludeRoute(IpPrefix(InetAddress.getByName(address), prefix))
+                added++
+            }
+        }
+        ConnectionLog.record("Iranian sites direct: $added IR ranges bypass the VPN")
+        return this
+    }
+
     private fun Builder.applyLanAccess(
         addresses: NativeCore.TunnelAddresses? = null,
         tun: Tun2SocksManager.PrivateAddress? = null,

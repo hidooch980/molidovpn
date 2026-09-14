@@ -597,7 +597,11 @@ object ShardConfigs {
         listenPort: Int,
         logLevel: String,
         smartSplit: SmartSplit.FragmentProfile? = null,
+        irDirect: Boolean = false,
+        irGeo: Boolean = false,
     ): String {
+        // "Iranian sites direct" without Smart Split (which has its own IR rules).
+        val iranDirect = irDirect && smartSplit == null
         val outbounds = JSONArray()
             .put(outbound(context, node, "proxy"))
             .put(
@@ -606,6 +610,12 @@ object ShardConfigs {
                     put("protocol", "blackhole")
                 }
             )
+        if (iranDirect) {
+            outbounds.put(JSONObject().apply {
+                put("tag", "direct-plain")
+                put("protocol", "freedom")
+            })
+        }
         if (smartSplit != null) {
             outbounds.put(fragmentedDirect(smartSplit))
                 .put(JSONObject().apply {
@@ -701,7 +711,7 @@ object ShardConfigs {
                     // the name — an extra failure mode and a DNS leak surface. Both
                     // were tested against the real binary; both route correctly, and
                     // this is the safer one.
-                    if (smartSplit != null) {
+                    if (smartSplit != null || iranDirect) {
                         put(
                             "sniffing",
                             JSONObject().apply {
@@ -740,6 +750,8 @@ object ShardConfigs {
             if (smartSplit != null) {
                 put("dns", smartSplitDns(context))
                 put("routing", JSONObject().put("rules", smartSplitRules(context)))
+            } else if (iranDirect) {
+                put("routing", JSONObject().put("rules", iranDirectRules(irGeo)))
             }
         }.toString()
     }
@@ -1175,6 +1187,28 @@ object ShardConfigs {
      *   is not a browser: a default-deny would break every app whose protocol the
      *   sniffer does not recognise, and this config is carrying the whole device.
      */
+    /**
+     * [IranDirect] rules for a node-only config: Iranian names (and, with the geo
+     * files present, Iranian addresses) leave directly; everything else keeps the
+     * default outbound, the node. Without geo files: `domain:ir` only.
+     */
+    private fun iranDirectRules(geo: Boolean): JSONArray {
+        val rules = JSONArray()
+        rules.put(JSONObject().apply {
+            put("type", "field")
+            put("domain", JSONArray().put("domain:ir").apply { if (geo) put("geosite:category-ir") })
+            put("outboundTag", "direct-plain")
+        })
+        if (geo) {
+            rules.put(JSONObject().apply {
+                put("type", "field")
+                put("ip", JSONArray().put("geoip:ir"))
+                put("outboundTag", "direct-plain")
+            })
+        }
+        return rules
+    }
+
     private fun smartSplitRules(context: Context): JSONArray {
         fun rule(build: JSONObject.() -> Unit) = JSONObject().apply {
             put("type", "field")

@@ -3104,6 +3104,21 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        // Iranian sites direct: a light bypass, independent of Smart Split.
+        content.addView(OrbitToggleRow(
+            this,
+            palette,
+            Strings.t("Iranian sites direct"),
+            Strings.t("IRAN_DIRECT_SUBTITLE"),
+            IranDirect.enabled(this),
+        ) { on ->
+            IranDirect.setEnabled(this, on)
+            ConnectionLog.record("Iranian sites direct " + (if (on) "on" else "off") + " — applies on the next connect")
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        // Further connection toggles (MTU, data saver) follow.
         // Held in a field, not a local: the mode screen is a separate page that
         // writes the preference and pops back here, so the row that shows the
         // current mode has to be repaintable from outside this builder. Without

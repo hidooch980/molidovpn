@@ -496,12 +496,15 @@ object ShardManager {
         // when the tunnel is up and split; false means fall through to node-only.
         if (!v2ray && startSmartSplit(context, winner, listenHost, port, logLevel)) return true
 
+        val irDirect = IranDirect.enabled(context)
         val config = ShardConfigs.tunnelConfig(
             context,
             winner,
             listenHost,
             port,
             logLevel,
+            irDirect = irDirect,
+            irGeo = irDirect && unpackGeoAssets(context, File(context.filesDir, "shard").apply { mkdirs() }),
         )
         val configFile = ShardConfigs.writeConfig(context, "tunnel.json", config)
         // Last checkpoint before committing the winner: stop() may have killed the
@@ -722,7 +725,12 @@ object ShardManager {
         val logLevel = if (verboseLog) "info" else "warning"
         // Smart Split keeps its cached profile only; no measuring on a hot swap.
         val profile = if (!sessionV2ray && SmartSplit.enabled(context)) SmartSplit.cachedProfile(context) else null
-        val config = ShardConfigs.tunnelConfig(context, standby, listenHost, port, logLevel, smartSplit = profile)
+        val irDirect = IranDirect.enabled(context)
+        val config = ShardConfigs.tunnelConfig(
+            context, standby, listenHost, port, logLevel, smartSplit = profile,
+            irDirect = irDirect,
+            irGeo = irDirect && unpackGeoAssets(context, File(context.filesDir, "shard").apply { mkdirs() }),
+        )
         val file = ShardConfigs.writeConfig(context, "tunnel.json", config)
         if (!launch(context, file, TAG)) return false
         if (!awaitListener(port) || !ShardProbe.check(port, PROBE_TIMEOUT_MS)) {
