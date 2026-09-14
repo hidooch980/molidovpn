@@ -159,30 +159,32 @@ class TransportRail(
     context: Context,
     private val palette: AppAppearance.Palette,
     private val labels: List<String>,
-    @Suppress("unused") private val perRow: Int = 3,
+    private val perRow: Int = 3,
     private val onPick: (Int) -> Unit,
 ) : FrameLayout(context) {
 
-    // MolidoVPN: a single horizontally scrollable row of mode chips (pill
-    // buttons, 16dp corners) instead of the old recessed grid with a thumb.
+    // MolidoVPN: a grid of mode chips (pill buttons, 16dp corners), [perRow] per
+    // row, so every tunnel/core is visible at once — the previous single
+    // horizontally scrolling row hid the last modes off-screen.
     // The public surface (rowCount, select, setEnabled) is unchanged.
 
     private val cells = mutableListOf<TextView>()
     private var selectedIndex = -1
     private val density = context.resources.displayMetrics.density
-    private val scroller = android.widget.HorizontalScrollView(context).apply {
-        isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
-        clipToPadding = false
-    }
 
-    /** Always one row now; MainActivity sizes the view from this. */
-    val rowCount: Int = 1
+    /** MainActivity sizes the view from this. */
+    val rowCount: Int = (labels.size + perRow - 1) / perRow
 
     init {
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val rows = List(rowCount) { r ->
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                grid.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply {
+                    if (r > 0) topMargin = context.px(8)
+                })
+            }
         }
         labels.forEachIndexed { index, text ->
             val chip = TextView(context).apply {
@@ -203,19 +205,19 @@ class TransportRail(
                 }
             }
             cells.add(chip)
-            row.addView(chip, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ).apply {
-                if (index < labels.size - 1) marginEnd = context.px(8)
+            rows[index / perRow].addView(chip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                if (index % perRow != perRow - 1) marginEnd = context.px(8)
+            })
+        }
+        // Pad a short last row with empty cells so its chips keep the same width as the rows above.
+        val lastCount = labels.size - (rowCount - 1) * perRow
+        repeat(perRow - lastCount) { i ->
+            rows.last().addView(View(context), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                if (lastCount + i != perRow - 1) marginEnd = context.px(8)
             })
         }
         cells.forEachIndexed { i, chip -> style(chip, i == selectedIndex) }
-        scroller.addView(row, LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        ))
-        addView(scroller, LayoutParams(
+        addView(grid, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
@@ -235,11 +237,6 @@ class TransportRail(
         if (index !in labels.indices) return
         selectedIndex = index
         cells.forEachIndexed { i, chip -> style(chip, i == index) }
-        val chip = cells[index]
-        scroller.post {
-            val target = (chip.left - context.px(16)).coerceAtLeast(0)
-            if (animate) scroller.smoothScrollTo(target, 0) else scroller.scrollTo(target, 0)
-        }
     }
 
     override fun setEnabled(enabled: Boolean) {
