@@ -257,6 +257,15 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
     private var shardThroughputWrittenAt = 0L
 
     /** Byte counters at the previous watchdog tick, to detect movement. */
+    // Anti-freeze (SHARD): 1 s samples of the front-end counters. A stall is apps
+    // sending while nothing comes back; two failed 2 s probes (~4 s) replace the node
+    // under the live TUN via rotateShardNode. Probes run on [freezeExecutor], never on
+    // ladderScheduler or the main thread.
+    private val freezeExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val freezeProbeInFlight = AtomicBoolean(false)
+    @Volatile private var freezeLastTx = -1L
+    @Volatile private var freezeLastRx = -1L
+    @Volatile private var freezeStallSeconds = 0
     private var shardLastTx = -1L
     private var shardLastRx = -1L
 
@@ -2088,6 +2097,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         stopTunnel(notify = false)
         cancelLadderTimer()
         autoExecutor.shutdownNow()
+        freezeExecutor.shutdownNow()
         ladderScheduler.shutdownNow()
         worker.shutdownNow()
         super.onDestroy()
@@ -2677,9 +2687,61 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 val rx = ShardSocksFront.sessionRx
                 observeShardThroughput(rx)
                 updateTrafficNotification(ShardSocksFront.sessionTx, rx)
+                watchShardFreeze(ShardSocksFront.sessionTx, rx)
             } catch (_: Exception) {
             }
         }, 1L, 1L, TimeUnit.SECONDS)
+    }
+
+    /**
+     * Anti-freeze failover for SHARD. Called every second with the front-end's
+     * counters. Only a screen-on session where tx moves and rx stays flat for 2 s
+     * earns a probe (traffic beats probes, as in [tunnelIsDead]); two consecutive
+     * 2 s probe failures switch node without tearing down the TUN.
+     */
+    private fun watchShardFreeze(tx: Long, rx: Long) {
+        val lastTx = freezeLastTx
+        val lastRx = freezeLastRx
+        freezeLastTx = tx
+        freezeLastRx = rx
+        if (lastTx < 0 || tx < lastTx || rx < lastRx) {
+            freezeStallSeconds = 0
+            return
+        }
+        if (rx != lastRx || !isScreenInteractive()) {
+            freezeStallSeconds = 0
+            return
+        }
+        if (tx == lastTx) return
+        freezeStallSeconds++
+        if (freezeStallSeconds < 2) return
+        if (!freezeProbeInFlight.compareAndSet(false, true)) return
+        freezeStallSeconds = 0
+        try {
+            freezeExecutor.execute {
+                try {
+                    val port = ShardManager.listenPort
+                    val firstOk = ShardProbe.check(port, 2_000)
+                    val dead = !firstOk && freezeLastRx == rx && !ShardProbe.check(port, 2_000)
+                    if (dead && connected.get() && !stopRequested.get() && currentProtocol.contains("SHARD")) {
+                        ConnectionLog.record("SHARD: traffic froze ~4 s — switching node")
+                        ladderScheduler.execute {
+                            try {
+                                if (connected.get() && !stopRequested.get() && currentProtocol.contains("SHARD")) {
+                                    rotateShardNode("traffic froze")
+                                }
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    freezeProbeInFlight.set(false)
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            freezeProbeInFlight.set(false)
+        }
     }
 
     /**
