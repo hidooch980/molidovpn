@@ -209,6 +209,8 @@ object ShardEdges {
     private fun isExpandable(node: ShardNode): Boolean {
         // No Host header means the address is the server itself.
         if (node.host.isBlank()) return false
+        // V2Ray servers: only Cloudflare-fronted ws+tls nodes take edges.
+        node.v2ray?.let { if (!V2rayNodes.edgeExpandable(it)) return false }
         if (node.port !in CDN_PORTS) return false
         return isCloudflareAddress(node.address)
     }

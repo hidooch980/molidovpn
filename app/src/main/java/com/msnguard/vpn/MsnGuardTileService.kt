@@ -179,7 +179,7 @@ class MsnGuardTileService : TileService() {
         get() = getSharedPreferences(SETTINGS, MODE_PRIVATE)
             .getString(DEFAULT_PROTOCOL, Protocol.AUTO.coreName)
             ?.let { name -> if (name == "shard" || name == "shard-gaming") "shard" else name }
-            ?.let { name -> Protocol.entries.find { it.coreName == name }?.coreName ?: if (name == "shard") name else null }
+            ?.let { name -> Protocol.entries.find { it.coreName == name }?.coreName ?: if (name == "shard" || name == "v2ray") name else null }
             ?: Protocol.AUTO.coreName
 
     private fun defaultScan(): ScanTarget {

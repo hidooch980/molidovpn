@@ -68,6 +68,8 @@ class ShardRefreshJob : android.app.job.JobService() {
         SmartSplitSub.refreshIfDue(applicationContext)
         // Clean edge IPs for whatever network the job runs on (own thread, bounded).
         CleanIpScanner.scanIfDue(applicationContext)
+        // V2Ray servers pool (hourly floor, own thread, fire-and-forget).
+        V2raySubscription.refreshIfDue(applicationContext)
         ShardSubscription.refreshIfDue(applicationContext) {
             // Never reschedule on failure. The next periodic window is minutes to
             // hours away and the cache is still serviceable; retrying a blocked or

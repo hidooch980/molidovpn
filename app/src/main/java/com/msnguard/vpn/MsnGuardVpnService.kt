@@ -855,6 +855,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
          */
         const val CHAIN_PROTOCOL_MARKER = "PSIPHON-OVER-WARP"
 
+        /** currentProtocol for coreName "v2ray": contains "SHARD" so it takes the SHARD path. */
+        const val V2RAY_PROTOCOL_MARKER = "SHARD-V2RAY"
+
         /**
          * How long to wait for a rejected outer leg to actually stop.
          *
@@ -2618,7 +2621,8 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 sendStatus(STATUS_CONNECTING, Strings.t("Finding a fast node…"), 15)
                 ConnectionLog.record("SHARD: TUN ready — racing the pool")
 
-                if (!ShardManager.start(this, verboseShardLog())) {
+                if (isV2raySession()) V2raySubscription.refreshIfDue(this)
+                if (!ShardManager.start(this, verboseShardLog(), v2ray = isV2raySession())) {
                     error(
                         ShardManager.lastError.ifBlank { "No public node could be reached" }
                     )
@@ -2645,7 +2649,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
 
                 currentVpnIp = ""
                 val node = ShardManager.activeNode?.displayName ?: "a public node"
-                sendStatus(STATUS_CONNECTED, Strings.tf("SHARD connected via %s", node))
+                sendStatus(STATUS_CONNECTED, shardConnectedText(node))
                 ConnectionLog.record("SHARD: connected via $node")
                 repostNotification()
                 startShardTrafficPolling()
@@ -2658,6 +2662,13 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             }
         }
     }
+
+    /** True when this SHARD-shaped session is the "V2Ray servers" mode. */
+    private fun isV2raySession(): Boolean = currentProtocol.contains("V2RAY")
+
+    private fun shardConnectedText(node: String): String =
+        if (isV2raySession()) Strings.tf("V2Ray connected via %s", node)
+        else Strings.tf("SHARD connected via %s", node)
 
     /** Whether the user asked for a verbose log; xray's level follows it. */
     private fun verboseShardLog(): Boolean =
@@ -2970,7 +2981,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         currentVpnIp = ""
         lastExitIp = ""
         currentCountry = ""
-        sendStatus(STATUS_CONNECTED, Strings.tf("SHARD connected via %s", node))
+        sendStatus(STATUS_CONNECTED, shardConnectedText(node))
         ConnectionLog.record("SHARD: now on $node")
         repostNotification()
         return true
@@ -3832,6 +3843,8 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             AutoCandidate("masque", "MASQUE", if (CoreConfig.mimArmed(this)) 20_000L else 12_000L),
             // SHARD has no proxy mode (refused in startTunnel).
             if (proxy) null else AutoCandidate("shard", "SHARD", 16_000L),
+            // V2Ray servers: same SHARD path, same proxy-mode refusal.
+            if (proxy) null else AutoCandidate("v2ray", "V2Ray", 16_000L),
         )
     }
 
@@ -3971,7 +3984,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
 
     private fun measureAutoLatency(candidate: AutoCandidate, token: Int): Long? {
         val connectedAt = autoTrialConnectedAt
-        if (candidate.coreName == "shard") {
+        if (candidate.coreName == "shard" || candidate.coreName == "v2ray") {
             val t0 = SystemClock.elapsedRealtime()
             return if (ShardManager.isHealthy()) SystemClock.elapsedRealtime() - t0 else null
         }
@@ -4164,6 +4177,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         // re-runs the selection instead of redialling one transport.
         storedConfig = autoBaseConfig ?: config
         currentProtocol = config.substringAfter("\"protocol\":\"").substringBefore('"').uppercase()
+            // V2Ray servers ride every SHARD code path (TUN, front-end, watchdog,
+            // rotation, proxy-mode refusal); the marker keeps "SHARD" in the name.
+            .let { if (it == "V2RAY") V2RAY_PROTOCOL_MARKER else it }
         reportPending = true
         attemptStartedAt = SystemClock.elapsedRealtime()
         currentVpnIp = ""
@@ -4812,7 +4828,12 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             reportPending = false
             try {
                 val ok = status == STATUS_CONNECTED
-                val shardKey = if (ok && currentProtocol.contains("SHARD")) ShardManager.activeNode?.key else null
+                // V2Ray servers: fingerprint over the share URI (fingerprint() drops '#').
+                val shardKey = if (ok && currentProtocol.contains("SHARD")) {
+                    ShardManager.activeNode?.let { it.v2ray?.uri ?: it.key }
+                } else {
+                    null
+                }
                 val node = shardKey?.let { ConnectionReports.fingerprint(it) }
                     ?: "mode:${currentProtocol.lowercase()}"
                 val ms = if (ok && attemptStartedAt > 0L) {
@@ -5348,6 +5369,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         // used to be printed here, but it is the Cloudflare edge every node in the
         // pool shares, so it told the user nothing while looking like it told them
         // something.
+        currentProtocol.contains("V2RAY") -> Strings.t("V2Ray")
         currentProtocol.contains("SHARD") -> Strings.t("SHARD")
         currentProtocol.contains("MIM") -> Strings.t("Masque over Masque")
         currentProtocol.contains("MASQUE") -> Strings.t("MASQUE")

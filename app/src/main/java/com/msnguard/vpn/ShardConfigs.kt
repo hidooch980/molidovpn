@@ -75,6 +75,8 @@ data class ShardNode(
     val alpn: String,
     /** The `#fragment` label, decoded. Diagnostic only — never shown as-is. */
     val label: String,
+    /** Set for "V2Ray servers" nodes; rendered by [V2rayNodes.outbound]. Null for SHARD. */
+    val v2ray: V2rayNode? = null,
 ) {
     /**
      * Stable identity, used as the health-memory key and for dedupe.
@@ -84,7 +86,8 @@ data class ShardNode(
      * away every node's measured latency once a day for no reason.
      */
     val key: String
-        get() = "$protocol|$credential|$address|$port|$network|$security|$path|$host"
+        get() = v2ray?.let { "v2|${ConnectionReports.fingerprint(it.uri)}|$address|$port" }
+            ?: "$protocol|$credential|$address|$port|$network|$security|$path|$host"
 
     /** What the UI may show. Never the raw label, which carries other people's channel ads. */
     val displayName: String
@@ -307,6 +310,8 @@ object ShardConfigs {
      * @param tag the outbound tag routing rules will point at.
      */
     fun outbound(context: Context, node: ShardNode, tag: String, mux: Boolean = true): JSONObject {
+        // V2Ray servers: own renderer, no custom CF IP, no mux.
+        node.v2ray?.let { return V2rayNodes.outbound(it, node.address, node.port, tag) }
         val customIp = getCustomCfIp(context)
         val effectiveAddress = if (customIp.isNotEmpty()) customIp else node.address
 

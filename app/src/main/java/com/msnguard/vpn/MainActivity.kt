@@ -545,6 +545,8 @@ class MainActivity : Activity() {
         // wide; someone who installs the app and taps SHARD immediately should not
         // have to wait for it. Returns without I/O if the list is already fresh.
         ShardSubscription.refreshIfDue(this)
+        // V2Ray servers pool: hourly floor, background thread.
+        V2raySubscription.refreshIfDue(this)
         // Same trigger for the edge and geo-blocked lists. Separate file, separate
         // ETag, same 6-hour floor — see [RemotePolicy]. Cheap enough to sit next to
         // the subscription fetch: a 304 is a few hundred bytes.
@@ -1288,6 +1290,7 @@ class MainActivity : Activity() {
         // "WoW" is the table key for the short rail label; the enum's own label
         // is the longer "WARP-on-WARP" which would not fit the rail cells.
         Protocol.WARP_IN_WARP -> Strings.t("WoW")
+        Protocol.V2RAY -> Strings.t("V2Ray")
         else -> protocol.label
     }
 
@@ -3829,6 +3832,8 @@ class MainActivity : Activity() {
                 Strings.t("Tor cannot run as a SOCKS proxy — set Tunnel type to VPN")
             } else if (selectedProtocol == Protocol.SHARD) {
                 Strings.t("SHARD shares from VPN mode — set Tunnel type to VPN")
+            } else if (selectedProtocol == Protocol.V2RAY) {
+                Strings.t("V2Ray shares from VPN mode — set Tunnel type to VPN")
             } else {
                 Strings.tf("Set Tunnel type to SOCKS proxy to share %s", selectedProtocol.label)
             }
@@ -3842,7 +3847,7 @@ class MainActivity : Activity() {
         // answers for the Rust core and Psiphon and would print 1819 here — a port
         // nothing is listening on during a SHARD session, so anyone who typed it
         // into another device would get a refused connection and no explanation.
-        val socksPort = if (selectedProtocol == Protocol.SHARD) {
+        val socksPort = if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY) {
             ShardManager.SOCKS_PORT
         } else {
             CoreConfig.sharedSocksPort(this)
@@ -3874,7 +3879,7 @@ class MainActivity : Activity() {
         // xray binds its SOCKS and HTTP inbounds to 0.0.0.0 while tun2socks keeps
         // dialling loopback, so the phone stays fully routed while a Windows machine
         // uses the same tunnel.
-        Protocol.SHARD -> !CoreConfig.proxyOnly(this)
+        Protocol.SHARD, Protocol.V2RAY -> !CoreConfig.proxyOnly(this)
         else -> CoreConfig.proxyOnly(this)
     }
 
@@ -4382,6 +4387,8 @@ class MainActivity : Activity() {
                 // data path — but the same remedy, and it also has a better answer:
                 // Share over LAN already works in VPN mode.
                 toastShort(Strings.t("SHARD runs as a VPN — use Share over LAN instead"))
+            } else if (chosen == CoreConfig.TUNNEL_MODE_PROXY && selectedProtocol == Protocol.V2RAY) {
+                toastShort(Strings.t("V2Ray runs as a VPN — use Share over LAN instead"))
             }
             // The port row is the thing that visibly reacts to this choice, so it is
             // repainted and re-enabled in the same gesture, and the LAN row with it:
@@ -6923,7 +6930,13 @@ class MainActivity : Activity() {
          * started for SHARD. The service branches on it before touching
          * NativeCore, the same way the Psiphon and Tor names do.
          */
-        SHARD("SHARD", "shard", "Public nodes, auto-selected; no setup");
+        SHARD("SHARD", "shard", "Public nodes, auto-selected; no setup"),
+
+        /**
+         * Public V2Ray servers (vless/vmess/trojan/ss). Runs the SHARD machinery
+         * on its own pool; the service maps "v2ray" onto the SHARD path.
+         */
+        V2RAY("V2Ray servers", "v2ray", "Public V2Ray servers, auto-selected");
 
         val label: String get() = Strings.t(enLabel)
         val description: String get() = Strings.t(enDescription)

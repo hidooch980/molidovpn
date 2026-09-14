@@ -200,7 +200,9 @@ object ShardHealth {
             emptyMap()
         }
         if (remote.isEmpty()) return nodes.sortedBy { scores[it]?.rank() ?: 500_000 }
-        val remoteByNode = nodes.associateWith { remote[ConnectionReports.fingerprint(it.key)] ?: 0.0 }
+        val remoteByNode = nodes.associateWith {
+            remote[ConnectionReports.fingerprint(it.v2ray?.uri ?: it.key)] ?: 0.0
+        }
         return nodes.sortedWith(
             compareBy<ShardNode> { scores[it]?.rank() ?: 500_000 }
                 .thenByDescending { remoteByNode[it] ?: 0.0 }
@@ -216,9 +218,11 @@ object ShardHealth {
      */
     fun prune(context: Context, nodes: List<ShardNode>) {
         val live = nodes.map { it.key }.toSet()
+        // SHARD and V2Ray servers share this file; each prunes only its own keys.
+        val v2 = nodes.firstOrNull()?.v2ray != null
         val editor = prefs(context).edit()
         prefs(context).all.keys.forEach { key ->
-            if (key !in live) editor.remove(key)
+            if (key.startsWith("v2|") == v2 && key !in live) editor.remove(key)
         }
         editor.apply()
     }
