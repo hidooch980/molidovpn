@@ -191,7 +191,20 @@ object ShardHealth {
      */
     fun rank(context: Context, nodes: List<ShardNode>): List<ShardNode> {
         val scores = nodes.associateWith { score(context, it) }
-        return nodes.sortedBy { scores[it]?.rank() ?: 500_000 }
+        // Operator-aware remote scores (ConnectionReports.remoteScores) only break
+        // ties within the same local rank — mostly the untried nodes — and are read
+        // from cache, so they can never block or override local evidence.
+        val remote = try {
+            ConnectionReports.remoteScores(context)
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        if (remote.isEmpty()) return nodes.sortedBy { scores[it]?.rank() ?: 500_000 }
+        val remoteByNode = nodes.associateWith { remote[ConnectionReports.fingerprint(it.key)] ?: 0.0 }
+        return nodes.sortedWith(
+            compareBy<ShardNode> { scores[it]?.rank() ?: 500_000 }
+                .thenByDescending { remoteByNode[it] ?: 0.0 }
+        )
     }
 
     /**

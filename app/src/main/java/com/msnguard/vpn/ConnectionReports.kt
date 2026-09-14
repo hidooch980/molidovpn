@@ -25,9 +25,113 @@ object ConnectionReports {
 
     const val PREF = "anonymous_reports"
     const val DEFAULT = false
+    /** Set once the first-launch consent sheet has been shown. */
+    const val ASKED_PREF = "anonymous_reports_asked"
 
     private const val ENDPOINT = "https://molido-sub.hidooch980.workers.dev/report"
+    private const val SCORES_ENDPOINT = "https://molido-sub.hidooch980.workers.dev/scores?op="
+    private const val SCORES_PREFS = "remote_scores"
+    private const val SCORES_MIN_INTERVAL_MS = 60 * 60 * 1000L
     private const val TIMEOUT_MS = 10_000
+
+    private val scoresRefreshing = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var scoresCacheOp: String? = null
+    @Volatile private var scoresCache: Map<String, Double> = emptyMap()
+
+    /**
+     * Mobile operator bucket: mci | irancell | tci | rightel | shatel | other.
+     * From SIM MCC-MNC (no permission needed); Wi-Fi and unknown carriers are "other".
+     */
+    fun operator(context: Context): String = try {
+        if (networkType(context) != "cellular") {
+            "other"
+        } else {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+            val mccMnc = tm?.networkOperator?.takeIf { it.length >= 5 } ?: tm?.simOperator.orEmpty()
+            val name = tm?.networkOperatorName.orEmpty().lowercase()
+            when {
+                mccMnc == "43211" -> "mci"
+                mccMnc == "43235" -> "irancell"
+                mccMnc == "43220" -> "rightel"
+                mccMnc == "43214" || mccMnc == "43219" -> "tci"
+                name.contains("shatel") -> "shatel"
+                else -> "other"
+            }
+        }
+    } catch (_: Exception) {
+        "other"
+    }
+
+    /**
+     * Remote per-node scores for this operator, keyed by [fingerprint]; empty when
+     * never fetched. Reads the cache only, so SHARD ranking never waits on network.
+     */
+    fun remoteScores(context: Context): Map<String, Double> {
+        val op = operator(context)
+        if (scoresCacheOp == op) return scoresCache
+        val raw = context.getSharedPreferences(SCORES_PREFS, Context.MODE_PRIVATE)
+            .getString("json_$op", null)
+        val parsed = raw?.let { parseScores(it) } ?: emptyMap()
+        scoresCache = parsed
+        scoresCacheOp = op
+        return parsed
+    }
+
+    /** Background fetch of `/scores?op=` at most hourly per operator. Never blocks. */
+    fun refreshScoresIfDue(context: Context) {
+        val app = context.applicationContext
+        val op = operator(app)
+        val prefs = app.getSharedPreferences(SCORES_PREFS, Context.MODE_PRIVATE)
+        val elapsed = System.currentTimeMillis() - prefs.getLong("at_$op", 0L)
+        if (elapsed in 0 until SCORES_MIN_INTERVAL_MS) return
+        if (!scoresRefreshing.compareAndSet(false, true)) return
+        Thread({
+            try {
+                val connection = URL(SCORES_ENDPOINT + op).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = TIMEOUT_MS
+                    connection.readTimeout = TIMEOUT_MS
+                    connection.requestMethod = "GET"
+                    val editor = prefs.edit().putLong("at_$op", System.currentTimeMillis())
+                    if (connection.responseCode == 200) {
+                        val body = connection.inputStream.bufferedReader().use { it.readText() }
+                        if (parseScores(body).isNotEmpty()) {
+                            editor.putString("json_$op", body)
+                            scoresCacheOp = null
+                        }
+                    }
+                    editor.apply()
+                } finally {
+                    connection.disconnect()
+                }
+            } catch (_: Exception) {
+                // Best effort only; ranking falls back to local health.
+            } finally {
+                scoresRefreshing.set(false)
+            }
+        }, "remote-scores").apply { isDaemon = true }.start()
+    }
+
+    /** Accepts `{"scores":{fp:n}}`, `{fp:n}` or `{fp:{"score":n}}`. */
+    private fun parseScores(body: String): Map<String, Double> = try {
+        val root = JSONObject(body)
+        val obj = root.optJSONObject("scores") ?: root
+        val out = HashMap<String, Double>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = obj.opt(key)
+            val score = when (value) {
+                is Number -> value.toDouble()
+                is JSONObject -> value.optDouble("score", Double.NaN)
+                else -> Double.NaN
+            }
+            if (!score.isNaN()) out[key] = score
+        }
+        out
+    } catch (_: Exception) {
+        emptyMap()
+    }
 
     fun enabled(context: Context): Boolean =
         context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(PREF, DEFAULT)
@@ -50,6 +154,7 @@ object ConnectionReports {
                     put("ok", ok)
                     put("ms", ms ?: JSONObject.NULL)
                     put("net", networkType(app))
+                    put("op", operator(app))
                     put("app", "android")
                     put("ver", versionName(app))
                 }.toString()

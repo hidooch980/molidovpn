@@ -549,6 +549,8 @@ class MainActivity : Activity() {
         // ETag, same 6-hour floor — see [RemotePolicy]. Cheap enough to sit next to
         // the subscription fetch: a 304 is a few hundred bytes.
         RemotePolicy.refreshIfDue(this)
+        // Operator-aware SHARD scores (tie-breaker only; hourly, background).
+        ConnectionReports.refreshScoresIfDue(this)
         // And the Smart Split fragment profiles, on the same triggers and the
         // same floor — see [SmartSplitSub]. Same shape: a 304 costs nothing.
         SmartSplitSub.refreshIfDue(this)
@@ -777,6 +779,7 @@ class MainActivity : Activity() {
         uiForeground = true
         // Background, bounded, at most every 30 min per network: see CleanIpScanner.
         CleanIpScanner.scanIfDue(this)
+        maybeAskReportsConsent()
         // Restart everything the pause stopped. Each of these is idempotent and
         // cheap; the point is that the screen is correct the instant it appears
         // rather than after one poll interval.
@@ -6675,6 +6678,34 @@ class MainActivity : Activity() {
         }
         val name = if (raw == "shard-gaming") Protocol.SHARD.coreName else raw
         return Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.AUTO
+    }
+
+    /**
+     * First-launch consent for anonymous quality reports, asked once. Users who
+     * already set the switch in Settings are not asked.
+     */
+    private fun maybeAskReportsConsent() {
+        val prefs = preferences()
+        if (prefs.getBoolean(ConnectionReports.ASKED_PREF, false)) return
+        if (prefs.contains(ConnectionReports.PREF)) {
+            prefs.edit().putBoolean(ConnectionReports.ASKED_PREF, true).apply()
+            return
+        }
+        prefs.edit().putBoolean(ConnectionReports.ASKED_PREF, true).apply()
+        mainRoot.post {
+            if (isFinishing || isDestroyed) return@post
+            showChoiceSheet(
+                title = Strings.t("Help improve servers?"),
+                subtitle = Strings.t("Anonymous quality reports: an anonymous server fingerprint, success/failure, latency, network type and mobile operator (MCI, Irancell, …). Never your IP, name or browsing data. You can change this later in Settings."),
+                options = listOf(true, false),
+                selected = ConnectionReports.DEFAULT,
+                label = { if (it) Strings.t("Send anonymous reports") else Strings.t("Don't send") },
+                description = { "" },
+                onSelected = { enabled ->
+                    preferences().edit().putBoolean(ConnectionReports.PREF, enabled).apply()
+                },
+            )
+        }
     }
 
     /** Opens the DNS sheet; shared by the home chip and the Settings row. */
