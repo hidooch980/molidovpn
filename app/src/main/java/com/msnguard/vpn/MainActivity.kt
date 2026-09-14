@@ -3100,6 +3100,10 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        content.addView(buildPhoneShareCard(), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Held in a field, not a local: the mode screen is a separate page that
         // writes the preference and pops back here, so the row that shows the
         // current mode has to be repaintable from outside this builder. Without
@@ -3813,6 +3817,124 @@ class MainActivity : Activity() {
 
     private fun lanSharingEnabled(): Boolean =
         preferences().getBoolean(CoreConfig.LAN_SHARING_PREF, false)
+
+    /**
+     * "Share with iPhone & laptop": a front for the existing Share-over-LAN setting
+     * (same pref, same row kept in sync) that prints the hotspot/Wi-Fi address and
+     * ports large and copyable, with the iPhone manual-proxy steps.
+     */
+    private fun buildPhoneShareCard(): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = Sculpt.sculptedBackground(
+                resources.displayMetrics.density,
+                Sculpt.recess(SURFACE, 0.16f),
+                14,
+                Sculpt.withAlpha(DIVIDER, 0.15f),
+            )
+        }
+        val addressView = TextView(this).apply {
+            textSize = 20f
+            typeface = Typefaces.medium(this@MainActivity)
+            setTextColor(INK)
+            setTextIsSelectable(true)
+            textDirection = View.TEXT_DIRECTION_LTR
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        val portsView = TextView(this).apply {
+            textSize = 15f
+            setTextColor(INK)
+            setTextIsSelectable(true)
+            textDirection = View.TEXT_DIRECTION_LTR
+        }
+        fun socksPort(): Int =
+            if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY) {
+                ShardManager.SOCKS_PORT
+            } else {
+                CoreConfig.sharedSocksPort(this)
+            }
+        fun refresh() {
+            val host = CoreConfig.localNetworkAddress(this)
+            addressView.text = if (host != null) {
+                Strings.tf("Server: %s", host)
+            } else {
+                Strings.t("No local network — turn on the hotspot or join Wi-Fi")
+            }
+            portsView.text = Strings.tf(
+                "Port: %s (HTTP) · SOCKS5: %s",
+                CoreConfig.HTTP_PROXY_PORT,
+                socksPort(),
+            )
+        }
+        val toggle = OrbitToggleRow(
+            this,
+            palette,
+            Strings.t("Share with iPhone & laptop"),
+            Strings.t("Turns on Share over LAN"),
+            lanSharingEnabled(),
+        ) { on ->
+            preferences().edit().putBoolean(CoreConfig.LAN_SHARING_PREF, on).apply()
+            ConnectionLog.record(
+                if (on) {
+                    Strings.t("LAN sharing enabled — applies on the next connect")
+                } else {
+                    Strings.t("LAN sharing disabled — applies on the next connect")
+                }
+            )
+            lanSharingRow?.apply {
+                setChecked(on && lanSharingCapable())
+                setSubtitle(lanSharingSubtitle())
+            }
+            refresh()
+        }
+        card.addView(toggle)
+        card.addView(addressView)
+        card.addView(portsView)
+
+        val copyButton = TextView(this).apply {
+            text = Strings.t("Copy")
+            textSize = 12f
+            typeface = Typefaces.medium(this@MainActivity)
+            gravity = Gravity.CENTER
+            setTextColor(palette.mint)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = Sculpt.sculptedBackground(
+                resources.displayMetrics.density,
+                Sculpt.withAlpha(palette.mint, 0.12f),
+                8,
+                Sculpt.withAlpha(palette.mint, 0.3f),
+            )
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                refresh()
+                val host = CoreConfig.localNetworkAddress(this@MainActivity)
+                if (host == null) {
+                    toastShort(Strings.t("No local network — turn on the hotspot or join Wi-Fi"))
+                    return@setOnClickListener
+                }
+                val text = "$host:${CoreConfig.HTTP_PROXY_PORT}"
+                getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("proxy", text))
+                toastShort(Strings.tf("Copied %s", text))
+            }
+        }
+        card.addView(copyButton, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+
+        card.addView(TextView(this).apply {
+            text = Strings.t("PHONE_SHARE_STEPS")
+            textSize = 12.5f
+            setTextColor(MUTED)
+            if (AppLanguage.current() != "en") setLineSpacing(0f, Typefaces.lineHeightMult())
+            setPadding(0, dp(10), 0, 0)
+        })
+        refresh()
+        return card
+    }
 
     /**
      * Subtitle for the LAN-sharing switch.
