@@ -129,6 +129,29 @@
             </intent-filter>
         </receiver>
 
+        <!-- Home-screen widget. Exported only for the system's APPWIDGET_UPDATE;
+             status updates and its button use the non-exported receiver below. -->
+        <receiver
+            android:name=".MolidoWidget"
+            android:exported="true"
+            android:label="MolidoVPN">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_molido_info" />
+        </receiver>
+
+        <receiver
+            android:name=".WidgetActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.msnguard.vpn.STATUS" />
+                <action android:name="com.msnguard.vpn.WIDGET_TOGGLE" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".ShardRefreshJob"
             android:permission="android.permission.BIND_JOB_SERVICE"
