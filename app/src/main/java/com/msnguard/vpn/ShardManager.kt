@@ -429,7 +429,8 @@ object ShardManager {
         // only add paths, never remove one that was working.
         // V2Ray servers mode races its own pool through the identical machinery.
         val source = if (v2ray) V2raySubscription.shardNodes(context) else ShardSubscription.nodes(context)
-        val pool = ShardEdges.expand(context, source)
+        // Remembered working REALITY SNIs (see [RealitySni]); a no-op for SHARD.
+        val pool = ShardEdges.expand(context, source).let { if (v2ray) RealitySni.applyRemembered(context, it) else it }
         if (pool.isEmpty()) {
             lastError = "no nodes available"
             ConnectionLog.record("$TAG pool empty — cache and seed both unusable")
@@ -460,6 +461,23 @@ object ShardManager {
             if (candidates.isEmpty()) break
             raced = race(context, candidates)
             if (raced != null) break
+        }
+        // REALITY SNI retry, V2Ray only and only after every slice failed: the
+        // raced reality nodes once more with up to 3 alternate SNIs each.
+        if (raced == null && v2ray && !stopRequestedDuringStart) {
+            val tried = ranked.take(MAX_RACE_SLICES * RACE_WIDTH)
+            val alternates = runCatching { RealitySni.alternates(context, tried) }.getOrDefault(emptyList())
+            if (alternates.isNotEmpty()) {
+                ConnectionLog.record("$TAG REALITY SNI retry over ${alternates.size} variants")
+                for (chunk in alternates.chunked(RACE_WIDTH)) {
+                    if (stopRequestedDuringStart) break
+                    raced = race(context, chunk)
+                    raced?.let { found ->
+                        found.v2ray?.sni?.takeIf { it.isNotEmpty() }?.let { RealitySni.remember(context, found, it) }
+                    }
+                    if (raced != null) break
+                }
+            }
         }
         val winner = raced ?: return false
         if (stopRequestedDuringStart) {
