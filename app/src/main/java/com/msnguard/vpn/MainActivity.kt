@@ -3515,6 +3515,42 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
 
+        // TOOLS: speed test and schedule.
+        content.addView(sectionLabel(Strings.t("TOOLS")), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(26) })
+        // Speed test through the active tunnel's SOCKS port (see SpeedTest).
+        var speedRow: OrbitSettingsRow? = null
+        speedRow = navRow(Strings.t("Speed test"), Strings.t("10 MB down · 5 MB up")) {
+            val row = speedRow ?: return@navRow
+            row.setValue(Strings.t("Testing…"))
+            Thread({
+                val r = SpeedTest.run(this)
+                val text = if (r.downMbps == null && r.upMbps == null) {
+                    Strings.tf("Speed test failed: %s", r.error ?: "?")
+                } else {
+                    String.format(
+                        java.util.Locale.US,
+                        "↓ %.1f · ↑ %.1f Mbps · %s ms",
+                        r.downMbps ?: 0.0,
+                        r.upMbps ?: 0.0,
+                        r.pingMs?.toString() ?: "-",
+                    ) + if (r.viaTunnel) "" else " · " + Strings.t("direct")
+                }
+                ConnectionLog.record("Speed test: $text")
+                runOnUiThread {
+                    row.setValue(text)
+                    toastShort(text)
+                }
+            }, "speed-test").start()
+        }
+        content.addView(speedRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(10) })
+        // Tools rows (schedule) follow.
+
         // APPEARANCE, like BACKUP below it, is about the app rather than about a
         // tunnel, so it sits out here and not under Tunnel Controls.
         content.addView(sectionLabel(Strings.t("APPEARANCE")), LinearLayout.LayoutParams(
