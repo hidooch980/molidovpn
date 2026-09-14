@@ -63,6 +63,8 @@ object Strings {
         "Help improve servers?" to Triple("Help improve servers?", "به بهبود سرورها کمک می‌کنید؟", "帮助改进服务器？"),
         "Anonymous quality reports: an anonymous server fingerprint, success/failure, latency, network type and mobile operator (MCI, Irancell, …). Never your IP, name or browsing data. You can change this later in Settings." to Triple("Anonymous quality reports: an anonymous server fingerprint, success/failure, latency, network type and mobile operator (MCI, Irancell, …). Never your IP, name or browsing data. You can change this later in Settings.", "گزارش ناشناس کیفیت: فقط شناسه ناشناس سرور، موفقیت/خطا، تأخیر، نوع شبکه و اپراتور (همراه اول، ایرانسل، …) ارسال می‌شود. هرگز IP، نام یا اطلاعات مرور شما ارسال نمی‌شود. بعداً در تنظیمات قابل تغییر است.", "匿名质量报告：仅发送匿名服务器指纹、成功/失败、延迟、网络类型和运营商。绝不发送您的 IP、姓名或浏览数据。之后可在设置中更改。"),
         "Send anonymous reports" to Triple("Send anonymous reports", "ارسال گزارش ناشناس", "发送匿名报告"),
+        "Report a problem" to Triple("Report a problem", "گزارش مشکل", "报告问题"),
+        "Copies version, operator, mode and recent log" to Triple("Copies version, operator, mode and recent log", "نسخه، اپراتور، حالت و لاگ اخیر را کپی می‌کند", "复制版本、运营商、模式和最近日志"),
         "Don't send" to Triple("Don't send", "ارسال نشود", "不发送"),
         "applies on next connect" to Triple("applies on next connect", "در اتصال بعدی اعمال می‌شود", "下次连接时生效"),
         "DNS" to Triple("DNS", "DNS", "DNS"),

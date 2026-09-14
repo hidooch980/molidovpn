@@ -2977,6 +2977,11 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
 
+        content.addView(navRow(Strings.t("Report a problem"), Strings.t("Copies version, operator, mode and recent log")) { reportProblem() }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+
         content.addView(sectionLabel(Strings.t("ROUTING & DATA")), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -6705,6 +6710,34 @@ class MainActivity : Activity() {
                     preferences().edit().putBoolean(ConnectionReports.PREF, enabled).apply()
                 },
             )
+        }
+    }
+
+    /** Copies a support report (version, Android, operator, mode, last 200 log lines) and opens share. */
+    private fun reportProblem() {
+        val version = runCatching {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull().orEmpty()
+        val text = buildString {
+            appendLine("MolidoVPN $version")
+            appendLine("Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+            appendLine("Operator: ${ConnectionReports.operator(this@MainActivity)}")
+            appendLine("Mode: ${selectedProtocol.coreName}")
+            appendLine("---")
+            ConnectionLog.snapshot().takeLast(200).forEach { appendLine(it) }
+        }
+        try {
+            getSystemService(android.content.ClipboardManager::class.java)
+                ?.setPrimaryClip(android.content.ClipData.newPlainText("MolidoVPN report", text))
+            startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text),
+                    Strings.t("Report a problem"),
+                )
+            )
+        } catch (e: Exception) {
+            ConnectionLog.record("Report a problem failed: ${e.message}")
         }
     }
 
