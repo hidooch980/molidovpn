@@ -860,6 +860,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         /** currentProtocol for coreName "v2ray": contains "SHARD" so it takes the SHARD path. */
         const val V2RAY_PROTOCOL_MARKER = "SHARD-V2RAY"
 
+        /** currentProtocol for coreName "dns" (DNS-only gaming mode). */
+        const val DNS_ONLY_PROTOCOL = "DNS"
+
         /**
          * How long to wait for a rejected outer leg to actually stop.
          *
@@ -2668,6 +2671,46 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         }
     }
 
+    private var dnsForwarder: DnsOnlyForwarder? = null
+
+    /**
+     * DNS-only mode: the TUN routes ONLY the gaming DNS IPs (/32), with no default
+     * route, so all app traffic stays on the normal internet. [DnsOnlyForwarder]
+     * relays the captured queries through protect()ed sockets.
+     */
+    private fun startDnsOnlyTunnel() {
+        worker.execute {
+            try {
+                val preset = DnsSettings.preset(this)
+                val fellBack = preset == DnsSettings.Preset.AUTO || preset.servers.isEmpty()
+                val used = if (fellBack) DnsSettings.Preset.RADAR else preset
+                val builder = Builder()
+                    .setSession("MolidoVPN")
+                    .setMtu(1500)
+                    .addAddress("10.111.0.1", 32)
+                used.servers.forEach { ip ->
+                    builder.addDnsServer(ip)
+                    builder.addRoute(ip, 32)
+                }
+                tun = builder.establish() ?: error("Android could not establish the VPN interface")
+                vpnModeActive.set(true)
+                logDns("dns-only", used.servers, "preset=${used.key}" + if (fellBack) " fallback=auto->radar" else "")
+                ConnectionLog.record("DNS-only: ${used.enLabel} ${used.servers.joinToString(",")}")
+                dnsForwarder = DnsOnlyForwarder(tun!!) { socket -> protect(socket) }.also { it.start() }
+                currentVpnIp = ""
+                val text = Strings.tf("DNS: %s is active", used.label) +
+                    if (fellBack) " · " + Strings.t("DNS was Automatic — using Radar Game") else ""
+                sendStatus(STATUS_CONNECTED, text)
+                repostNotification()
+            } catch (e: Exception) {
+                ConnectionLog.record("DNS-only start failed: ${e.message}")
+                dnsForwarder?.stop()
+                dnsForwarder = null
+                failAndStop(e.message ?: "DNS-only start failed")
+            }
+        }
+    }
+
     /** True when this SHARD-shaped session is the "V2Ray servers" mode. */
     private fun isV2raySession(): Boolean = currentProtocol.contains("V2RAY")
 
@@ -4413,6 +4456,17 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         //
         // PSIPHON-OVER-WARP passes on purpose: its marker contains "PSIPHON", and
         // what it produces is still a Psiphon listener with the WARP leg underneath.
+        // DNS-ONLY: no core, xray, Psiphon or Tor. Needs a TUN, so no proxy mode.
+        if (currentProtocol == DNS_ONLY_PROTOCOL) {
+            if (proxyMode) {
+                connected.set(false)
+                failAndStop(Strings.t("DNS mode runs as a VPN, not a SOCKS proxy — set Tunnel type back to VPN"))
+                return
+            }
+            startDnsOnlyTunnel()
+            return
+        }
+
         if (proxyMode && currentProtocol.contains("TOR")) {
             connected.set(false)
             failAndStop(
@@ -4851,6 +4905,21 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             if (notify) sendStatus(STATUS_DISCONNECTED)
             // A reconnect re-enters startTunnel() on the worker thread, so the
             // service must survive; only a real disconnect stops it.
+            if (teardownService) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            return
+        }
+
+        if (currentProtocol == DNS_ONLY_PROTOCOL) {
+            dnsForwarder?.stop()
+            dnsForwarder = null
+            vpnModeActive.set(false)
+            tun?.close()
+            tun = null
+            connected.set(false)
+            if (notify) sendStatus(STATUS_DISCONNECTED)
             if (teardownService) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -5518,6 +5587,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
      * it here.
      */
     private fun prettyProtocol(): String = when {
+        currentProtocol == DNS_ONLY_PROTOCOL -> Strings.t("DNS")
         currentProtocol.contains(CHAIN_PROTOCOL_MARKER) -> Strings.t("Psiphon over WARP")
         currentProtocol.contains("TOR") -> {
             val mode = TorManager.activeMode?.let { " (${it.label})" } ?: ""

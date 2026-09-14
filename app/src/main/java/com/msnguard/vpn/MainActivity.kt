@@ -1193,6 +1193,8 @@ class MainActivity : Activity() {
             if (request != verifyRequest) return@postDelayed
             if (visualState != OrbitDialView.State.CONNECTED) return@postDelayed
             if (trafficRx > rxAtStart) return@postDelayed
+            // DNS-only mode carries no app traffic and counts no bytes.
+            if (selectedProtocol == Protocol.DNS_ONLY) return@postDelayed
             // The counter went BACKWARDS, so the baseline this watch was armed with
             // no longer refers to the same tunnel: the core's totals are per-tunnel
             // locals and its own reconnect loop restarts them at zero without the
@@ -7338,6 +7340,12 @@ class MainActivity : Activity() {
         // It is not on AUTO_SCAN_LADDER, so the UI-side one-time scan never runs
         // on top of it.
         AUTO("Auto", "auto", "Tests every connection type and connects with the best one"),
+
+        /**
+         * DNS-only for games: no tunnel, only resolver queries go to the chosen
+         * gaming DNS. Never runs the core/xray/Psiphon/Tor; not part of Auto.
+         */
+        DNS_ONLY("DNS", "dns", "Gaming DNS only, no VPN tunnel"),
         WIREGUARD("WireGuard", "wireguard", "WireGuard tunnel"),
         MASQUE("MASQUE", "masque", "HTTP/3 tunnel"),
         WARP_IN_WARP("WARP-on-WARP", "gool", "Double-layer tunnel"),
