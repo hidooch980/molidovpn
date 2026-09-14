@@ -24,29 +24,14 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * The Orbit dial: the one control that matters on the main screen.
+ * The MolidoVPN connect control: a rounded-square "squircle" with a gradient
+ * ring (accent -> connected), a soft glow that pulses while connecting, and a
+ * power glyph + caption (or the session timer) inside.
  *
- * Layers, outermost first — same list as the approved mock:
- *  1. breathing halo (connected only)
- *  2. two ripple rings that expand and fade (connected only)
- *  3. static hairline ring + slowly rotating dashed ring
- *  4. 60 gauge ticks, every fifth longer, lighting green as the tunnel comes up
- *  5. progress arc — sweeps while connecting, settles at ~85% when connected
- *  6. the glass core: radial specular, body gradient, bevel edge, inner bottom
- *     shadow, and a sheen band that crosses every ~5s
- *  7. contents: shield + "TAP TO CONNECT" when down, an outward radar sweep +
- *     "CONNECTING" while negotiating, session timer when up. The shield carries
- *     a checkmark, so it must never appear before CONNECTED — see
- *     [drawSeekingGlyph].
- *
- * GEOMETRY, and why it matters: the halo and the ripples grow *beyond* the ring.
- * The first Orbit build sized the ring to the full view, so the pulse expanded
- * outside the view's own bounds and the parent clipped it — the dial looked like
- * it was bursting out of an invisible box, and the bottom of the glow was simply
- * missing. Every radius is now derived from [RING_RATIO] of the half-extent, so
- * the biggest thing this view ever draws (ripple at 1.30x, halo at ring+22dp)
- * still lands inside the measured square. Nothing is clipped, and the heartbeat
- * scales inside its own frame.
+ * Sizing machinery ([sizeScale], [RING_DP] + [BLEED_DP] measured box) is kept
+ * from the original dial so the console fit logic in MainActivity is unchanged;
+ * the squircle is drawn at [SQUIRCLE_HALF_DP] inside that box, leaving the glow
+ * room to spread without being clipped by the software layer.
  */
 class OrbitDialView(
     context: Context,
@@ -184,517 +169,172 @@ class OrbitDialView(
         setMeasuredDimension(size, size)
     }
 
+    private val ringRect = RectF()
+    private val glowRect = RectF()
+    private val ringMatrix = Matrix()
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = height / 2f
         val half = minOf(width, height) / 2f
-        // The ring is RING_DP scaled by [sizeScale], and the view was measured
-        // (RING_DP + BLEED_DP) * sizeScale, so the glow always has its full
-        // proportional room.
-        //
-        // The second term is the safety net: if a parent hands this view LESS
-        // than it asked for (a narrow screen, an exact-size spec), the ring
-        // shrinks to the largest value that still leaves the bleed intact rather
-        // than letting the outer layers get shaved. Never remove it — it is the
-        // difference between a smaller dial and a cropped one.
+        // Same shrink/safety maths as the old dial: never larger than the box
+        // leaves room for the glow.
         val ring = minOf(
             dp(RING_DP) * sizeScale,
             half * RING_DP / (RING_DP + BLEED_DP).toFloat(),
         )
-        // Every inner offset below is authored against RING_DP, so they follow
-        // the ring by this factor instead of staying at a fixed dp and throwing
-        // the proportions off whenever the dial shrinks.
         val geo = ring / dp(RING_DP)
-        val accent = accentFor(state)
         val active = state == State.CONNECTED || state == State.DEGRADED
+        val side = dp(SQUIRCLE_HALF_DP) * geo
+        val corner = dp(SQUIRCLE_CORNER_DP) * geo
+        bounds.set(cx - side, cy - side, cx + side, cy + side)
 
-        if (active) {
-            drawHalo(canvas, cx, cy, ring, accent, geo)
-            drawRipples(canvas, cx, cy, ring, accent)
+        drawGlow(canvas, corner, active, geo)
+        drawBody(canvas, corner)
+        drawGradientRing(canvas, cx, cy, corner, geo)
+        drawContents(canvas, cx, cy, active, geo)
+        if (isFocused) {
+            paint.style = Paint.Style.STROKE
+            paint.shader = null
+            paint.strokeWidth = 2f * density
+            paint.color = palette.primary
+            val o = dp(6).toFloat()
+            glowRect.set(bounds.left - o, bounds.top - o, bounds.right + o, bounds.bottom + o)
+            canvas.drawRoundRect(glowRect, corner + o, corner + o, paint)
         }
-        drawRings(canvas, cx, cy, ring, geo)
-        drawTicks(canvas, cx, cy, ring, accent, geo)
-        drawArc(canvas, cx, cy, ring, geo)
-        drawCore(canvas, cx, cy, ring, accent, active)
-        drawContents(canvas, cx, cy, ring, accent, active, geo)
     }
 
-    /**
-     * Soft breathing bloom just outside the ring.
-     *
-     * Not clamped to the view any more: the mock's halo is `inset:-24px` on the
-     * dial box, so it is *meant* to spill past the ring. Clamping it was what
-     * flattened the glow on the bottom edge.
-     */
-    private fun drawHalo(canvas: Canvas, cx: Float, cy: Float, ring: Float, accent: Int, geo: Float) {
-        val radius = ring + dp(HALO_OUTSET_DP) * geo + pulse * dp(HALO_PULSE_DP) * geo
+    /** Soft coloured glow around the squircle; breathes on [pulse] while connecting. */
+    private fun drawGlow(canvas: Canvas, corner: Float, active: Boolean, geo: Float) {
+        val color: Int
+        val alpha: Float
+        val blurDp: Float
+        when {
+            state == State.CONNECTING -> {
+                color = palette.amber; alpha = 0.28f + 0.40f * pulse; blurDp = (16f + 14f * pulse) * geo
+            }
+            active -> {
+                color = palette.connected; alpha = 0.30f + 0.10f * pulse; blurDp = 22f * geo
+            }
+            state == State.FAILED -> {
+                color = palette.danger; alpha = 0.24f; blurDp = 14f * geo
+            }
+            else -> {
+                color = palette.primary; alpha = 0.16f; blurDp = 14f * geo
+            }
+        }
         paint.style = Paint.Style.FILL
-        paint.shader = RadialGradient(
-            cx, cy, radius,
-            intArrayOf(
-                Sculpt.withAlpha(accent, 0.001f),
-                Sculpt.withAlpha(accent, 0.15f + pulse * 0.07f),
-                Sculpt.withAlpha(accent, 0f),
-            ),
-            floatArrayOf(0.60f, 0.86f, 1f),
+        paint.shader = null
+        paint.color = palette.surface
+        paint.setShadowLayer(blurDp * density, 0f, 0f, Sculpt.withAlpha(color, alpha))
+        canvas.drawRoundRect(bounds, corner, corner, paint)
+        paint.clearShadowLayer()
+    }
+
+    private fun drawBody(canvas: Canvas, corner: Float) {
+        paint.style = Paint.Style.FILL
+        paint.shader = LinearGradient(
+            0f, bounds.top, 0f, bounds.bottom,
+            palette.surfaceVariant, palette.surface,
             Shader.TileMode.CLAMP,
         )
-        canvas.drawCircle(cx, cy, radius, paint)
+        canvas.drawRoundRect(bounds, corner, corner, paint)
         paint.shader = null
     }
 
-    /** Two rings, half a cycle apart, expanding 1.0 → 1.30 and fading out. */
-    private fun drawRipples(canvas: Canvas, cx: Float, cy: Float, ring: Float, accent: Int) {
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * density
-        for (offset in listOf(0f, 0.5f)) {
-            val phase = (loopFraction + offset) % 1f
-            paint.color = Sculpt.withAlpha(accent, 0.40f * (1f - phase))
-            canvas.drawCircle(cx, cy, ring * (1f + phase * RIPPLE_GROWTH), paint)
+    /** accent -> connected sweep around the squircle; rotates while connecting. */
+    private fun drawGradientRing(canvas: Canvas, cx: Float, cy: Float, corner: Float, geo: Float) {
+        val stroke = 4f * density * geo
+        val inset = stroke / 2f
+        ringRect.set(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
+        val start: Int
+        val end: Int
+        when (state) {
+            State.FAILED -> { start = palette.danger; end = Sculpt.blend(palette.danger, palette.amber, 0.35f) }
+            State.CONNECTING -> { start = palette.amber; end = palette.primary }
+            State.DEGRADED -> { start = palette.amber; end = palette.connected }
+            else -> { start = palette.primary; end = palette.connected }
         }
-    }
-
-    private fun drawRings(canvas: Canvas, cx: Float, cy: Float, ring: Float, geo: Float) {
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1f * density
-        paint.color = Sculpt.withAlpha(palette.ink, 0.055f)
-        canvas.drawCircle(cx, cy, ring, paint)
-
-        // Slowly rotating dashed ring, drawn as short arcs rather than a
-        // DashPathEffect so the rotation is exact and cheap.
-        val inner = ring - dp(20) * geo
-        paint.color = Sculpt.withAlpha(palette.ink, 0.07f)
-        bounds.set(cx - inner, cy - inner, cx + inner, cy + inner)
-        val spin = loopFraction * 12f
-        var angle = spin
-        while (angle < 360f + spin) {
-            canvas.drawArc(bounds, angle, 4.5f, false, paint)
-            angle += 11f
-        }
-    }
-
-    /**
-     * The gauge, matching the mock tick-for-tick.
-     *
-     * The mock has 60 identical ticks (1.5px x 7px), lights the first 44 when
-     * connected, and paints every third tick amber while connecting. The previous
-     * Kotlin version invented long "major" ticks every fifth position and a
-     * 3-tick chasing comet, which is why it read as busier and less clean than
-     * the preview.
-     */
-    private fun drawTicks(canvas: Canvas, cx: Float, cy: Float, ring: Float, accent: Int, geo: Float) {
-        val litCount = when (state) {
-            State.CONNECTED, State.DEGRADED -> (TICK_LIT * tickReveal).roundToInt()
-            else -> 0
-        }
-        // Standing wave, CONNECTING only.
-        //
-        // Three lobes of light undulate around the rim instead of the old pale
-        // halo, which was a single rotating white glow and read as generic. It is
-        // the same family as the radar sweep in the middle of the core — waves
-        // rather than a spinner — so the two motions belong to each other.
-        //
-        // Cost: none beyond what the gauge already pays. All 60 ticks are drawn
-        // in every state anyway; the wave only changes each tick's colour, alpha
-        // and length. No new shape, no new animator, no extra invalidate: the
-        // 1150ms loop animator that already runs while CONNECTING drives it.
-        val wavePhase = loopFraction * TWO_PI
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        val length = dp(7) * geo
-        for (i in 0 until TICK_COUNT) {
-            // -90° so tick 0 sits at the top and the gauge fills clockwise.
-            val rad = Math.toRadians((i * (360.0 / TICK_COUNT)) - 90.0)
-            val cosA = cos(rad).toFloat()
-            val sinA = sin(rad).toFloat()
-            val lit = i < litCount
-            var tickLength = length
-            paint.strokeWidth = 1.5f * density
-            when {
-                lit -> {
-                    paint.color = Sculpt.withAlpha(accent, 0.95f)
-                    paint.setShadowLayer(3f * density, 0f, 0f, Sculpt.withAlpha(accent, 0.8f))
-                }
-                state == State.CONNECTING -> {
-                    // Three lobes: sin(3θ - phase), rectified and sharpened so the
-                    // crests are compact and the troughs go properly dark instead
-                    // of leaving the whole rim half-lit.
-                    val theta = (i.toFloat() / TICK_COUNT) * TWO_PI
-                    val raw = sin((theta * WAVE_LOBES - wavePhase).toDouble()).toFloat()
-                    val w = if (raw <= 0f) 0f else Math.pow(raw.toDouble(), WAVE_SHARPNESS).toFloat()
-                    tickLength = (6.4f + 4.6f * w) * density * geo
-                    paint.strokeWidth = (1.5f + 0.8f * w) * density
-                    if (w <= 0.05f) {
-                        paint.color = Sculpt.withAlpha(palette.ink, 0.09f)
-                        paint.clearShadowLayer()
-                    } else {
-                        // Crests tip into mint, so the wave has a hot centre and
-                        // amber shoulders rather than one flat colour.
-                        val hue = if (w > 0.55f) palette.mint else palette.amber
-                        paint.color = Sculpt.withAlpha(hue, 0.09f + 0.78f * w)
-                        if (w > 0.6f) {
-                            paint.setShadowLayer(4f * density * w, 0f, 0f, Sculpt.withAlpha(hue, 0.75f * w))
-                        } else {
-                            paint.clearShadowLayer()
-                        }
-                    }
-                }
-                else -> {
-                    paint.color = Sculpt.withAlpha(palette.ink, 0.11f)
-                    paint.clearShadowLayer()
-                }
-            }
-            val startR = ring - tickLength
-            canvas.drawLine(
-                cx + cosA * startR, cy + sinA * startR,
-                cx + cosA * ring, cy + sinA * ring,
-                paint,
-            )
-        }
-        paint.clearShadowLayer()
-        paint.strokeCap = Paint.Cap.BUTT
-    }
-
-    private fun drawArc(canvas: Canvas, cx: Float, cy: Float, ring: Float, geo: Float) {
-        val r = ring - dp(13) * geo
-        bounds.set(cx - r, cy - r, cx + r, cy + r)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.5f * density
-        paint.strokeCap = Paint.Cap.ROUND
-
-        paint.color = Sculpt.withAlpha(palette.ink, 0.06f)
-        canvas.drawArc(bounds, 0f, 360f, false, paint)
-
-        // CONNECTING: two soft crests on a full circle, turning with the wave.
-        //
-        // The old treatment was a single 80–220° arc chasing its own tail, which
-        // is the pale rotating sliver he asked to replace. This is the same
-        // standing-wave idea as the gauge: the stroke covers the whole circle and
-        // the gradient decides where it is visible, so the two crests glide
-        // around instead of one lump sweeping past. Still one drawArc.
-        if (state == State.CONNECTING) {
-            paint.strokeWidth = 2.2f * density
-            val sweepShader = SweepGradient(
-                cx, cy,
-                intArrayOf(
-                    Sculpt.withAlpha(palette.amber, 0.55f),
-                    Sculpt.withAlpha(palette.amber, 0f),
-                    Sculpt.withAlpha(palette.amber, 0f),
-                    Sculpt.withAlpha(palette.amber, 0.55f),
-                ),
-                floatArrayOf(0f, 0.35f, 0.65f, 1f),
-            )
-            // SweepGradient starts at 3 o'clock; rotate it so the crest leads
-            // from the top and travels with loopFraction.
-            sweepShader.setLocalMatrix(
-                Matrix().apply { setRotate(loopFraction * 360f - 90f, cx, cy) },
-            )
-            paint.shader = sweepShader
-            canvas.drawArc(bounds, 0f, 360f, false, paint)
-            paint.shader = null
-            paint.strokeCap = Paint.Cap.BUTT
-            return
-        }
-
-        val sweep = when (state) {
-            // 798 - 110 of a 798 dasharray in the mock ≈ 86% of the circle.
-            State.CONNECTED, State.DEGRADED -> 310f
-            else -> 0f
-        }
-        if (sweep <= 0f) {
-            paint.strokeCap = Paint.Cap.BUTT
-            return
-        }
-        paint.shader = SweepGradient(
+        val alpha = if (state == State.DISCONNECTED) 0.60f else 1f
+        val shader = SweepGradient(
             cx, cy,
-            intArrayOf(palette.connected, palette.mint, palette.connected),
+            intArrayOf(
+                Sculpt.withAlpha(start, alpha),
+                Sculpt.withAlpha(end, alpha),
+                Sculpt.withAlpha(start, alpha),
+            ),
             floatArrayOf(0f, 0.5f, 1f),
         )
-        canvas.drawArc(bounds, -90f, sweep, false, paint)
-        paint.shader = null
-        paint.strokeCap = Paint.Cap.BUTT
-    }
-
-    private fun drawCore(canvas: Canvas, cx: Float, cy: Float, ring: Float, accent: Int, active: Boolean) {
-        val r = ring * CORE_RATIO
-        val base = Sculpt.blend(palette.surface, palette.ink, 0.035f)
-
-        // Drop shadow under the glass; accent-tinted when the tunnel is up.
-        paint.style = Paint.Style.FILL
-        paint.color = base
-        val shadowColor = if (active) {
-            Sculpt.withAlpha(accent, 0.38f)
-        } else {
-            Sculpt.withAlpha(Color.BLACK, light.dialShadowAlpha)
+        if (state == State.CONNECTING) {
+            ringMatrix.reset()
+            ringMatrix.setRotate(loopFraction * 360f, cx, cy)
+            shader.setLocalMatrix(ringMatrix)
         }
-        paint.setShadowLayer(dp(if (active) 22 else 16).toFloat(), 0f, dp(6).toFloat(), shadowColor)
-        canvas.drawCircle(cx, cy, r, paint)
-        paint.clearShadowLayer()
-
-        // Body gradient, lit from the top-left.
-        paint.shader = LinearGradient(
-            cx - r, cy - r, cx + r * 0.6f, cy + r,
-            intArrayOf(
-                Sculpt.lighten(base, light.dialBodyLift),
-                base,
-                Sculpt.darken(base, light.dialBodyDrop),
-            ),
-            floatArrayOf(0f, 0.46f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawCircle(cx, cy, r, paint)
-        paint.shader = null
-
-        // Specular highlight near the top-left — this is what sells "glass".
-        paint.shader = RadialGradient(
-            cx - r * 0.34f, cy - r * 0.42f, r * 0.95f,
-            intArrayOf(
-                Sculpt.withAlpha(light.bevelColor, light.dialSpecular),
-                Sculpt.withAlpha(light.bevelColor, 0f),
-            ),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawCircle(cx, cy, r, paint)
-        paint.shader = null
-
-        // Sheen band crossing the glass, connected only. Clipped to the circle.
-        if (active) {
-            val save = canvas.save()
-            corePath.reset()
-            corePath.addCircle(cx, cy, r, Path.Direction.CW)
-            canvas.clipPath(corePath)
-            val travel = -1.4f + 2.8f * ((loopFraction * 0.6f) % 1f)
-            val bandX = cx + travel * r
-            paint.shader = LinearGradient(
-                bandX - r * 0.30f, cy - r, bandX + r * 0.30f, cy + r,
-                intArrayOf(
-                    Sculpt.withAlpha(light.bevelColor, 0f),
-                    Sculpt.withAlpha(light.bevelColor, light.dialSheen),
-                    Sculpt.withAlpha(light.bevelColor, 0f),
-                ),
-                floatArrayOf(0f, 0.5f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawCircle(cx, cy, r, paint)
-            paint.shader = null
-            canvas.restoreToCount(save)
-        }
-
-        // Inner bottom shadow: the fourth sculpt layer, inside the glass.
-        paint.shader = RadialGradient(
-            cx, cy + r * 0.62f, r * 0.95f,
-            intArrayOf(
-                Sculpt.withAlpha(light.dialInnerShadowColor, light.dialInnerShadow),
-                Sculpt.withAlpha(light.dialInnerShadowColor, 0f),
-            ),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawCircle(cx, cy, r, paint)
-        paint.shader = null
-
-        // Bevel edge: brighter at the top; accent ring when active.
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.4f * density
-        paint.shader = LinearGradient(
-            cx, cy - r, cx, cy + r,
-            intArrayOf(
-                Sculpt.withAlpha(light.bevelColor, light.dialEdgeStrong),
-                Sculpt.withAlpha(light.bevelColor, light.dialEdgeSoft),
-            ),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawCircle(cx, cy, r, paint)
+        paint.strokeWidth = stroke
+        paint.shader = shader
+        canvas.drawRoundRect(ringRect, corner - inset, corner - inset, paint)
         paint.shader = null
-        if (active) {
-            paint.strokeWidth = 1.2f * density
-            paint.color = Sculpt.withAlpha(accent, 0.36f)
-            canvas.drawCircle(cx, cy, r - dp(1), paint)
-        }
-        if (isFocused) {
-            paint.strokeWidth = 2f * density
-            paint.color = accent
-            canvas.drawCircle(cx, cy, r + dp(6), paint)
-        }
     }
 
-    private fun drawContents(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        ring: Float,
-        accent: Int,
-        active: Boolean,
-        geo: Float,
-    ) {
+    /** Power glyph + caption, or the session timer while the tunnel is up. */
+    private fun drawContents(canvas: Canvas, cx: Float, cy: Float, active: Boolean, geo: Float) {
+        val iconColor = when (state) {
+            State.CONNECTED -> palette.connected
+            State.DEGRADED, State.CONNECTING -> palette.amber
+            State.FAILED -> palette.danger
+            State.DISCONNECTED -> palette.primary
+        }
+        val iconCy = cy - dp(18) * geo
+        val r = dp(22) * geo
+        paint.style = Paint.Style.STROKE
+        paint.shader = null
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 3.2f * density * geo
+        paint.color = if (state == State.CONNECTING) {
+            Sculpt.withAlpha(iconColor, 0.55f + 0.45f * pulse)
+        } else {
+            iconColor
+        }
+        ringRect.set(cx - r, iconCy - r, cx + r, iconCy + r)
+        // 300 degree arc with the gap centred on straight up.
+        canvas.drawArc(ringRect, -60f, 300f, false, paint)
+        canvas.drawLine(cx, iconCy - r - dp(3) * geo, cx, iconCy - r * 0.05f, paint)
+        paint.strokeCap = Paint.Cap.BUTT
+
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.letterSpacing = spacing(0.12f)
         if (active && timerText.isNotEmpty()) {
             textPaint.typeface = monoTypeface
-            textPaint.textAlign = Paint.Align.CENTER
-            textPaint.textSize = 26f * density * geo
-            textPaint.color = Sculpt.onGlass(accent)
-            // The glow is the dark theme's; on a light dial a 14dp accent halo
-            // behind dark digits just muddies them, so it is dropped there.
-            if (light.elevationDp == 0f) {
-                textPaint.setShadowLayer(dp(14) * geo, 0f, 0f, Sculpt.withAlpha(accent, 0.5f))
+            textPaint.textSize = 22f * density * geo
+            textPaint.color = palette.ink
+            canvas.drawText(timerText, cx, cy + dp(34) * geo, textPaint)
+            textPaint.typeface = labelTypeface
+            textPaint.textSize = 9.5f * density * geo
+            textPaint.color = palette.muted
+            canvas.drawText(Strings.t("SESSION"), cx, cy + dp(52) * geo, textPaint)
+        } else {
+            textPaint.typeface = labelTypeface
+            textPaint.textSize = 12f * density * geo
+            textPaint.color = when (state) {
+                State.FAILED -> palette.dangerText
+                State.CONNECTING -> palette.amberText
+                else -> palette.muted
             }
-            canvas.drawText(timerText, cx, cy + 7f * density * geo, textPaint)
-            textPaint.clearShadowLayer()
-
-            textPaint.typeface = labelTypeface
-            textPaint.textSize = 9f * density * geo
-            textPaint.letterSpacing = if (AppLanguage.current() != "en") 0f else 0.19f
-            textPaint.color = Sculpt.withAlpha(palette.faint, 0.95f)
-            canvas.drawText(Strings.t("SESSION"), cx, cy + 27f * density * geo, textPaint)
-            textPaint.letterSpacing = spacing(0f)
-            return
+            val caption = when (state) {
+                State.CONNECTING -> if (progressPercent >= 0) {
+                    Strings.tf("CONNECTING %s%%", progressPercent)
+                } else {
+                    Strings.t("CONNECTING")
+                }
+                State.FAILED -> Strings.t("RETRY")
+                State.CONNECTED, State.DEGRADED -> Strings.t("Connected")
+                State.DISCONNECTED -> Strings.t("TAP TO CONNECT")
+            }
+            canvas.drawText(caption, cx, cy + dp(40) * geo, textPaint)
         }
-
-        // CONNECTING gets its own glyph, never the shield.
-        //
-        // The shield carries a checkmark, and a checkmark means "done" in every
-        // UI a user has ever seen — so during a 20-second Psiphon handshake the
-        // dial was actively lying, and people reported being connected while the
-        // tunnel was still negotiating. Nothing that resolves to a tick may be
-        // drawn before State.CONNECTED.
-        //
-        // What replaces it: three arcs of an expanding radar sweep, drawn in
-        // amber, each one further out and fainter, cycling on the same loop
-        // fraction that already drives the arc and the pulse. It reads as
-        // "reaching out, no answer yet" and cannot be mistaken for a success
-        // mark. Free to animate — the loop animator is already running in this
-        // state, so this adds no timer and no wakeups.
-        if (state == State.CONNECTING) {
-            drawSeekingGlyph(canvas, cx, cy, geo)
-
-            textPaint.typeface = labelTypeface
-            textPaint.textAlign = Paint.Align.CENTER
-            textPaint.textSize = 10.5f * density * geo
-            textPaint.letterSpacing = if (AppLanguage.current() != "en") 0f else 0.19f
-            textPaint.color = palette.amberText
-            // The percentage stays, appended to the caption instead of occupying
-            // the middle of the dial: it is real information when the transport
-            // reports it, and joining it to the word keeps a number from ever
-            // sitting alone where the tick used to be. Transports that cannot
-            // measure progress print no figure (see progressPercent).
-            val caption = if (progressPercent >= 0) Strings.tf("CONNECTING %s%%", progressPercent) else Strings.t("CONNECTING")
-            canvas.drawText(caption, cx, cy + dp(26) * geo, textPaint)
-            textPaint.letterSpacing = spacing(0f)
-            return
-        }
-
-        // Shield glyph + call to action.
-        val shieldTop = cy - dp(30) * geo
-        val shieldW = dp(30) * geo
-        val shieldH = dp(34) * geo
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f * density
-        paint.strokeJoin = Paint.Join.ROUND
-        paint.color = when (state) {
-            State.FAILED -> palette.danger
-            else -> Sculpt.withAlpha(palette.muted, 0.9f)
-        }
-        val path = Path().apply {
-            moveTo(cx, shieldTop)
-            lineTo(cx + shieldW / 2f, shieldTop + shieldH * 0.13f)
-            lineTo(cx + shieldW / 2f, shieldTop + shieldH * 0.52f)
-            cubicTo(
-                cx + shieldW / 2f, shieldTop + shieldH * 0.82f,
-                cx + shieldW * 0.22f, shieldTop + shieldH * 0.97f,
-                cx, shieldTop + shieldH,
-            )
-            cubicTo(
-                cx - shieldW * 0.22f, shieldTop + shieldH * 0.97f,
-                cx - shieldW / 2f, shieldTop + shieldH * 0.82f,
-                cx - shieldW / 2f, shieldTop + shieldH * 0.52f,
-            )
-            lineTo(cx - shieldW / 2f, shieldTop + shieldH * 0.13f)
-            close()
-        }
-        canvas.drawPath(path, paint)
-        // The tick inside the shield, as in the mock.
-        paint.strokeWidth = 1.7f * density
-        canvas.drawPath(Path().apply {
-            moveTo(cx - shieldW * 0.15f, shieldTop + shieldH * 0.50f)
-            lineTo(cx - shieldW * 0.02f, shieldTop + shieldH * 0.63f)
-            lineTo(cx + shieldW * 0.20f, shieldTop + shieldH * 0.36f)
-        }, paint)
-        paint.strokeJoin = Paint.Join.MITER
-
-        textPaint.typeface = labelTypeface
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.textSize = 10.5f * density * geo
-        textPaint.letterSpacing = if (AppLanguage.current() != "en") 0f else 0.19f
-        // CONNECTING never reaches here — it returned above with its own glyph —
-        // so only the resting and failed captions are left.
-        textPaint.color = when (state) {
-            State.FAILED -> palette.dangerText
-            else -> Sculpt.withAlpha(palette.faint, 0.95f)
-        }
-        val cta = when (state) {
-            State.FAILED -> Strings.t("RETRY")
-            else -> Strings.t("TAP TO CONNECT")
-        }
-        canvas.drawText(cta, cx, cy + dp(26) * geo, textPaint)
-        textPaint.letterSpacing = spacing(0f)
-    }
-
-    /**
-     * The CONNECTING glyph: an outward radar sweep.
-     *
-     * Replaces the shield-with-tick, which read as "connected" while the tunnel
-     * was still negotiating. Three arcs leave a small solid core and travel
-     * outward, each fading as it goes, so the motion is unmistakably "still
-     * trying" — an open shape with no terminal state, the visual opposite of a
-     * checkmark.
-     *
-     * The arcs are drawn on [loopFraction], which the loop animator already
-     * advances in this state (1150ms per cycle), so nothing new is scheduled and
-     * the cost is three drawArc calls per existing frame.
-     *
-     * Deliberately arcs facing up rather than full circles: a full ring at this
-     * radius collides with the gauge ticks and the progress arc, and a partial
-     * arc also gives the sweep a direction.
-     */
-    private fun drawSeekingGlyph(canvas: Canvas, cx: Float, cy: Float, geo: Float) {
-        val amber = palette.amber
-        // The core dot: breathes on the same pulse as the halo, so the glyph has
-        // a fixed anchor and the eye has something to hold while the arcs move.
-        paint.style = Paint.Style.FILL
-        paint.shader = null
-        paint.color = Sculpt.withAlpha(amber, 0.85f)
-        canvas.drawCircle(cx, cy - dp(6) * geo, (2.6f + pulse * 0.9f) * density * geo, paint)
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        val base = dp(7) * geo
-        val step = 7.5f * density * geo
-        for (index in 0 until 3) {
-            // Each arc is a third of a cycle behind the one inside it, so they
-            // leave the core in sequence instead of pulsing together.
-            val phase = (loopFraction + index / 3f) % 1f
-            val radius = base + step * index + phase * step
-            // Fades with distance AND with its own phase: an arc is brightest as
-            // it leaves and gone by the time it reaches the next arc's start, so
-            // the ring count reads as three no matter where the cycle is.
-            val alpha = (0.72f - index * 0.18f) * (1f - phase)
-            if (alpha <= 0.02f) continue
-            paint.color = Sculpt.withAlpha(amber, alpha)
-            paint.strokeWidth = (2.1f - index * 0.35f) * density
-            bounds.set(
-                cx - radius,
-                cy - dp(6) * geo - radius,
-                cx + radius,
-                cy - dp(6) * geo + radius,
-            )
-            // -128° start over a 76° sweep: an arc centred on straight up, wide
-            // enough to read as a wavefront and narrow enough to stay clear of
-            // the caption below.
-            canvas.drawArc(bounds, -128f, 76f, false, paint)
-        }
-        paint.strokeCap = Paint.Cap.BUTT
+        textPaint.letterSpacing = 0f
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean = when (event.actionMasked) {
@@ -751,6 +391,13 @@ class OrbitDialView(
 
     private fun startLoop() {
         if (loopAnimator != null) return
+        // Respect the system animator scale / 'remove animations': no loop, a
+        // static half-glow instead.
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            pulse = 0.5f
+            invalidate()
+            return
+        }
         loopAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = if (state == State.CONNECTING) 1_150 else 4_400
             repeatCount = ValueAnimator.INFINITE
@@ -835,6 +482,10 @@ class OrbitDialView(
          * button is not.
          */
         const val MIN_SIZE_SCALE = 0.78f
+        /** Half the squircle's side at sizeScale 1 (190dp control). */
+        const val SQUIRCLE_HALF_DP = 95
+        /** Squircle corner radius at sizeScale 1. */
+        const val SQUIRCLE_CORNER_DP = 64
         /** Core radius as a fraction of the ring: 99dp core / 133dp ring. */
         const val CORE_RATIO = 0.744f
         /**

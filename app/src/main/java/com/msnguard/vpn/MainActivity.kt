@@ -94,6 +94,8 @@ class MainActivity : Activity() {
     private var transportRailHeight = 0
     private lateinit var footerWave: OrbitFooterWave
     private lateinit var statusLed: View
+    private lateinit var statusPill: LinearLayout
+    private lateinit var statusPillText: TextView
     private lateinit var mainRoot: FrameLayout
     private lateinit var pageHost: FrameLayout
     private lateinit var appUpdater: AppUpdater
@@ -1233,18 +1235,31 @@ class MainActivity : Activity() {
 
     private fun createHeader(): LinearLayout = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        // No mark in the header. The brand lives on the launcher icon and the
-        // opening splash; repeating it above a single connect button was upstream
-        // furniture, not information. What belongs here is live state: a small
-        // LED that mirrors the dial, plus the settings entry.
-        statusLed.layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply {
-            rightMargin = dp(8)
-        }
-        addView(statusLed, statusLed.layoutParams)
-        addView(label(Strings.t("MolidoVPN"), 13f, MUTED, TypefaceStyle.MEDIUM).apply {
-            letterSpacing = spacing(0.14f)
+        // MolidoVPN identity row: logo + wordmark on one side; the live status
+        // pill (LED + state text) and the settings entry on the other.
+        addView(ImageView(this@MainActivity).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(10) })
+        addView(label(Strings.t("MolidoVPN"), 17f, INK, TypefaceStyle.MEDIUM).apply {
+            maxLines = 1
         })
         addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+        statusPillText = label(Strings.t("Not connected"), 12f, MUTED, TypefaceStyle.MEDIUM).apply {
+            maxLines = 1
+        }
+        statusPill = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = Sculpt.sculptedBackground(resources.displayMetrics.density, palette.surface, 16)
+            addView(statusLed, LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(8) })
+            addView(statusPillText)
+        }
+        addView(statusPill, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
         addView(ImageView(this@MainActivity).apply {
             setImageResource(R.drawable.ic_settings)
             contentDescription = "تنظیمات"
@@ -1283,6 +1298,24 @@ class MainActivity : Activity() {
             999,
             accent = if (glow) Sculpt.lighten(fill, 0.4f) else null,
         )
+        if (::statusPillText.isInitialized) {
+            val key = when (visualState) {
+                OrbitDialView.State.CONNECTED -> "Connected"
+                OrbitDialView.State.DEGRADED -> "Connection degraded"
+                OrbitDialView.State.CONNECTING -> "Connecting"
+                OrbitDialView.State.FAILED -> "Connection failed"
+                OrbitDialView.State.DISCONNECTED -> "Not connected"
+            }
+            statusPillText.text = Strings.t(key)
+            statusPillText.setTextColor(
+                when (visualState) {
+                    OrbitDialView.State.CONNECTED -> palette.connectedText
+                    OrbitDialView.State.DEGRADED, OrbitDialView.State.CONNECTING -> palette.amberText
+                    OrbitDialView.State.FAILED -> palette.dangerText
+                    OrbitDialView.State.DISCONNECTED -> MUTED
+                }
+            )
+        }
     }
 
     /**
@@ -1417,17 +1450,8 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(7) })
 
-        val tiles = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(tileDown, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(9) })
-            addView(tileUp, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(0); rightMargin = dp(9) })
-            addView(tileSpeed, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(0) })
-        }
-        addView(tiles, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { topMargin = dp(14) })
-
+        // MolidoVPN home order: connect control -> location card -> mode chips ->
+        // mode add-on card -> stats.
         addView(exitNodeCard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1471,6 +1495,17 @@ class MainActivity : Activity() {
         // None of the three belonged on the first screen: SPLIT was already
         // duplicated as a Settings row, SCAN MODE only applies to MASQUE and
         // WireGuard, and LOG is where you go after something has gone wrong.
+
+        val tiles = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(tileDown, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(9) })
+            addView(tileUp, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(9) })
+            addView(tileSpeed, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        addView(tiles, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(14) })
 
         // Fills the gap that used to sit between the action bar and the bottom
         // inset. Weight is one Path; it only animates while connected.

@@ -123,20 +123,22 @@ object Sculpt {
          * the largest text in the app, so it does not get to be approximate.
          */
         val dialTextShift: Float,
+        /** MolidoVPN: 1dp neutral card border. Transparent = no border (dark). */
+        val cardBorder: Int = Color.TRANSPARENT,
     )
 
     val DARK_LIGHTING = Lighting(
         topLift = 0.09f,
         bottomDrop = 0.09f,
-        specular = 0.13f,
-        innerShadow = 0.30f,
+        specular = 0.06f,
+        innerShadow = 0.18f,
         pressedInnerShadow = 0.45f,
-        bevel = 0.22f,
+        bevel = 0.08f,
         pressedBevel = 0.05f,
         bevelColor = Color.WHITE,
         elevationDp = 0f,
         elevationAlpha = 0f,
-        defaultOutline = Color.argb(28, 255, 255, 255),
+        defaultOutline = Color.TRANSPARENT,
         recessOutline = Color.argb(20, 255, 255, 255),
         dialShadowAlpha = 0.65f,
         dialSpecular = 0.16f,
@@ -197,6 +199,7 @@ object Sculpt {
         dialBodyDrop = 0.06f,
         // darken(mint #0E9C82, 0.30) = #0A6D5B: 6.9:1 on the white dial face.
         dialTextShift = -0.30f,
+        cardBorder = 0xFFD3E7E1.toInt(),
     )
 
     /**
@@ -389,7 +392,14 @@ class GlassDrawable(
         )
         // A pill radius (999dp in the mock) has to clamp to half the height or
         // drawRoundRect produces a lens shape on short views.
-        val radius = (radiusDp * density).coerceAtMost(minOf(rect.width(), rect.height()) / 2f)
+        // MolidoVPN shape scale: cards 24dp, small controls 16dp, pills stay pills.
+        val shapeDp = when {
+            radiusDp >= 100f -> radiusDp
+            radiusDp >= 17f -> 24f
+            radiusDp > 0f -> 16f
+            else -> radiusDp
+        }
+        val radius = (shapeDp * density).coerceAtMost(minOf(rect.width(), rect.height()) / 2f)
 
         // 0. outer drop shadow — the light palette's ONLY depth cue.
         //
@@ -527,8 +537,16 @@ class GlassDrawable(
         paint.shader = null
 
         // outline / lit accent ring
-        paint.color = stroke
-        canvas.drawRoundRect(rect, radius, radius, paint)
+        // Neutral outlines (low alpha, no glow) become the palette's card border:
+        // none on dark, a 1dp hairline on light. Lit accent outlines draw as-is.
+        val litOutline = Color.alpha(stroke) >= 40 || (glow != null && Color.alpha(glow) >= 40)
+        val outlineColor = if (litOutline) stroke else light.cardBorder
+        if (Color.alpha(outlineColor) > 0) {
+            paint.color = outlineColor
+            if (!litOutline) paint.strokeWidth = density
+            canvas.drawRoundRect(rect, radius, radius, paint)
+            paint.strokeWidth = strokeWidth
+        }
 
         // a lit control also gets a soft outer bloom, like the mock's box-shadow
         glow?.let { color ->

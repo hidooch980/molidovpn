@@ -159,228 +159,86 @@ class TransportRail(
     context: Context,
     private val palette: AppAppearance.Palette,
     private val labels: List<String>,
-    private val perRow: Int = 3,
+    @Suppress("unused") private val perRow: Int = 3,
     private val onPick: (Int) -> Unit,
 ) : FrameLayout(context) {
 
-    private val thumb: View
+    // MolidoVPN: a single horizontally scrollable row of mode chips (pill
+    // buttons, 16dp corners) instead of the old recessed grid with a thumb.
+    // The public surface (rowCount, select, setEnabled) is unchanged.
+
     private val cells = mutableListOf<TextView>()
-    private var selectedIndex = 0
-    private var thumbAnimator: ValueAnimator? = null
-
-    /** Hairline separators between cells. See [onDraw]. */
-    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = context.resources.displayMetrics.density * 0.75f
-        color = Sculpt.withAlpha(palette.faint, 0.22f)
+    private var selectedIndex = -1
+    private val density = context.resources.displayMetrics.density
+    private val scroller = android.widget.HorizontalScrollView(context).apply {
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
+        clipToPadding = false
     }
 
-    /** How many rows the labels need at [perRow] columns. */
-    val rowCount: Int = if (labels.isEmpty()) {
-        1
-    } else {
-        (labels.size + perRow - 1) / perRow
-    }
-
-    /** Columns actually laid out. Never more than there are labels. */
-    private val columns: Int = perRow.coerceAtMost(labels.size.coerceAtLeast(1))
-
-    /** Width of one cell, derived from the padded content box. */
-    private val cellWidth: Float
-        get() {
-            val inner = width - paddingLeft - paddingRight
-            if (inner <= 0) return 0f
-            return inner.toFloat() / columns
-        }
-
-    /** Height of one cell. Rows are equal-weighted, so this is just a division. */
-    private val cellHeight: Float
-        get() {
-            val inner = height - paddingTop - paddingBottom
-            if (inner <= 0) return 0f
-            return inner.toFloat() / rowCount
-        }
+    /** Always one row now; MainActivity sizes the view from this. */
+    val rowCount: Int = 1
 
     init {
-        val fill = Sculpt.recess(palette.surface, 0.30f)
-        // 24dp rather than the pill radius: a two-row control with a 999 radius
-        // reads as a lozenge with dead corners. Kept at 999 when there is only one
-        // row, so nothing about the single-row look changes.
-        val radius = if (rowCount > 1) 24 else 999
-        background = Sculpt.recessedBackground(resources.displayMetrics.density, fill, radius)
-        setPadding(context.px(5), context.px(5), context.px(5), context.px(5))
-        // ViewGroups skip onDraw by default; the separators are drawn there.
-        setWillNotDraw(false)
-
-        thumb = View(context).apply {
-            background = Sculpt.sculptedBackground(
-                resources.displayMetrics.density,
-                Sculpt.blend(palette.surface, palette.primary, 0.16f),
-                if (rowCount > 1) 20 else 999,
-                Sculpt.withAlpha(palette.primary, 0.45f),
-            )
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        // No margins here: the FrameLayout padding already insets children. An
-        // earlier version added another 5dp on three sides on top of the padding,
-        // which is why the lit thumb sat short of the cell it was under.
-        addView(thumb, LayoutParams(0, 0))
-
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        labels.indices.step(columns).forEach { start ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            for (index in start until (start + columns)) {
-                if (index >= labels.size) {
-                    // Short last row: a weighted spacer, so the cells that do exist
-                    // keep the same width as every other row's instead of stretching
-                    // to fill and leaving the thumb the wrong size under them.
-                    row.addView(
-                        View(context),
-                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f),
-                    )
-                    continue
+        labels.forEachIndexed { index, text ->
+            val chip = TextView(context).apply {
+                this.text = text
+                textSize = 13f
+                typeface = Typefaces.medium(context)
+                gravity = Gravity.CENTER
+                setSingleLine(true)
+                letterSpacing = spacing(0.03f)
+                setPadding(context.px(16), 0, context.px(16), 0)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    if (!isEnabled) return@setOnClickListener
+                    performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    select(index, animate = true)
+                    onPick(index)
                 }
-                val cell = object : TextView(context) {
-                    override fun setPressed(pressed: Boolean) {
-                        super.setPressed(pressed)
-                        background = if (pressed) {
-                            Sculpt.sculptedBackground(
-                                resources.displayMetrics.density,
-                                Sculpt.recess(palette.surface, 0.18f),
-                                if (rowCount > 1) 20 else 999,
-                                pressed = true,
-                            )
-                        } else {
-                            null
-                        }
-                    }
-                }.apply {
-                    this.text = labels[index]
-                    textSize = 12.5f
-                    setTextColor(palette.faint)
-                    letterSpacing = spacing(0.05f)
-                    typeface = Typefaces.medium(context)
-                    gravity = Gravity.CENTER
-                    if (AppLanguage.current() == "en") {
-                        setSingleLine(true)
-                        ellipsize = TextUtils.TruncateAt.END
-                    } else {
-                        setLineSpacing(0f, Typefaces.lineHeightMult())
-                        maxLines = 2
-                        ellipsize = null
-                    }
-                    isClickable = true
-                    isFocusable = true
-                    setOnClickListener {
-                        if (!isEnabled) return@setOnClickListener
-                        performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                        select(index, animate = true)
-                        onPick(index)
-                    }
-                }
-                cells.add(cell)
-                row.addView(
-                    cell,
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f),
-                )
             }
-            grid.addView(
-                row,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
-            )
+            cells.add(chip)
+            row.addView(chip, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ).apply {
+                if (index < labels.size - 1) marginEnd = context.px(8)
+            })
         }
-        addView(grid, LayoutParams(
+        cells.forEachIndexed { i, chip -> style(chip, i == selectedIndex) }
+        scroller.addView(row, LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        addView(scroller, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
     }
 
-    /**
-     * Sizes the thumb here, before children are measured — not in
-     * [onSizeChanged].
-     *
-     * onSizeChanged runs *during* a layout pass, and a requestLayout() issued from
-     * inside one is swallowed: the thumb kept its initial 0×0 and stayed invisible
-     * until some later, unrelated pass happened to remeasure it. That is why the
-     * default selection had no frame around it on a cold start while tapping any
-     * cell made one appear — the tap's pressed-state background change was the
-     * unrelated pass. Setting the size before super.onMeasure() means the thumb is
-     * measured correctly on the very first pass.
-     */
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val innerWidth = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
-        val innerHeight = MeasureSpec.getSize(heightMeasureSpec) - paddingTop - paddingBottom
-        if (innerWidth > 0 && innerHeight > 0) {
-            val cw = (innerWidth.toFloat() / columns).roundToInt()
-            val ch = (innerHeight.toFloat() / rowCount).roundToInt()
-            val params = thumb.layoutParams
-            if (params.width != cw || params.height != ch) {
-                params.width = cw
-                params.height = ch
-            }
-        }
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (cellWidth <= 0f || cellHeight <= 0f) return
-        thumb.translationX = (selectedIndex % columns) * cellWidth
-        thumb.translationY = (selectedIndex / columns) * cellHeight
-    }
-
-    /**
-     * Hairlines between the cells.
-     *
-     * Drawn before children (so the lit thumb and the labels sit on top of them)
-     * and inset from the control's own edges, which is what makes six labels in one
-     * recessed box read as a grid rather than a word soup. Inner edges only —
-     * a line flush against the rounded border would clip against it.
-     */
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val cw = cellWidth
-        val ch = cellHeight
-        if (cw <= 0f || ch <= 0f) return
-        val inset = ch * 0.22f
-        val insetX = cw * 0.18f
-        for (column in 1 until columns) {
-            val x = paddingLeft + column * cw
-            canvas.drawLine(x, paddingTop + inset, x, (height - paddingBottom) - inset, gridPaint)
-        }
-        for (row in 1 until rowCount) {
-            val y = paddingTop + row * ch
-            canvas.drawLine(paddingLeft + insetX, y, (width - paddingRight) - insetX, y, gridPaint)
-        }
+    private fun style(chip: TextView, on: Boolean) {
+        chip.background = Sculpt.sculptedBackground(
+            density,
+            if (on) Sculpt.blend(palette.surface, palette.primary, 0.18f) else palette.surface,
+            16,
+            accent = if (on) Sculpt.withAlpha(palette.primary, 0.60f) else null,
+        )
+        chip.setTextColor(if (on) palette.primaryText else palette.muted)
     }
 
     fun select(index: Int, animate: Boolean) {
         if (index !in labels.indices) return
         selectedIndex = index
-        cells.forEachIndexed { i, cell ->
-            cell.setTextColor(if (i == index) palette.ink else palette.faint)
-        }
-        val slotX = cellWidth
-        val slotY = cellHeight
-        if (slotX <= 0f || slotY <= 0f) return
-        val targetX = (index % columns) * slotX
-        val targetY = (index / columns) * slotY
-        thumbAnimator?.cancel()
-        if (!animate) {
-            thumb.translationX = targetX
-            thumb.translationY = targetY
-            return
-        }
-        val fromX = thumb.translationX
-        val fromY = thumb.translationY
-        thumbAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 330
-            interpolator = OvershootInterpolator(1.1f)
-            addUpdateListener {
-                val t = it.animatedValue as Float
-                thumb.translationX = fromX + (targetX - fromX) * t
-                thumb.translationY = fromY + (targetY - fromY) * t
-            }
-            start()
+        cells.forEachIndexed { i, chip -> style(chip, i == index) }
+        val chip = cells[index]
+        scroller.post {
+            val target = (chip.left - context.px(16)).coerceAtLeast(0)
+            if (animate) scroller.smoothScrollTo(target, 0) else scroller.scrollTo(target, 0)
         }
     }
 
@@ -388,12 +246,6 @@ class TransportRail(
         super.setEnabled(enabled)
         alpha = if (enabled) 1f else 0.5f
         cells.forEach { it.isEnabled = enabled }
-    }
-
-    override fun onDetachedFromWindow() {
-        thumbAnimator?.cancel()
-        thumbAnimator = null
-        super.onDetachedFromWindow()
     }
 }
 

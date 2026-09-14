@@ -751,7 +751,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
          * Sampled from the launcher artwork's neon ring (#70E0B0 region), so the
          * shade row and the app icon read as the same brand.
          */
-        private const val NOTIFICATION_ACCENT = 0xFF70E0B0.toInt()
+        private const val NOTIFICATION_ACCENT = 0xFF2DD4BF.toInt()
 
         /** Preference key for the auto-reconnect toggle. */
         const val AUTO_RECONNECT_PREF = "auto_reconnect"

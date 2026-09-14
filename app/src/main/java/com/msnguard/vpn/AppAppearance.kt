@@ -121,88 +121,57 @@ object AppAppearance {
         val lighting: Sculpt.Lighting = Sculpt.DARK_LIGHTING,
     )
 
+    /** MolidoVPN dark: deep teal-black page, teal accent, green "connected". */
     val ORBIT = Palette(
-        canvas = 0xFF0A0F0C.toInt(),
-        surface = 0xFF111814.toInt(),
-        surfaceVariant = 0xFF18221C.toInt(),
-        ink = 0xFFE9F5EE.toInt(),
-        muted = 0xFF9CB3A6.toInt(),
-        divider = 0xFF1F2B24.toInt(),
-        primary = 0xFF3ECF8E.toInt(),
-        primaryContainer = 0xFF0A0F0C.toInt(),
-        selectedSurface = 0xFF0A0F0C.toInt(),
-        connected = 0xFF6EE7B7.toInt(),
-        connectedContainer = 0xFF10301F.toInt(),
-        faint = 0xFF60786A.toInt(),
-        mint = 0xFF3ECF8E.toInt(),
+        canvas = 0xFF07110F.toInt(),
+        surface = 0xFF0E1C19.toInt(),
+        surfaceVariant = 0xFF142824.toInt(),
+        ink = 0xFFEAF7F3.toInt(),
+        muted = 0xFF8FB3AA.toInt(),
+        divider = 0xFF1C3530.toInt(),
+        primary = 0xFF2DD4BF.toInt(),
+        primaryContainer = 0xFF07110F.toInt(),
+        selectedSurface = 0xFF07110F.toInt(),
+        connected = 0xFF34D399.toInt(),
+        connectedContainer = 0xFF0F2E26.toInt(),
+        faint = 0xFF6F9189.toInt(),
+        mint = 0xFF2DD4BF.toInt(),
         violet = 0xFF9B8CFF.toInt(),
-        amber = 0xFFFFC46B.toInt(),
-        danger = 0xFFFF6B7F.toInt(),
-        // On the dark canvas the vivid accents already read as text (10-11:1),
-        // so no separate text ramp — except the failure headline, which the app
-        // has always drawn in a softer red than the dial's danger ring.
-        error = 0xFFFFB4AB.toInt(),
+        amber = 0xFFFBBF24.toInt(),
+        danger = 0xFFF87171.toInt(),
+        error = 0xFFFCA5A5.toInt(),
         lighting = Sculpt.DARK_LIGHTING,
     )
 
     /**
-     * Porcelain: `#EEF1F4` page, `#FFFFFF` cards.
-     *
-     * The page is deliberately NOT white. A white page with white cards has
-     * nothing to separate them but a hairline, and the layout leans on card
-     * shapes to group things. Grey page + white card gives the cards their own
-     * luminance step, and the shadow from [Sculpt.Lighting.elevationDp] does the
-     * rest.
-     *
-     * Every text value below was measured against all three backgrounds a label
-     * can land on — `#FFFFFF` (card), `#EEF1F4` (page), `#E4F3EF` (selected row) —
-     * and the worst of the three is what is quoted. All clear the 4.5:1 body-text
-     * floor:
-     *   ink 15.4 · muted 5.7 · faint 4.5 · primaryText 5.3 · mintText 5.3
-     *   connectedText 5.2 · violetText 6.2 · amberText 6.4 · dangerText 5.7
-     *
-     * The vivid accents are 3.0-4.5:1 and are used for shapes only — the dial arc,
-     * the sparkline, a pill fill, a border. Never for letters.
+     * MolidoVPN light: pale mint page, white cards with a 1dp border.
+     * Vivid accents are for shapes; the `…Text` siblings clear 4.5:1 on white
+     * and on the page.
      */
     val PORCELAIN = Palette(
-        canvas = 0xFFEEF4F0.toInt(),
+        canvas = 0xFFF3FAF8.toInt(),
         surface = 0xFFFFFFFF.toInt(),
-        // A shade off the card, not equal to it: `surfaceVariant` is the fill of
-        // an *unselected* chip or recessed row, and those sit on white cards. Equal
-        // values would leave only the hairline border to show a chip is there.
-        surfaceVariant = 0xFFF3F8F5.toInt(),
-        ink = 0xFF111A1F.toInt(),
-        muted = 0xFF4E6069.toInt(),
-        divider = 0xFFE0E6EA.toInt(),
-        primary = 0xFF1B9E66.toInt(),
-        // Text on top of a filled primary surface: the Reset button's label, a lit
-        // pill. Ink, not white — white on #0E9C82 is 3.4:1, and this is a 15sp
-        // button label. Ink on the same fill is 5.1:1. That matches how the dark
-        // palette already does it (near-black canvas on bright mint), so the two
-        // themes stay consistent rather than one inverting.
-        primaryContainer = 0xFF111A1F.toInt(),
-        // Pale mint, 1.09:1 against the card — deliberately faint. The border is
-        // `primary` and the label goes bold, so selection is carried by three cues
-        // at once rather than by a strong fill that would fight the white page.
-        selectedSurface = 0xFFE3F4EA.toInt(),
-        connected = 0xFF17A05E.toInt(),
-        connectedContainer = 0xFFDDF3E6.toInt(),
-        // #5B6D75, not the mock's #8496A0. The preview used `faint` for hints that
-        // sit on a card, and 8496A0 measures 2.6:1 there — under the floor for text
-        // of any size. 5B6D75 keeps the tertiary *role* (still clearly behind
-        // `muted`) while clearing 4.5:1 on the card, the page AND a selected row.
-        faint = 0xFF5B6D75.toInt(),
-        mint = 0xFF1B9E66.toInt(),
+        surfaceVariant = 0xFFE6F4F0.toInt(),
+        ink = 0xFF0B1F1B.toInt(),
+        muted = 0xFF4B6B64.toInt(),
+        divider = 0xFFD3E7E1.toInt(),
+        primary = 0xFF0F9E8A.toInt(),
+        primaryContainer = 0xFF0B1F1B.toInt(),
+        selectedSurface = 0xFFDDF3EE.toInt(),
+        connected = 0xFF059669.toInt(),
+        connectedContainer = 0xFFD1FAE5.toInt(),
+        faint = 0xFF587A72.toInt(),
+        mint = 0xFF0F9E8A.toInt(),
         violet = 0xFF6B5BD6.toInt(),
-        amber = 0xFFA96A08.toInt(),
-        danger = 0xFFE04257.toInt(),
-        primaryText = 0xFF0F7048.toInt(),
-        connectedText = 0xFF0A7340.toInt(),
-        mintText = 0xFF0F7048.toInt(),
+        amber = 0xFFB45309.toInt(),
+        danger = 0xFFDC2626.toInt(),
+        primaryText = 0xFF0B7A6B.toInt(),
+        connectedText = 0xFF047857.toInt(),
+        mintText = 0xFF0B7A6B.toInt(),
         violetText = 0xFF5347B8.toInt(),
-        amberText = 0xFF7D4B00.toInt(),
-        dangerText = 0xFFB3261E.toInt(),
-        error = 0xFFB3261E.toInt(),
+        amberText = 0xFF92400E.toInt(),
+        dangerText = 0xFFB91C1C.toInt(),
+        error = 0xFFB91C1C.toInt(),
         lighting = Sculpt.LIGHT_LIGHTING,
     )
 

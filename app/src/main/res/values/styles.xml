@@ -15,19 +15,19 @@
     <style name="Theme.MsnGuard" parent="Theme.Material3.Dark.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <!-- mint / neon accents, straight from the approved mock -->
-        <item name="colorPrimary">#4FE3C1</item>
-        <item name="colorOnPrimary">#04070B</item>
+        <item name="colorPrimary">#2DD4BF</item>
+        <item name="colorOnPrimary">#07110F</item>
         <item name="colorSecondary">#9B8CFF</item>
-        <item name="colorError">#FF6B7F</item>
+        <item name="colorError">#F87171</item>
         <!-- void / raised / recessed surfaces -->
-        <item name="android:colorBackground">#04070B</item>
-        <item name="colorSurface">#0B1116</item>
-        <item name="colorOnSurface">#EAF6F3</item>
-        <item name="colorSurfaceVariant">#111A20</item>
-        <item name="colorOnSurfaceVariant">#9DB0B5</item>
-        <item name="colorOutline">#1C2429</item>
-        <item name="android:navigationBarColor">#04070B</item>
-        <item name="android:statusBarColor">#04070B</item>
+        <item name="android:colorBackground">#07110F</item>
+        <item name="colorSurface">#0E1C19</item>
+        <item name="colorOnSurface">#EAF7F3</item>
+        <item name="colorSurfaceVariant">#142824</item>
+        <item name="colorOnSurfaceVariant">#8FB3AA</item>
+        <item name="colorOutline">#1C3530</item>
+        <item name="android:navigationBarColor">#07110F</item>
+        <item name="android:statusBarColor">#07110F</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.MsnGuard.AlertDialog</item>
@@ -39,7 +39,7 @@
       the Orbit console appears.
     -->
     <style name="Theme.MsnGuard.Starting" parent="Theme.MsnGuard">
-        <item name="android:windowBackground">#04070B</item>
+        <item name="android:windowBackground">#07110F</item>
    </style>
 
     <!--
@@ -58,13 +58,13 @@
 
     <style name="ThemeOverlay.MsnGuard.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.MsnGuard.Dialog</item>
-        <item name="colorSurface">#0B1116</item>
-        <item name="colorOnSurface">#EAF6F3</item>
-        <item name="colorPrimary">#4FE3C1</item>
+        <item name="colorSurface">#0E1C19</item>
+        <item name="colorOnSurface">#EAF7F3</item>
+        <item name="colorPrimary">#2DD4BF</item>
    </style>
 
     <style name="ShapeAppearance.MsnGuard.Dialog" parent="ShapeAppearance.Material3.MediumComponent">
-        <item name="cornerSize">28dp</item>
+        <item name="cornerSize">24dp</item>
    </style>
 
     <!--
@@ -83,18 +83,18 @@
     -->
     <style name="Theme.MsnGuard.Light" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="colorPrimary">#0E9C82</item>
+        <item name="colorPrimary">#0F9E8A</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">#6B5BD6</item>
-        <item name="colorError">#B3261E</item>
-        <item name="android:colorBackground">#EEF1F4</item>
+        <item name="colorError">#DC2626</item>
+        <item name="android:colorBackground">#F3FAF8</item>
         <item name="colorSurface">#FFFFFF</item>
-        <item name="colorOnSurface">#111A1F</item>
-        <item name="colorSurfaceVariant">#FFFFFF</item>
-        <item name="colorOnSurfaceVariant">#4E6069</item>
-        <item name="colorOutline">#E0E6EA</item>
-        <item name="android:navigationBarColor">#EEF1F4</item>
-        <item name="android:statusBarColor">#EEF1F4</item>
+        <item name="colorOnSurface">#0B1F1B</item>
+        <item name="colorSurfaceVariant">#E6F4F0</item>
+        <item name="colorOnSurfaceVariant">#4B6B64</item>
+        <item name="colorOutline">#D3E7E1</item>
+        <item name="android:navigationBarColor">#F3FAF8</item>
+        <item name="android:statusBarColor">#F3FAF8</item>
         <!-- Dark icons in the bars: the bars are now near-white. -->
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
@@ -104,7 +104,7 @@
     <style name="ThemeOverlay.MsnGuard.Light.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.MsnGuard.Dialog</item>
         <item name="colorSurface">#FFFFFF</item>
-        <item name="colorOnSurface">#111A1F</item>
-        <item name="colorPrimary">#087060</item>
+        <item name="colorOnSurface">#0B1F1B</item>
+        <item name="colorPrimary">#0B7A6B</item>
    </style>
 </resources>
