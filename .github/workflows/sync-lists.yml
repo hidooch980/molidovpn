@@ -73,7 +73,9 @@ jobs:
               except Exception:
                   body = ""
 
-          shard = open("remote/shard-nodes.txt", encoding="utf-8").read()
+          marker = "# --- MolidoVPN servers ---"
+          # Drop last run's MolidoVPN section first, otherwise those nodes count as "existing" and get removed.
+          shard = open("remote/shard-nodes.txt", encoding="utf-8").read().split(marker)[0].rstrip("\n") + "\n"
           existing = {l.split("#")[0] for l in shard.splitlines() if "://" in l}
 
           extra = []
@@ -97,8 +99,6 @@ jobs:
               if len(extra) >= MAX_EXTRA:
                   break
 
-          marker = "# --- MolidoVPN servers ---"
-          shard = shard.split(marker)[0].rstrip("\n") + "\n"
           if extra:
               shard += marker + "\n" + "\n".join(extra) + "\n"
           open("remote/shard-nodes.txt", "w", encoding="utf-8").write(shard)
@@ -112,4 +112,22 @@ jobs:
           git add remote
           git diff --cached --quiet && echo "no changes" && exit 0
           git commit -q -m "Sync lists $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git pull -q --rebase
           git push -q
+
+  # GitHub often skips cron on quiet repos, so each run also starts the next one ~6 hours later.
+  schedule-next:
+    needs: sync
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start the next sync in ~5h45m
+        run: |
+          sleep 20700
+          waiting=$(gh run list -R "$GITHUB_REPOSITORY" --workflow sync-lists.yml --json status --jq '[.[]|select(.status=="queued" or .status=="pending" or .status=="waiting")]|length')
+          [ "$waiting" = "0" ] && gh workflow run sync-lists.yml -R "$GITHUB_REPOSITORY" --ref main || echo "a sync is already queued"
