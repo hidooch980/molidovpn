@@ -2596,7 +2596,6 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 sendStatus(STATUS_CONNECTING, Strings.t("Finding a fast node…"), 15)
                 ConnectionLog.record("SHARD: TUN ready — racing the pool")
 
-                ShardManager.gamingMode = currentProtocol.contains("GAMING")
                 if (!ShardManager.start(this, verboseShardLog())) {
                     error(
                         ShardManager.lastError.ifBlank { "No public node could be reached" }

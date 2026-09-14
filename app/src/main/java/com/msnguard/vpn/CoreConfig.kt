@@ -94,6 +94,8 @@ object CoreConfig {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         fun text(key: String, fallback: String = "") =
             prefs.getString(key, fallback)?.trim().orEmpty()
+                // The removed gaming mode ("shard-gaming") is plain SHARD now.
+                .let { if (key == "default_protocol" && it == "shard-gaming") "shard" else it }
         val manualObfuscation = JSONObject().apply {
             text("obfuscation_jc").toIntOrNull()?.let { put("jc", it) }
             text("obfuscation_jmin").toIntOrNull()?.let { put("jmin", it) }

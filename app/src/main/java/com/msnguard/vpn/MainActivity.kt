@@ -1279,7 +1279,6 @@ class MainActivity : Activity() {
         // "WoW" is the table key for the short rail label; the enum's own label
         // is the longer "WARP-on-WARP" which would not fit the rail cells.
         Protocol.WARP_IN_WARP -> Strings.t("WoW")
-        Protocol.GAMING -> Strings.t("Gaming")
         else -> protocol.label
     }
 
@@ -2807,12 +2806,6 @@ class MainActivity : Activity() {
         }
 
         content.addView(options)
-        if (gamingDnsHintApplies()) {
-            content.addView(label(Strings.t("Tip: for games, try a gaming DNS (Radar Game, Electro, Shecan, 403)"), 13f, MUTED), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(16); leftMargin = dp(4) })
-        }
         page.addView(content, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -2970,12 +2963,6 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
-        if (gamingDnsHintApplies()) {
-            content.addView(label(Strings.t("Tip: for games, try a gaming DNS (Radar Game, Electro, Shecan, 403)"), 13f, MUTED), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(6); leftMargin = dp(4) })
-        }
         // The switch this writes existed before, fed only the removed proxy mode's
         // SOCKS bind, and was deleted because in VPN mode it changed nothing the
         // user could see. It changes something now: the service applies the
@@ -3848,7 +3835,7 @@ class MainActivity : Activity() {
         // xray binds its SOCKS and HTTP inbounds to 0.0.0.0 while tun2socks keeps
         // dialling loopback, so the phone stays fully routed while a Windows machine
         // uses the same tunnel.
-        Protocol.SHARD, Protocol.GAMING -> !CoreConfig.proxyOnly(this)
+        Protocol.SHARD -> !CoreConfig.proxyOnly(this)
         else -> CoreConfig.proxyOnly(this)
     }
 
@@ -5489,9 +5476,6 @@ class MainActivity : Activity() {
 
     private fun updateConnectionMode(protocol: Protocol) {
         if (selectedProtocol == protocol) return
-        if (protocol == Protocol.GAMING) {
-            preferences().edit().putString(PRE_GAMING_PROTOCOL, selectedProtocol.coreName).apply()
-        }
         selectedProtocol = protocol
         preferences().edit().putString(DEFAULT_PROTOCOL, protocol.coreName).apply()
         // The chain's outer leg follows the rail, so re-record it whenever the
@@ -6589,9 +6573,6 @@ class MainActivity : Activity() {
         DnsSettings.setPreset(this, preset)
     }
 
-    private fun gamingDnsHintApplies(): Boolean =
-        selectedProtocol == Protocol.GAMING && DnsSettings.preset(this) == DnsSettings.Preset.AUTO
-
     private fun dnsSummary(): String {
         val preset = DnsSettings.preset(this)
         return when {
@@ -6634,25 +6615,16 @@ class MainActivity : Activity() {
     )
 
     /**
-     * CI hook: optional extra `molido_mode` = `gaming` | `auto` only selects (and
-     * persists) that mode. `auto` restores the pick from before gaming was chosen
-     * (WireGuard if none). Unknown values are ignored.
+     * CI hook: optional extra `molido_mode` = `auto` selects (and persists) the
+     * saved pick (WireGuard if none). Other values (including the removed
+     * `gaming`) are ignored.
      */
     private fun applyLaunchMode(intent: Intent?, beforeUi: Boolean) {
         val target = when (intent?.getStringExtra(EXTRA_MOLIDO_MODE)) {
-            "gaming" -> Protocol.GAMING
-            "auto" -> {
-                val previous = preferences().getString(PRE_GAMING_PROTOCOL, null)
-                Protocol.entries.firstOrNull {
-                    it.coreName == previous && it != Protocol.GAMING && it.androidAvailable
-                } ?: Protocol.WIREGUARD
-            }
+            "auto" -> savedProtocol()
             else -> return
         }
         if (beforeUi) {
-            if (target == Protocol.GAMING && savedProtocol() != Protocol.GAMING) {
-                preferences().edit().putString(PRE_GAMING_PROTOCOL, savedProtocol().coreName).apply()
-            }
             preferences().edit().putString(DEFAULT_PROTOCOL, target.coreName).apply()
         } else {
             updateConnectionMode(target)
@@ -6660,7 +6632,12 @@ class MainActivity : Activity() {
     }
 
     private fun savedProtocol(): Protocol {
-        val name = preferences().getString(DEFAULT_PROTOCOL, Protocol.WIREGUARD.coreName)
+        val raw = preferences().getString(DEFAULT_PROTOCOL, Protocol.WIREGUARD.coreName)
+        // Migration: the removed gaming mode was SHARD with a different race.
+        if (raw == "shard-gaming") {
+            preferences().edit().putString(DEFAULT_PROTOCOL, Protocol.SHARD.coreName).apply()
+        }
+        val name = if (raw == "shard-gaming") Protocol.SHARD.coreName else raw
         return Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.WIREGUARD
     }
 
@@ -6831,15 +6808,7 @@ class MainActivity : Activity() {
          * started for SHARD. The service branches on it before touching
          * NativeCore, the same way the Psiphon and Tor names do.
          */
-        SHARD("SHARD", "shard", "Public nodes, auto-selected; no setup"),
-
-        /**
-         * SHARD with a gaming race: lowest *stable* latency (re-probed, jitter
-         * ranked, lossy nodes dropped). "shard-gaming" still contains "SHARD", so
-         * every SHARD path in the service applies; SHARD carries full UDP and has
-         * no chained leg, so nothing adds latency.
-         */
-        GAMING("Gaming mode", "shard-gaming", "Lowest stable ping, UDP for games; no extra hops");
+        SHARD("SHARD", "shard", "Public nodes, auto-selected; no setup");
 
         val label: String get() = Strings.t(enLabel)
         val description: String get() = Strings.t(enDescription)
@@ -7166,7 +7135,6 @@ class MainActivity : Activity() {
         const val TLS_CURVE_PRESET = "tls_curve_preset"
         const val WIREGUARD_DATA_CHECK = "wireguard_data_check"
         const val KILL_SWITCH = "kill_switch"
-        const val PRE_GAMING_PROTOCOL = "pre_gaming_protocol"
         const val EXTRA_MOLIDO_MODE = "molido_mode"
         const val EXTRA_MOLIDO_DNS = "molido_dns"
         /** Whether Psiphon-over-WARP is armed for the next connect. */
