@@ -108,8 +108,11 @@ object CleanIpScanner {
             ?.serverName
             ?.takeIf { it.isNotBlank() }
             ?: FALLBACK_SNI
+        // With global IPv6 a share of the sample is Cloudflare IPv6; without it
+        // the scan is exactly the IPv4 one it always was.
+        val v6 = if (NetworkV6.hasGlobalIpv6(context)) ShardEdges.sampleCloudflareIpv6(SAMPLE / 3) else emptyList()
         val candidates = (best(context) + ShardEdges.edges(context) +
-            ShardEdges.sampleCloudflareIps(SAMPLE))
+            ShardEdges.sampleCloudflareIps(SAMPLE) + v6)
             .filter { ShardEdges.isCloudflareAddress(it) }
             .distinct()
         if (candidates.isEmpty()) return
@@ -144,7 +147,7 @@ object CleanIpScanner {
         return try {
             val startedAt = SystemClock.elapsedRealtime()
             raw.tcpNoDelay = true
-            raw.connect(InetSocketAddress(ip, 443), TIMEOUT_MS)
+            raw.connect(InetSocketAddress(ip.removePrefix("[").removeSuffix("]"), 443), TIMEOUT_MS)
             raw.soTimeout = TIMEOUT_MS
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
             val ssl = factory.createSocket(raw, sni, 443, true) as SSLSocket

@@ -3965,7 +3965,13 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         val startedAt = SystemClock.elapsedRealtime()
         if (token != autoToken || userInitiatedStop.get()) return null
         try {
-            startTunnel(CoreConfig.json(this, candidate.coreName))
+            // IPv6 on the underlying network: WARP candidates scan v4 AND v6 for
+            // this attempt only. The user's own scan setting is untouched.
+            val warp = candidate.coreName == "wireguard" || candidate.coreName == "masque" ||
+                candidate.coreName == "gool"
+            val scanOverride = if (warp && NetworkV6.hasGlobalIpv6(this)) "both" else null
+            if (scanOverride != null) ConnectionLog.record("Auto: ${candidate.label} scanning IPv4+IPv6")
+            startTunnel(CoreConfig.json(this, candidate.coreName, null, scanOverride))
         } catch (e: Exception) {
             ConnectionLog.record("Auto: ${candidate.label} could not start: ${e.message}")
             return null

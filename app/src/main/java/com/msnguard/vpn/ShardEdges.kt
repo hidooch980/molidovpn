@@ -110,6 +110,38 @@ object ShardEdges {
     }
 
     /**
+     * Known-good Cloudflare IPv6 /48 prefixes inside 2606:4700::/32. [sampleCloudflareIpv6]
+     * picks a random /64 under one of them and a random interface id.
+     */
+    private val CF_V6_PREFIXES = (0x3030..0x3037).map { "2606:4700:" + Integer.toHexString(it) }
+
+    /** [count] random IPv6 literals under [CF_V6_PREFIXES], for [CleanIpScanner]. */
+    fun sampleCloudflareIpv6(count: Int, random: java.util.Random = java.util.Random()): List<String> {
+        val out = LinkedHashSet<String>()
+        var guard = 0
+        while (out.size < count && guard++ < count * 4) {
+            val prefix = CF_V6_PREFIXES[random.nextInt(CF_V6_PREFIXES.size)]
+            val groups = (0 until 5).map { Integer.toHexString(random.nextInt(0x10000)) }
+            // prefix(3 groups) + subnet(1) + interface id(4) = 8 groups.
+            out.add("$prefix:${groups[0]}:${groups[1]}:${groups[2]}:${groups[3]}:${Integer.toHexString(1 + random.nextInt(0xfffe))}")
+        }
+        return out.toList()
+    }
+
+    /** Whether [address] is an IPv6 literal (optionally bracketed) inside 2606:4700::/32. */
+    fun isCloudflareIpv6(address: String): Boolean {
+        val a = address.trim().removePrefix("[").removeSuffix("]")
+        if (!a.contains(':') || !a.all { it.isLetterOrDigit() || it == ':' || it == '.' }) return false
+        return try {
+            val bytes = java.net.InetAddress.getByName(a).address
+            bytes.size == 16 && bytes[0] == 0x26.toByte() && bytes[1] == 0x06.toByte() &&
+                bytes[2] == 0x47.toByte() && bytes[3] == 0x00.toByte()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
      * Ports Cloudflare terminates. A node on anything else is not fanned out,
      * because the edge would simply not answer.
      *
@@ -223,6 +255,8 @@ object ShardEdges {
      * SNI and all — at an address the operator picked.
      */
     fun isCloudflareAddress(address: String): Boolean {
+        // IPv6 literal (never a hostname: the character check runs before any lookup).
+        if (address.contains(':')) return isCloudflareIpv6(address)
         val numeric = ipv4ToLong(address) ?: return false
         return CF_RANGES.any { numeric in it }
     }

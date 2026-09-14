@@ -90,7 +90,15 @@ object CoreConfig {
      *   [SOCKS_PORT]. Only the outer leg of Psiphon-over-WARP uses this: Psiphon
      *   owns [SOCKS_PORT] in that mode, so the core has to move aside.
      */
-    fun json(context: Context, protocol: String?, listenOverride: Int?): String {
+    fun json(context: Context, protocol: String?, listenOverride: Int?): String =
+        json(context, protocol, listenOverride, ipScanOverride = null)
+
+    /**
+     * @param ipScanOverride replaces the user's `ip_scan` for THIS config only
+     *   (Auto mode passes "both" to WARP candidates when the network has global
+     *   IPv6). Never persisted.
+     */
+    fun json(context: Context, protocol: String?, listenOverride: Int?, ipScanOverride: String?): String {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         fun text(key: String, fallback: String = "") =
             prefs.getString(key, fallback)?.trim().orEmpty()
@@ -159,7 +167,7 @@ object CoreConfig {
                 put("http_proxy", "0.0.0.0:$HTTP_PROXY_PORT")
             }
             put("scan_mode", text("default_scan_mode", "balanced"))
-            put("ip_scan", text("default_scan", "v4"))
+            put("ip_scan", ipScanOverride ?: text("default_scan", "v4"))
             put("endpoint_cache_path", File(context.filesDir, "masque-gateway-cache.json").absolutePath)
             put("endpoint_discovery", text("endpoint_discovery", "cache"))
             put("masque_transport", text("default_masque_transport", "h3"))

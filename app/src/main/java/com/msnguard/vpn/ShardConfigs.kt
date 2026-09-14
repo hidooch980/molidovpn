@@ -91,7 +91,7 @@ data class ShardNode(
 
     /** What the UI may show. Never the raw label, which carries other people's channel ads. */
     val displayName: String
-        get() = "$address:$port"
+        get() = if (address.contains(':')) "[$address]:$port" else "$address:$port"
 
     /**
      * Two-letter country of the exit, or empty when the publisher did not say.
@@ -236,7 +236,8 @@ object ShardConfigs {
         val hostPortAndQuery = withoutLabel.substringAfter('@')
         val hostPort = hostPortAndQuery.substringBefore('?')
         val query = hostPortAndQuery.substringAfter('?', "")
-        val address = hostPort.substringBeforeLast(':', "")
+        // IPv6 literals arrive bracketed ("[2606:4700::1]:443"); xray wants them bare.
+        val address = hostPort.substringBeforeLast(':', "").removePrefix("[").removeSuffix("]")
         val port = hostPort.substringAfterLast(':', "").toIntOrNull() ?: return null
         if (address.isEmpty() || port !in 1..65535) return null
 
