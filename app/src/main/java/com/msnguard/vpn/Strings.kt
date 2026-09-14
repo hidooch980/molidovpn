@@ -617,6 +617,8 @@ object Strings {
         "10 MB down · 5 MB up" to Triple("10 MB down · 5 MB up", "دانلود ۱۰ مگابایت · آپلود ۵ مگابایت", "下载 10 MB · 上传 5 MB"),
         "Speed test failed: %s" to Triple("Speed test failed: %s", "تست سرعت ناموفق بود: %s", "测速失败：%s"),
         "direct" to Triple("direct", "مستقیم", "直连"),
+        "Scheduled connect" to Triple("Scheduled connect", "اتصال زمان‌بندی‌شده", "定时连接"),
+        "Scheduled disconnect" to Triple("Scheduled disconnect", "قطع زمان‌بندی‌شده", "定时断开"),
         // Connection extras (IR direct, MTU, speed test, schedule, backup).
     )
 

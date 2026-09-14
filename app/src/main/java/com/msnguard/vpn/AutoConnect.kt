@@ -74,6 +74,8 @@ class BootReceiver : BroadcastReceiver() {
         if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val app = context.applicationContext
         if (AppLanguage.appContext == null) AppLanguage.appContext = app
+        // Alarms do not survive a reboot or an update: re-arm the schedule first.
+        runCatching { ConnectSchedule.reschedule(app) }
         if (!AutoConnect.enabled(app)) return
         if (TunnelStatus.isActive()) return
         try {

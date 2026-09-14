@@ -17,6 +17,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Auto-connect after the phone restarts (AutoConnect.kt). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Scheduled connect/disconnect (ConnectSchedule.kt). Optional: without it the
+         alarms are inexact, and Android may refuse a background connect. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- ACCESS_NETWORK_STATE: LAN sharing asks ConnectivityManager which interfaces
          belong to a cellular or VPN network, so it can refuse to advertise an
          address no LAN client can reach. Without it the query throws
@@ -151,6 +154,10 @@
                 <action android:name="com.msnguard.vpn.WIDGET_TOGGLE" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".ScheduleReceiver"
+            android:exported="false" />
 
         <service
             android:name=".ShardRefreshJob"

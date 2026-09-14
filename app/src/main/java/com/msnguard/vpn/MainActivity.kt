@@ -3549,7 +3549,37 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
-        // Tools rows (schedule) follow.
+        // Schedule: daily auto-connect / auto-disconnect times (ConnectSchedule).
+        fun scheduleRow(title: String, key: String): OrbitSettingsRow {
+            var row: OrbitSettingsRow? = null
+            row = navRow(title, ConnectSchedule.label(ConnectSchedule.minutes(this, key))) {
+                val current = ConnectSchedule.minutes(this, key).takeIf { it >= 0 } ?: (8 * 60)
+                val picker = android.app.TimePickerDialog(
+                    this,
+                    { _, hour, minute ->
+                        ConnectSchedule.set(this, key, hour * 60 + minute)
+                        row?.setValue(ConnectSchedule.label(hour * 60 + minute))
+                    },
+                    current / 60,
+                    current % 60,
+                    true,
+                )
+                picker.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, Strings.t("Off")) { _, _ ->
+                    ConnectSchedule.set(this, key, -1)
+                    row?.setValue(ConnectSchedule.label(-1))
+                }
+                picker.show()
+            }
+            return row!!
+        }
+        content.addView(scheduleRow(Strings.t("Scheduled connect"), ConnectSchedule.PREF_CONNECT), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        content.addView(scheduleRow(Strings.t("Scheduled disconnect"), ConnectSchedule.PREF_DISCONNECT), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
 
         // APPEARANCE, like BACKUP below it, is about the app rather than about a
         // tunnel, so it sits out here and not under Tunnel Controls.
