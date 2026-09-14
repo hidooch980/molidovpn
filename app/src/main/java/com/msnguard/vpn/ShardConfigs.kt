@@ -311,7 +311,15 @@ object ShardConfigs {
      */
     fun outbound(context: Context, node: ShardNode, tag: String, mux: Boolean = true): JSONObject {
         // V2Ray servers: own renderer, no custom CF IP, no mux.
-        node.v2ray?.let { return V2rayNodes.outbound(it, node.address, node.port, tag) }
+        // Retry-only rewrites (null on a node's first attempts): see [RetryTweaks].
+        val retryFp = RetryTweaks.fingerprintFor(context, node)
+        node.v2ray?.let {
+            val tweaked = it.copy(
+                fingerprint = retryFp ?: it.fingerprint,
+                path = RetryTweaks.earlyDataPath(context, node) ?: it.path,
+            )
+            return V2rayNodes.outbound(tweaked, node.address, node.port, tag)
+        }
         val customIp = getCustomCfIp(context)
         val effectiveAddress = if (customIp.isNotEmpty()) customIp else node.address
 
@@ -366,7 +374,8 @@ object ShardConfigs {
                     "tlsSettings",
                     JSONObject().apply {
                         put("serverName", node.serverName)
-                        if (node.fingerprint.isNotEmpty()) put("fingerprint", node.fingerprint)
+                        val fp = retryFp ?: node.fingerprint
+                        if (fp.isNotEmpty()) put("fingerprint", fp)
                         if (node.cipherSuites.isNotEmpty()) put("cipherSuites", node.cipherSuites)
                         if (node.alpn.isNotEmpty()) {
                             put("alpn", JSONArray().apply { node.alpn.split(',').forEach { put(it.trim()) } })

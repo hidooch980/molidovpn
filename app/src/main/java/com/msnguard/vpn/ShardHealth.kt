@@ -131,6 +131,7 @@ object ShardHealth {
             recordFailure(context, node)
             return
         }
+        RetryTweaks.recordSuccess(context, node)
         val previous = score(context, node)
         // Smoothed, not replaced: one lucky sample on a congested carrier link
         // should not promote a node to the top of the list on its own. Weighted
@@ -173,6 +174,7 @@ object ShardHealth {
     }
 
     fun recordFailure(context: Context, node: ShardNode) {
+        RetryTweaks.recordFailure(context, node)
         val previous = score(context, node)
         prefs(context).edit()
             .putString(
