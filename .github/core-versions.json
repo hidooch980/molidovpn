@@ -1,5 +1,11 @@
 {
   "components": {
+    "psiphon-android": {
+      "applied": "2.0.41",
+      "attempts": {
+        "2.0.41": "2026-09-15T18:17:12+00:00"
+      }
+    },
     "xray": {
       "applied": "v26.3.27",
       "attempts": {

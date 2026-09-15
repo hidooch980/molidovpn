@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Downloads the prebuilt Psiphon AAR and the Tor / lyrebird / Xray executables into the app tree.
-# Source: our own release "binaries-2" (a mirror of the upstream core's prebuilt files), verified by SHA-256.
+# Source: our own release "binaries-3" (a mirror of the upstream core's prebuilt files), verified by SHA-256.
 # Falls back to the upstream repository only if our release is unreachable.
 # sing-box (hysteria2 / tuic / anytls) comes straight from SagerNet's release, pinned by SHA-256.
 set -euo pipefail
 
-TAG="${BINARIES_TAG:-binaries-2}"
+TAG="${BINARIES_TAG:-binaries-3}"
 OURS="https://github.com/hidooch980/molidovpn-android/releases/download/$TAG"
 UPSTREAM_CORE_APP="https://github.com/mbm110/MSN-GUARD/raw/master/app"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,7 +36,7 @@ singbox_sha() { # abi -> sha256 of sing-box-$SINGBOX_VERSION-android-<arch>.tar.
 }
 
 curl -fsSL --retry 3 -o "$WORK/SHA256SUMS.txt" "$OURS/SHA256SUMS.txt"
-get psiphontunnel-2.0.39.aar libs/psiphontunnel-2.0.39.aar
+get psiphontunnel-2.0.41.aar libs/psiphontunnel-2.0.41.aar
 for abi in arm64-v8a armeabi-v7a; do
   for lib in libtor.so libobfs4proxy.so libxray.so; do
     get "${abi}__${lib}" "src/main/jniLibs/$abi/$lib"
@@ -53,7 +53,7 @@ for abi in arm64-v8a armeabi-v7a; do
 done
 
 mkdir -p "$ROOT/app/libs"
-cp "$WORK/psiphontunnel-2.0.39.aar" "$ROOT/app/libs/"
+cp "$WORK/psiphontunnel-2.0.41.aar" "$ROOT/app/libs/"
 for abi in arm64-v8a armeabi-v7a; do
   mkdir -p "$ROOT/app/src/main/jniLibs/$abi"
   for lib in libtor.so libobfs4proxy.so libxray.so; do
