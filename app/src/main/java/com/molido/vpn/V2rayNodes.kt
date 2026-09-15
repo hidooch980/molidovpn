@@ -51,13 +51,31 @@ data class V2rayNode(
     val path: String = "",
     val serviceName: String = "",
     val grpcMulti: Boolean = false,
+    /** XHTTP (SplitHTTP) mode: auto, packet-up, stream-up or stream-one. */
+    val xhttpMode: String = "auto",
+    /** XHTTP `extra` JSON object text from the share link, or empty. */
+    val xhttpExtra: String = "",
 )
 
 object V2rayNodes {
 
     private const val TAG = "V2rayNodes"
 
-    private val NETWORKS = setOf("tcp", "ws", "grpc", "httpupgrade")
+    /** xhttp needs xray v24.9+; the bundled libxray.so is v26.3.27. */
+    private val NETWORKS = setOf("tcp", "ws", "grpc", "httpupgrade", "xhttp")
+
+    private val XHTTP_MODES = setOf("auto", "packet-up", "stream-up", "stream-one")
+
+    /** `splithttp` is the old name of xhttp; `mode` is only valid in the set above. */
+    private fun normalizeNetwork(raw: String): String =
+        raw.lowercase(Locale.US).let { if (it == "splithttp") "xhttp" else it }
+
+    private fun xhttpMode(raw: String): String =
+        raw.lowercase(Locale.US).takeIf { it in XHTTP_MODES } ?: "auto"
+
+    /** The `extra` value only when it is a JSON object (anything else is dropped). */
+    private fun xhttpExtra(raw: String): String =
+        raw.trim().takeIf { it.startsWith("{") }?.let { runCatching { JSONObject(it).toString() }.getOrNull() }.orEmpty()
 
     /** uTLS names xray accepts; anything else would fail the whole config. */
     private val FINGERPRINTS = setOf(
@@ -118,7 +136,7 @@ object V2rayNodes {
         val hostPortQuery = rest.substringAfter('@')
         val (address, port) = hostPort(hostPortQuery.substringBefore('?').substringBefore('/')) ?: return null
         val q = parseQuery(hostPortQuery.substringAfter('?', ""))
-        val network = q["type"].orEmpty().lowercase(Locale.US).ifEmpty { "tcp" }
+        val network = normalizeNetwork(q["type"].orEmpty()).ifEmpty { "tcp" }
         if (network !in NETWORKS) return null
         val headerType = q["headertype"].orEmpty().lowercase(Locale.US)
         if (network == "tcp" && headerType.isNotEmpty() && headerType != "none") return null
@@ -152,6 +170,8 @@ object V2rayNodes {
             path = q["path"].orEmpty(),
             serviceName = q["servicename"].orEmpty().ifEmpty { if (network == "grpc") q["path"].orEmpty() else "" },
             grpcMulti = q["mode"].orEmpty().lowercase(Locale.US) == "multi",
+            xhttpMode = if (network == "xhttp") xhttpMode(q["mode"].orEmpty()) else "auto",
+            xhttpExtra = if (network == "xhttp") xhttpExtra(q["extra"].orEmpty()) else "",
         )
         return node.takeIf { complete(it) }
     }
@@ -167,7 +187,7 @@ object V2rayNodes {
         // fail config parsing for the whole probe process.
         val aid = json.opt("aid")?.toString()?.trim()?.toIntOrNull() ?: 0
         if (aid != 0) return null
-        val network = json.optString("net").lowercase(Locale.US).ifEmpty { "tcp" }
+        val network = normalizeNetwork(json.optString("net")).ifEmpty { "tcp" }
         if (network !in NETWORKS) return null
         val headerType = json.optString("type").lowercase(Locale.US)
         if (network == "tcp" && headerType.isNotEmpty() && headerType != "none") return null
@@ -197,6 +217,7 @@ object V2rayNodes {
             host = json.optString("host"),
             path = path,
             serviceName = if (network == "grpc") path else "",
+            xhttpMode = if (network == "xhttp") xhttpMode(json.optString("mode")) else "auto",
         )
         return node.takeIf { complete(it) }
     }
@@ -241,7 +262,7 @@ object V2rayNodes {
         if (node.security == "reality") {
             if (node.publicKey.isBlank()) return false
             if (node.sni.isBlank() && node.host.isBlank()) return false
-            if (node.network != "tcp" && node.network != "grpc") return false
+            if (node.network != "tcp" && node.network != "grpc" && node.network != "xhttp") return false
         }
         if (node.network == "grpc" && node.serviceName.isBlank()) return false
         return true
@@ -393,6 +414,14 @@ object V2rayNodes {
                 "grpc" -> put("grpcSettings", JSONObject().apply {
                     put("serviceName", node.serviceName)
                     put("multiMode", node.grpcMulti)
+                })
+                "xhttp" -> put("xhttpSettings", JSONObject().apply {
+                    put("path", node.path.ifEmpty { "/" })
+                    if (node.host.isNotEmpty()) put("host", node.host)
+                    put("mode", node.xhttpMode.ifEmpty { "auto" })
+                    if (node.xhttpExtra.isNotEmpty()) {
+                        runCatching { JSONObject(node.xhttpExtra) }.getOrNull()?.let { put("extra", it) }
+                    }
                 })
             }
         }
