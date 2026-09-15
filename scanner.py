@@ -50,6 +50,12 @@ FASTEST_COUNT = 100
 # Small list for iPhone/Hiddify: iOS VPN extensions have a tight memory limit.
 LITE_COUNT = 40
 LITE_PER_COUNTRY = 6
+# Countries near Iran. Latency measured from GitHub's US/EU runners says nothing about latency from Iran,
+# so these get reserved test slots, up to PREFERRED_KEEP guaranteed places each, and are listed first.
+PREFERRED_COUNTRIES = [c.strip().upper() for c in
+                       os.environ.get("PREFERRED_COUNTRIES", "TR,AE,AM,DE,NL").split(",") if c.strip()]
+PREFERRED_KEEP = int(os.environ.get("PREFERRED_KEEP", "30"))
+PREFERRED_TEST_MAX = int(os.environ.get("PREFERRED_TEST_MAX", "1500"))
 
 
 @dataclass
@@ -61,6 +67,8 @@ class Node:
     latency: float | None = None
     country: str = ""
     name: str = ""
+    ip: str = ""
+    hint: str = ""  # guessed country before the real test (remark flag / GeoIP of server IP)
     extra: dict = field(default_factory=dict)
 
     @property
@@ -111,6 +119,7 @@ async def _tcp(node: Node, sem: asyncio.Semaphore):
             _, w = await asyncio.wait_for(
                 asyncio.open_connection(node.outbound["server"], node.outbound["server_port"]), TCP_TIMEOUT)
             node.tcp_ms = (time.monotonic() - start) * 1000
+            node.ip = (w.get_extra_info("peername") or ("",))[0]
             w.close()
         except Exception:
             node.tcp_ms = None
@@ -138,6 +147,63 @@ def diversify(nodes: list[Node]) -> list[Node]:
     for i in range(max((len(q) for q in queues), default=0)):
         result.extend(q[i] for q in queues if i < len(q))
     return result
+
+
+_FLAG = re.compile("([\U0001F1E6-\U0001F1FF])([\U0001F1E6-\U0001F1FF])")
+_NAME_HINTS = {"TR": r"turkey|t[üu]rkiye", "AE": r"\bUAE\b|emirates|dubai", "AM": r"armenia",
+               "DE": r"germany", "NL": r"netherlands"}
+
+
+def hint_countries(nodes: list[Node]):
+    """Guess each node's country before testing: remark flag/name first, else GeoIP of the server IP."""
+    from urllib.parse import unquote
+    db = None
+    if os.path.exists(GEOIP_DB):
+        try:
+            import maxminddb
+            db = maxminddb.open_database(GEOIP_DB)
+        except Exception:
+            db = None
+    for n in nodes:
+        remark = unquote(n.uri.split("#", 1)[1]) if "#" in n.uri else ""
+        m = _FLAG.search(remark)
+        if m:
+            n.hint = "".join(chr(ord(ch) - 0x1F1E6 + ord("A")) for ch in m.groups())
+            continue
+        n.hint = next((c for c, rx in _NAME_HINTS.items() if re.search(rx, remark, re.I)), "")
+        if n.hint or not db:
+            continue
+        ip = n.ip or n.outbound["server"]
+        try:
+            rec = db.get(ip)
+            n.hint = ((rec or {}).get("country") or {}).get("iso_code", "")
+        except Exception:
+            pass
+    if db:
+        db.close()
+
+
+def log_countries(label: str, codes):
+    c = Counter(code or "??" for code in codes)
+    pref = " ".join(f"{p}={c.get(p, 0)}" for p in PREFERRED_COUNTRIES)
+    top = " ".join(f"{k}={v}" for k, v in c.most_common(15))
+    print(f"  [countries] {label}: preferred[{pref}] | top: {top}")
+
+
+def pick_candidates(nodes: list[Node]) -> list[Node]:
+    """Reserve test slots for preferred-country nodes; TCP ping from a US runner would sort them last."""
+    pref = diversify([n for n in nodes if n.hint in PREFERRED_COUNTRIES])
+    # Round-robin across preferred countries so NL/DE (plentiful) don't crowd out TR/AE/AM.
+    by_c = defaultdict(list)
+    for n in pref:
+        by_c[n.hint].append(n)
+    queues, reserved = [by_c[c] for c in PREFERRED_COUNTRIES], []
+    for i in range(max((len(q) for q in queues), default=0)):
+        reserved.extend(q[i] for q in queues if i < len(q))
+    reserved = reserved[:PREFERRED_TEST_MAX]
+    taken = {id(n) for n in reserved}
+    rest = diversify([n for n in nodes if id(n) not in taken])
+    return reserved + rest[:max(0, MAX_REAL_TEST - len(reserved))]
 
 
 # ---------------------------------------------------------------- real test via sing-box
@@ -270,11 +336,22 @@ def write_lines(path: str, lines: list[str]):
 
 
 def publish(nodes: list[Node], stats: dict, mode: str):
-    fastest_first = sorted(nodes, key=lambda n: n.latency)[:MAX_OUTPUT]
+    by_latency = sorted(nodes, key=lambda n: n.latency)
+    # Guaranteed places for preferred countries, then fill the global cap with the fastest of the rest.
+    kept, per_pref = [], Counter()
+    for n in by_latency:
+        if n.country in PREFERRED_COUNTRIES and per_pref[n.country] < PREFERRED_KEEP:
+            per_pref[n.country] += 1
+            kept.append(n)
+    kept_ids = {id(n) for n in kept}
+    fill = [n for n in by_latency if id(n) not in kept_ids][:max(0, MAX_OUTPUT - len(kept))]
+    fastest_first = sorted(kept + fill, key=lambda n: n.latency)
     by_country = defaultdict(list)
     for n in fastest_first:
         by_country[n.country].append(n)
-    order = sorted(by_country, key=lambda c: (c == "", countries.name(c)))
+    rank = {c: i for i, c in enumerate(PREFERRED_COUNTRIES)}
+    order = sorted(by_country, key=lambda c: (rank.get(c, len(rank)), c == "", countries.name(c)))
+    log_countries("published", (n.country for n in fastest_first))
 
     ordered = []
     for code in order:
@@ -291,7 +368,7 @@ def publish(nodes: list[Node], stats: dict, mode: str):
     write_lines(f"{OUT_DIR}/fastest.txt", renamed(sorted(ordered, key=lambda n: n.latency)[:FASTEST_COUNT]))
 
     lite, per_country = [], Counter()
-    for n in sorted(ordered, key=lambda n: n.latency):
+    for n in sorted(ordered, key=lambda n: (n.country not in PREFERRED_COUNTRIES, n.latency)):
         if len(lite) < LITE_COUNT and per_country[n.country] < LITE_PER_COUNTRY:
             per_country[n.country] += 1
             lite.append(n)
@@ -380,7 +457,8 @@ def pick_sources(base: list[str], candidates: list[str], health: dict) -> tuple[
     chosen, paused = [], []
     for url in dict.fromkeys(base + candidates):
         h = health.get(url, {})
-        if h.get("zero_runs", 0) >= DEAD_AFTER_RUNS and run % RETRY_EVERY_RUNS:
+        # Sources carrying preferred-country nodes are never paused (default 1: unknown -> fetch once to learn).
+        if h.get("zero_runs", 0) >= DEAD_AFTER_RUNS and run % RETRY_EVERY_RUNS and not h.get("pref_hints", 1):
             paused.append(url)
             continue
         chosen.append(url)
@@ -396,6 +474,7 @@ def update_health(health: dict, stats: dict, candidates: list[str]):
             h["good_runs"] = h.get("good_runs", 0) + 1 if alive >= PROMOTE_MIN_ALIVE else 0
             h["promoted"] = h["good_runs"] >= PROMOTE_AFTER_RUNS or h.get("promoted", False)
         h["last_alive"] = alive
+        h["pref_hints"] = s.get("pref_hints", 0)
 
 
 def main():
@@ -415,7 +494,14 @@ def main():
     print(f"Unique parsed configs: {len(nodes)}")
 
     print("TCP pre-filter...")
-    candidates = diversify(asyncio.run(tcp_filter(nodes)))[:MAX_REAL_TEST]
+    tcp_alive = asyncio.run(tcp_filter(nodes))
+    hint_countries(tcp_alive)
+    for n in tcp_alive:
+        if n.hint in PREFERRED_COUNTRIES and n.source in stats["sources"]:
+            stats["sources"][n.source]["pref_hints"] = stats["sources"][n.source].get("pref_hints", 0) + 1
+    log_countries("tcp-alive (guessed)", (n.hint for n in tcp_alive))
+    candidates = pick_candidates(tcp_alive)
+    log_countries("candidates (guessed)", (n.hint for n in candidates))
     print(f"Candidates for real test: {len(candidates)}")
 
     if SINGBOX:
@@ -430,6 +516,7 @@ def main():
 
     alive = compat_filter(alive)
     geo_fallback(alive)
+    log_countries("alive (real exit country)", (n.country for n in alive))
     print(f"Alive: {len(alive)}")
     publish(alive, stats, mode)
     update_health(health, stats, candidates)

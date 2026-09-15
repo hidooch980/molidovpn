@@ -22,3 +22,9 @@ https://raw.githubusercontent.com/NiREvil/vless/main/sub/SSTime
 https://raw.githubusercontent.com/hans-thomas/v2ray-subscription/master/servers.txt
 https://raw.githubusercontent.com/Danialsamadi/v2go/main/AllConfigsSub.txt
 https://raw.githubusercontent.com/nyeinkokoaung404/V2ray-Configs/main/All_Configs_Sub.txt
+# Added 2026-09-15: reachable, contain Turkey-tagged nodes (TR remarks: 63, 46, 18, 16, 8)
+https://raw.githubusercontent.com/Surfboardv2ray/Proxy-sorter/main/submerge/converted.txt
+https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/main/configs/Vless.txt
+https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector_Py/main/sub/Mix/mix.txt
+https://raw.githubusercontent.com/hamedcode/port-based-v2ray-configs/main/sub/vless.txt
+https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/mix
