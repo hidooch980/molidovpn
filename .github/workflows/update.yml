@@ -106,6 +106,16 @@ jobs:
           git commit -q -m "subscription update $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sub:sub
 
+      # GitHub disables scheduled workflows after 60 days without a commit on main; `sub` pushes don't count.
+      - name: Keep schedules alive (empty commit on main every ~30 days)
+        continue-on-error: true
+        run: |
+          LAST=$(git log -1 --format=%ct origin/main 2>/dev/null || git log -1 --format=%ct)
+          [ $(( $(date +%s) - LAST )) -ge 2592000 ] || exit 0
+          git config user.name "vpn-bot"; git config user.email "vpn-bot@users.noreply.github.com"
+          git commit -q --allow-empty -m "keepalive [skip ci]"
+          git push -q origin HEAD:main
+
       # Same files on GitHub Pages (hidooch980.github.io/vpn-sub/...) — a second address when raw.githubusercontent.com is blocked.
       - uses: actions/upload-pages-artifact@v3
         with:
