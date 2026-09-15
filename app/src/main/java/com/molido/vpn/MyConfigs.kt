@@ -193,7 +193,9 @@ object MyConfigs {
         val proxies = ArrayList<Entry>()
         lines.forEach { line ->
             when (line.substringBefore("://", "").lowercase(Locale.US)) {
-                "http", "https" -> if (addSubscription(context, line) >= 0) added++ else skipped++
+                // ssconf:// is an Outline dynamic access key: kept like a subscription
+                // so the key is re-fetched when its owner rotates it.
+                "http", "https", "ssconf" -> if (addSubscription(context, line) >= 0) added++ else skipped++
                 "wireguard", "wg" -> {
                     val conf = wireGuardUriToConf(line)
                     if (conf != null && addWireGuardConf(context, conf, dec(line.substringAfter('#', "")))) added++ else skipped++
@@ -268,7 +270,7 @@ object MyConfigs {
     /** Stores [url] and fetches it; the node count, or -1 when it is not a URL. */
     fun addSubscription(context: Context, url: String): Int {
         val u = url.trim()
-        val host = runCatching { URL(u).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return -1
+        val host = runCatching { URL(httpsUrl(u)).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return -1
         val sub = synchronized(this) {
             val (e, s) = read(context)
             s.firstOrNull { it.url == u } ?: Sub(newId(), u, host, 0L).also { write(context, e, s + it) }
@@ -278,8 +280,8 @@ object MyConfigs {
 
     /** Re-fetches one subscription; the node count, or -1 when the fetch failed. */
     fun refreshSub(context: Context, sub: Sub): Int {
-        val body = fetch(sub.url) ?: return -1
-        val nodes = V2rayNodes.parse(V2rayNodes.decodeBody(body))
+        val body = fetch(httpsUrl(sub.url)) ?: return -1
+        val nodes = V2rayNodes.parse(V2rayNodes.decodeBody(outlineBody(body, sub.url)))
         synchronized(this) {
             val (e, s) = read(context)
             if (s.none { it.id == sub.id }) return 0
@@ -300,6 +302,38 @@ object MyConfigs {
             write(context, others + fresh, subs)
             ConnectionLog.record("$TAG subscription updated — ${fresh.size} configs")
             return fresh.size
+        }
+    }
+
+    /** ssconf://host/path → https://host/path (Outline always serves keys over HTTPS). */
+    private fun httpsUrl(url: String): String =
+        if (url.startsWith("ssconf://", ignoreCase = true)) "https://" + url.substring("ssconf://".length) else url
+
+    /**
+     * An Outline dynamic access key answers `{server, server_port, password, method}`
+     * (or a plain `ss://` line). Turned into one SIP002 `ss://` line so the ordinary
+     * parser takes it; any other body is returned unchanged. The optional `prefix`
+     * (salt prefix) has no xray equivalent and is ignored.
+     */
+    private fun outlineBody(body: String, url: String): String {
+        val text = body.trim()
+        if (!text.startsWith("{")) return text
+        return try {
+            val o = JSONObject(text)
+            val server = o.optString("server").trim()
+            val port = o.optInt("server_port", 0)
+            val password = o.optString("password")
+            val method = o.optString("method").trim()
+            if (server.isEmpty() || port !in 1..65535 || password.isEmpty() || method.isEmpty()) return text
+            val userInfo = android.util.Base64.encodeToString(
+                "$method:$password".toByteArray(Charsets.UTF_8),
+                android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+            )
+            val host = if (server.contains(':') && !server.startsWith("[")) "[$server]" else server
+            val name = url.substringAfter('#', "").ifEmpty { "Outline" }
+            "ss://$userInfo@$host:$port#$name"
+        } catch (_: Exception) {
+            text
         }
     }
 
