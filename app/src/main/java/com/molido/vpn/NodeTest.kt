@@ -63,7 +63,7 @@ object NodeTest {
         val tallies = java.util.concurrent.ConcurrentHashMap<String, Tally>()
         val pool = runCatching {
             (V2raySubscription.shardNodes(app) + ShardSubscription.nodes(app)).distinctBy { it.key }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).let { SingBox.prepare(app, it) }
         pool.forEach { tallies.getOrPut(label(it)) { Tally() }.total.incrementAndGet() }
         onProgress(tallies, 0, pool.size)
         val binary = File(app.applicationInfo.nativeLibraryDir, "libxray.so")

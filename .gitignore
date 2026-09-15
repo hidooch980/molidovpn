@@ -69,5 +69,6 @@ make-release.py
 /app/src/main/jniLibs/*/libtor.so
 /app/src/main/jniLibs/*/libobfs4proxy.so
 /app/src/main/jniLibs/*/libxray.so
+/app/src/main/jniLibs/*/libsingbox.so
 /app/src/main/jniLibs/*/libaether.so
 release.keystore

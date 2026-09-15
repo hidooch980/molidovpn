@@ -55,6 +55,14 @@ data class V2rayNode(
     val xhttpMode: String = "auto",
     /** XHTTP `extra` JSON object text from the share link, or empty. */
     val xhttpExtra: String = "",
+    /** hysteria2 salamander obfs password, or empty. */
+    val obfsPassword: String = "",
+    /** TLS verification off, as the share link asked (hysteria2/tuic/anytls only). */
+    val insecure: Boolean = false,
+    /** tuic congestion control: cubic, new_reno or bbr. */
+    val congestion: String = "",
+    /** tuic UDP relay mode: native or quic. */
+    val udpRelayMode: String = "",
 )
 
 object V2rayNodes {
@@ -122,6 +130,10 @@ object V2rayNodes {
             "trojan" -> parseVlessOrTrojan(line, "trojan")
             "vmess" -> parseVmess(line)
             "ss" -> parseShadowsocks(line)
+            // Carried by the sing-box sidecar ([SingBox]).
+            "hysteria2", "hy2" -> parseHysteria2(line)
+            "tuic" -> parseTuic(line)
+            "anytls" -> parseAnyTls(line)
             else -> null
         }
     } catch (_: Exception) {
@@ -256,6 +268,88 @@ object V2rayNodes {
         )
     }
 
+    private fun flag(value: String?): Boolean =
+        value == "1" || value.equals("true", ignoreCase = true)
+
+    /** hysteria2://auth@host:port[,hop-ports]/?sni=&insecure=&obfs=salamander&obfs-password= */
+    private fun parseHysteria2(line: String): V2rayNode? {
+        val rest = line.substringBefore('#').trim().substringAfter("://")
+        val auth = decode(rest.substringBefore('@', ""))
+        if (auth.isEmpty()) return null
+        val hostPortQuery = rest.substringAfter('@')
+        // Port hopping ("443,20000-30000") is not supported: the first port only.
+        val hostPortText = hostPortQuery.substringBefore('?').substringBefore('/').substringBefore(',')
+        val (address, port) = hostPort(hostPortText) ?: return null
+        val q = parseQuery(hostPortQuery.substringAfter('?', ""))
+        val obfs = q["obfs"].orEmpty().lowercase(Locale.US)
+        if (obfs.isNotEmpty() && obfs != "none" && obfs != "salamander") return null
+        val obfsPassword = if (obfs == "salamander") q["obfs-password"].orEmpty() else ""
+        if (obfs == "salamander" && obfsPassword.isEmpty()) return null
+        return V2rayNode(
+            uri = "hysteria2://$rest",
+            protocol = "hysteria2",
+            address = address,
+            port = port,
+            credential = auth,
+            security = "tls",
+            sni = q["sni"].orEmpty().ifEmpty { q["peer"].orEmpty() },
+            alpn = q["alpn"].orEmpty(),
+            obfsPassword = obfsPassword,
+            insecure = flag(q["insecure"]) || flag(q["allowinsecure"]) || flag(q["allow_insecure"]),
+        ).takeIf { complete(it) }
+    }
+
+    /** tuic://uuid:password@host:port?congestion_control=&udp_relay_mode=&alpn=&sni=&allow_insecure= */
+    private fun parseTuic(line: String): V2rayNode? {
+        val uri = line.substringBefore('#').trim()
+        val rest = uri.substringAfter("://")
+        val userInfo = decode(rest.substringBefore('@', ""))
+        val uuid = userInfo.substringBefore(':')
+        val password = userInfo.substringAfter(':', "")
+        if (uuid.isEmpty() || password.isEmpty()) return null
+        val hostPortQuery = rest.substringAfter('@')
+        val (address, port) = hostPort(hostPortQuery.substringBefore('?').substringBefore('/')) ?: return null
+        val q = parseQuery(hostPortQuery.substringAfter('?', ""))
+        return V2rayNode(
+            uri = uri,
+            protocol = "tuic",
+            address = address,
+            port = port,
+            credential = uuid,
+            method = password,
+            security = "tls",
+            sni = q["sni"].orEmpty(),
+            alpn = q["alpn"].orEmpty(),
+            insecure = flag(q["allow_insecure"]) || flag(q["insecure"]) || flag(q["allowinsecure"]),
+            congestion = q["congestion_control"].orEmpty().lowercase(Locale.US)
+                .takeIf { it in setOf("cubic", "new_reno", "bbr") } ?: "bbr",
+            udpRelayMode = q["udp_relay_mode"].orEmpty().lowercase(Locale.US)
+                .takeIf { it in setOf("native", "quic") } ?: "native",
+        ).takeIf { complete(it) }
+    }
+
+    /** anytls://password@host:port?sni=&insecure= */
+    private fun parseAnyTls(line: String): V2rayNode? {
+        val uri = line.substringBefore('#').trim()
+        val rest = uri.substringAfter("://")
+        val password = decode(rest.substringBefore('@', ""))
+        if (password.isEmpty()) return null
+        val hostPortQuery = rest.substringAfter('@')
+        val (address, port) = hostPort(hostPortQuery.substringBefore('?').substringBefore('/')) ?: return null
+        val q = parseQuery(hostPortQuery.substringAfter('?', ""))
+        return V2rayNode(
+            uri = uri,
+            protocol = "anytls",
+            address = address,
+            port = port,
+            credential = password,
+            security = "tls",
+            sni = q["sni"].orEmpty(),
+            alpn = q["alpn"].orEmpty(),
+            insecure = flag(q["insecure"]) || flag(q["allowinsecure"]) || flag(q["allow_insecure"]),
+        ).takeIf { complete(it) }
+    }
+
     /** Fields that must be present for the rendered outbound to be valid. */
     private fun complete(node: V2rayNode): Boolean {
         if (node.address.isBlank() || node.port !in 1..65535 || node.credential.isBlank()) return false
@@ -345,6 +439,8 @@ object V2rayNodes {
      * incompatible with vision flow.
      */
     fun outbound(node: V2rayNode, address: String, port: Int, tag: String): JSONObject {
+        // hysteria2 / tuic / anytls: a socks hop into the sing-box sidecar.
+        if (node.protocol in SingBox.PROTOCOLS) return SingBox.xrayOutbound(node, tag)
         val settings = JSONObject()
         when (node.protocol) {
             "vless" -> settings.put("vnext", JSONArray().put(JSONObject().apply {

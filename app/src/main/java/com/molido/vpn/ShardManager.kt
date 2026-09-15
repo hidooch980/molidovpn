@@ -280,6 +280,7 @@ object ShardManager {
         // the UI for the whole race budget when a disconnect arrived during
         // Connecting — the main thread must never wait on start()'s monitor.
         stopRequestedDuringStart = true
+        SingBox.stop()
         // CAPTURED now, not read inside the thread: a quick Disconnect → Connect
         // can start a NEW process before this thread runs, and reading the
         // field there would tear down the fresh session's process.
@@ -435,6 +436,8 @@ object ShardManager {
         val source = if (v2ray) V2raySubscription.shardNodes(context) else ShardSubscription.nodes(context)
         // Remembered working REALITY SNIs (see [RealitySni]); a no-op for SHARD.
         val pool = ShardEdges.expand(context, source).let { if (v2ray) RealitySni.applyRemembered(context, it) else it }
+            // hysteria2/tuic/anytls: bring up the sing-box sidecar, or drop them.
+            .let { SingBox.prepare(context, it) }
         if (pool.isEmpty()) {
             lastError = "no nodes available"
             ConnectionLog.record("$TAG pool empty — cache and seed both unusable")
@@ -766,7 +769,8 @@ object ShardManager {
             try {
                 val active = activeNode
                 val source = if (sessionV2ray) V2raySubscription.shardNodes(app) else ShardSubscription.nodes(app)
-                val ranked = diversify(ShardHealth.rank(app, ShardEdges.expand(app, source)))
+                // allowRestart = false: the sidecar may be carrying the live session.
+                val ranked = diversify(ShardHealth.rank(app, SingBox.prepare(app, ShardEdges.expand(app, source), allowRestart = false)))
                     .filter { active == null || it.key != active.key }
                     .take(RACE_WIDTH)
                 if (active != null && ranked.isNotEmpty() && isRunning) {
