@@ -281,6 +281,7 @@ object ShardManager {
         // Connecting — the main thread must never wait on start()'s monitor.
         stopRequestedDuringStart = true
         SingBox.stop()
+        ShardConfigs.upstreamSocksPort = 0
         // CAPTURED now, not read inside the thread: a quick Disconnect → Connect
         // can start a NEW process before this thread runs, and reading the
         // field there would tear down the fresh session's process.
@@ -418,9 +419,12 @@ object ShardManager {
         port: Int = SOCKS_PORT,
         v2ray: Boolean = false,
         mine: Boolean = false,
+        upstreamSocksPort: Int = 0,
     ): Boolean {
         sessionV2ray = v2ray
         sessionMine = mine
+        // V2Ray over Psiphon: every outbound of this session dials through it.
+        ShardConfigs.upstreamSocksPort = upstreamSocksPort
         // A stop may have latched while this start waited for the lock. That stop
         // was aimed at the PREVIOUS session, not at this fresh connect — and
         // startTunnel() has already verified the user asked to connect again.
@@ -445,6 +449,8 @@ object ShardManager {
             // hysteria2/tuic/anytls: bring up the sing-box sidecar, or drop them.
             // Preferred country (V2Ray pools only), before the sidecar sees the nodes.
             .let { if (v2ray) CountryFilter.apply(context, it) else it }
+            // The sing-box sidecar dials directly, so it cannot ride Psiphon.
+            .let { if (upstreamSocksPort > 0) it.filterNot { n -> SingBox.isSingBox(n) } else it }
             .let { SingBox.prepare(context, it) }
         if (pool.isEmpty()) {
             lastError = "no nodes available"
@@ -726,7 +732,7 @@ object ShardManager {
         // down, so the same node is not chosen again immediately. The port is
         // carried over explicitly: it must not silently revert to the default
         // under a proxy-mode session whose clients are pointed at another one.
-        return start(context, verboseLog, port, sessionV2ray, sessionMine)
+        return start(context, verboseLog, port, sessionV2ray, sessionMine, ShardConfigs.upstreamSocksPort)
     }
 
     /**

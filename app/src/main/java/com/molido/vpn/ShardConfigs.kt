@@ -310,6 +310,39 @@ object ShardConfigs {
      * @param node the SHARD node
      * @param tag the outbound tag routing rules will point at.
      */
+    /**
+     * "V2Ray over Psiphon": Psiphon's local SOCKS port that V2Ray outbounds dial
+     * through (xray `sockopt.dialerProxy`), so the exit is the V2Ray server while
+     * Psiphon carries the connection past the censor. 0 = direct (the default).
+     * Set by [ShardManager.start] for the session, reset by [ShardManager.stop].
+     */
+    @Volatile
+    var upstreamSocksPort: Int = 0
+
+    private const val UPSTREAM_TAG = "psiphon-up"
+
+    /** The socks outbound V2Ray outbounds chain through, or null when direct. */
+    private fun upstreamOutbound(): JSONObject? {
+        val port = upstreamSocksPort
+        if (port <= 0) return null
+        return JSONObject().apply {
+            put("tag", UPSTREAM_TAG)
+            put("protocol", "socks")
+            put("settings", JSONObject().put("servers", JSONArray().put(
+                JSONObject().put("address", "127.0.0.1").put("port", port)
+            )))
+        }
+    }
+
+    /** Adds the dialerProxy hop to a rendered V2Ray outbound (not the sing-box socks bridge). */
+    private fun withUpstream(outbound: JSONObject): JSONObject {
+        if (upstreamSocksPort <= 0 || outbound.optString("protocol") == "socks") return outbound
+        val stream = outbound.optJSONObject("streamSettings") ?: JSONObject().also { outbound.put("streamSettings", it) }
+        val sockopt = stream.optJSONObject("sockopt") ?: JSONObject().also { stream.put("sockopt", it) }
+        sockopt.put("dialerProxy", UPSTREAM_TAG)
+        return outbound
+    }
+
     fun outbound(context: Context, node: ShardNode, tag: String, mux: Boolean = true): JSONObject {
         // V2Ray servers: own renderer, no custom CF IP, no mux.
         // Retry-only rewrites (null on a node's first attempts): see [RetryTweaks].
@@ -319,7 +352,7 @@ object ShardConfigs {
                 fingerprint = retryFp ?: it.fingerprint,
                 path = RetryTweaks.earlyDataPath(context, node) ?: it.path,
             )
-            return V2rayNodes.outbound(tweaked, node.address, node.port, tag)
+            return withUpstream(V2rayNodes.outbound(tweaked, node.address, node.port, tag))
         }
         val customIp = getCustomCfIp(context)
         val effectiveAddress = if (customIp.isNotEmpty()) customIp else node.address
@@ -510,6 +543,7 @@ object ShardConfigs {
                 put("protocol", "blackhole")
             }
         )
+        upstreamOutbound()?.let { outbounds.put(it) }
         val rules = JSONArray()
         nodes.forEachIndexed { index, node ->
             val tag = "out-$index"
@@ -618,6 +652,7 @@ object ShardConfigs {
                     put("protocol", "blackhole")
                 }
             )
+        upstreamOutbound()?.let { outbounds.put(it) }
         if (iranDirect) {
             outbounds.put(JSONObject().apply {
                 put("tag", "direct-plain")

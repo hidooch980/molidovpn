@@ -862,6 +862,13 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
 
         /** currentProtocol for coreName "myconfigs": the V2Ray path on the user's own pool. */
         const val MY_CONFIGS_PROTOCOL_MARKER = "SHARD-V2RAY-MINE"
+
+        /**
+         * "V2Ray over Psiphon": a Psiphon VPN session whose tun2socks is pointed at
+         * xray, with every V2Ray outbound dialling through Psiphon's SOCKS port.
+         * Uppercased it contains "PSIPHON" (Psiphon path) and "V2RAY", never "SHARD".
+         */
+        const val V2RAY_PSIPHON_PROTOCOL = "v2raypsiphon"
         const val AMNEZIA_PROTOCOL_MARKER = "AMNEZIA-WIREGUARD"
 
         /** currentProtocol for coreName "dns" (DNS-only gaming mode). */
@@ -1107,6 +1114,13 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             return
         }
 
+        // V2Ray over Psiphon: race V2Ray servers through this listener first. Only the
+        // first onConnected starts it; a Psiphon rotation mid-race changes nothing.
+        if (currentProtocol == V2RAY_PSIPHON_PROTOCOL.uppercase()) {
+            if (!psiphonVpnActivated) startV2rayOverPsiphon(port)
+            return
+        }
+
         val tunFd = tun
         if (tunFd == null) {
             failAndStop(Strings.t("VPN interface missing"))
@@ -1127,6 +1141,61 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
         repostNotification()
         sendStatus(STATUS_CONNECTED)
         startWatchdog()
+    }
+
+    /**
+     * Psiphon is up (VPN mode): race the V2Ray pool with every outbound dialling
+     * through [psiphonPort], then route the device into xray so the exit is the
+     * V2Ray server. When no V2Ray server answers, route into Psiphon directly.
+     */
+    private fun startV2rayOverPsiphon(psiphonPort: Int) {
+        psiphonVpnActivated = true
+        val generation = sessionGeneration
+        sendStatus(STATUS_CONNECTING, Strings.t("Finding a V2Ray server through Psiphon…"), 60)
+        worker.execute {
+            val chained = try {
+                if (V2raySubscription.cachedCount(this) > 0) V2raySubscription.refreshIfDue(this)
+                ShardManager.start(this, verboseShardLog(), v2ray = true, upstreamSocksPort = psiphonPort) &&
+                    ShardSocksFront.start(ShardManager.SOCKS_PORT)
+            } catch (e: Exception) {
+                ConnectionLog.record("V2Ray over Psiphon failed: ${e.message}")
+                false
+            }
+            if (generation != sessionGeneration || stopRequested.get()) {
+                ShardSocksFront.stop()
+                ShardManager.stop()
+                return@execute
+            }
+            val target = if (chained) {
+                ShardSocksFront.LISTEN_PORT
+            } else {
+                ShardSocksFront.stop()
+                ShardManager.stop()
+                ConnectionLog.record("V2Ray over Psiphon: no V2Ray server answered — using Psiphon directly")
+                psiphonPort
+            }
+            val fd = tun
+            if (fd == null) {
+                failAndStop(Strings.t("VPN interface missing"))
+                return@execute
+            }
+            if (!Tun2SocksManager.start(fd, target)) {
+                failAndStop(Strings.t("Could not start whole-device routing"))
+                return@execute
+            }
+            activeSocksPort = target
+            ConnectionLog.record(
+                if (chained) {
+                    "V2Ray over Psiphon: routing via ${ShardManager.activeNode?.displayName ?: "a V2Ray server"}"
+                } else {
+                    "Whole-device routing active via Psiphon"
+                }
+            )
+            connected.set(true)
+            repostNotification()
+            sendStatus(STATUS_CONNECTED)
+            startWatchdog()
+        }
     }
 
     override fun onExiting() {
@@ -3952,7 +4021,10 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
      */
     private fun autoExitCountry(candidate: AutoCandidate): String {
         return try {
-            val code = if (candidate.coreName == "shard" || candidate.coreName == "v2ray" || candidate.coreName == MyConfigs.PROTOCOL) {
+            val code = if (candidate.coreName == "shard" || candidate.coreName == "v2ray" ||
+                candidate.coreName == MyConfigs.PROTOCOL ||
+                (candidate.coreName == V2RAY_PSIPHON_PROTOCOL && ShardManager.isRunning)
+            ) {
                 autoTraceCountry(java.net.Proxy(java.net.Proxy.Type.SOCKS,
                     java.net.InetSocketAddress("127.0.0.1", ShardManager.listenPort)))
             } else if (proxyMode) {
@@ -4113,6 +4185,13 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             // budget after Phase A failed and before plain Psiphon/Tor. Same
             // lowercase marker the tile/auto-connect pass as a protocol.
             AutoCandidate(CHAIN_PROTOCOL_MARKER.lowercase(), "Psiphon over WARP", 40_000L),
+            // V2Ray through Psiphon: Psiphon gets past the censor, the exit is the
+            // V2Ray server (non-IR). Falls back to Psiphon inside the same session.
+            if (proxy || V2raySubscription.cachedCount(this) <= 0) {
+                null
+            } else {
+                AutoCandidate(V2RAY_PSIPHON_PROTOCOL, "V2Ray over Psiphon", 90_000L)
+            },
             AutoCandidate("psiphon", "Psiphon", 45_000L),
             // Tor has no proxy mode (refused in startTunnel).
             if (proxy) null else AutoCandidate("tor", "Tor", 60_000L),
@@ -5019,6 +5098,13 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
                 stopSelf()
             }
             return
+        }
+
+        // V2Ray over Psiphon: xray and its front ride a Psiphon session; stop them,
+        // then fall through to the ordinary Psiphon teardown below.
+        if (currentProtocol == V2RAY_PSIPHON_PROTOCOL.uppercase()) {
+            ShardSocksFront.stop()
+            ShardManager.stop()
         }
 
         if (currentProtocol.contains("SHARD")) {

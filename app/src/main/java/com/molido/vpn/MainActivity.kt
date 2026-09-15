@@ -3938,6 +3938,17 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        // V2Ray servers reached through Psiphon (MolidoVpnService.V2RAY_PSIPHON_PROTOCOL).
+        content.addView(createToggleRow(
+            Strings.t("V2Ray over Psiphon"),
+            Strings.t("V2RAY_OVER_PSIPHON_SUB"),
+            v2rayOverPsiphon(),
+        ) { on ->
+            preferences().edit().putBoolean(V2RAY_OVER_PSIPHON_PREF, on).apply()
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Preferred exit country for V2Ray servers and My configs (CountryFilter).
         var v2rayCountryRow: OrbitSettingsRow? = null
         v2rayCountryRow = navRow(Strings.t("Country"), countryLabel()) {
@@ -5404,6 +5415,10 @@ class MainActivity : Activity() {
             }.apply()
         }
     }
+
+    // ---------------------------------------------------------------- V2Ray over Psiphon
+
+    private fun v2rayOverPsiphon(): Boolean = preferences().getBoolean(V2RAY_OVER_PSIPHON_PREF, false)
 
     // ---------------------------------------------------------------- My configs
 
@@ -6906,6 +6921,8 @@ class MainActivity : Activity() {
         val chained = chainArmed(Protocol.PSIPHON) && selectedProtocol == Protocol.PSIPHON
         return if (chained) {
             CoreConfig.json(this, MolidoVpnService.CHAIN_PROTOCOL_MARKER.lowercase())
+        } else if (selectedProtocol == Protocol.V2RAY && v2rayOverPsiphon()) {
+            CoreConfig.json(this, MolidoVpnService.V2RAY_PSIPHON_PROTOCOL)
         } else {
             CoreConfig.json(this, selectedProtocol.coreName)
         }
@@ -8182,6 +8199,7 @@ class MainActivity : Activity() {
         const val BACKUP_IMPORT_REQUEST = 103
         const val AMNEZIA_IMPORT_REQUEST = 104
         const val MY_CONFIGS_QR_REQUEST = 1105
+        const val V2RAY_OVER_PSIPHON_PREF = "v2ray_over_psiphon"
         const val LOG_REFRESH_MS = 750L
         const val STATUS_POLL_MS = 2_000L
         const val PAGE_ANIMATION_MS = 220L
