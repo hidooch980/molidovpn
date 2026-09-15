@@ -176,6 +176,9 @@ object ConnectionReports {
         }, "connection-report").apply { isDaemon = true }.start()
     }
 
+    /** Health-memory bucket for the current underlying network, e.g. "wifi:other", "cellular:mci". */
+    fun networkKey(context: Context): String = networkType(context) + ":" + operator(context)
+
     /** The underlying (non-VPN) network's type. */
     @Suppress("DEPRECATION")
     private fun networkType(context: Context): String = try {

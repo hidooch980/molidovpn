@@ -4188,6 +4188,31 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
+        // Hourly background scan from this internet (BackgroundScanner).
+        content.addView(createToggleRow(
+            Strings.t("Background scanner"),
+            Strings.t("BACKGROUND_SCANNER_SUB"),
+            BackgroundScanner.enabled(this),
+        ) { on ->
+            preferences().edit().putBoolean(BackgroundScanner.PREF, on).apply()
+            BackgroundScanner.schedule(this)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        val lastScanAt = BackgroundScanner.lastScanAt(this)
+        val lastScanText = if (lastScanAt <= 0L) {
+            Strings.t("Not yet")
+        } else {
+            val minutes = ((System.currentTimeMillis() - lastScanAt) / 60_000L).coerceAtLeast(0L)
+            Strings.tf("Last scan: %s min ago · %s healthy servers", minutes, BackgroundScanner.lastHealthy(this))
+        }
+        content.addView(label(lastScanText, 11.5f, Sculpt.withAlpha(MUTED, 0.85f)).apply {
+            setPadding(dp(16), dp(4), dp(16), 0)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
         // Schedule: daily auto-connect / auto-disconnect times (ConnectSchedule).
         fun scheduleRow(title: String, key: String): OrbitSettingsRow {
             var row: OrbitSettingsRow? = null

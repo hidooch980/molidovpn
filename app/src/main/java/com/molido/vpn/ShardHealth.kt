@@ -205,7 +205,11 @@ object ShardHealth {
      * better than random.
      */
     fun rank(context: Context, nodes: List<ShardNode>): List<ShardNode> {
-        val scores = nodes.associateWith { score(context, it) }
+        val base = nodes.associateWith { score(context, it) }
+        val net = try { ConnectionReports.networkKey(context) } catch (_: Exception) { "" }
+        val now = System.currentTimeMillis()
+        val scanPrefs = context.getSharedPreferences(SCAN_PREFS, Context.MODE_PRIVATE)
+        val scores = base.mapValues { (node, s) -> ScanAdjusted(s, scanPrefs.getString("$net|${node.key}", null), now) }
         // Operator-aware remote scores (ConnectionReports.remoteScores) only break
         // ties within the same local rank — mostly the untried nodes — and are read
         // from cache, so they can never block or override local evidence.
@@ -222,6 +226,49 @@ object ShardHealth {
             compareBy<ShardNode> { scores[it]?.rank() ?: 500_000 }
                 .thenByDescending { remoteByNode[it] ?: 0.0 }
         )
+    }
+
+    /** Background-scan memory keyed "net|nodeKey" → "consecutiveFails:at:ms". */
+    private const val SCAN_PREFS = "shard_scan_health"
+    private const val SCAN_FAIL_LIMIT = 3
+    private const val SCAN_RECENT_BONUS_MS = 2_000
+
+    /** [Score] rank adjusted by what the background scanner saw on this network. */
+    private class ScanAdjusted(val score: Score, raw: String?, now: Long) {
+        private val rankValue: Int
+
+        init {
+            val parts = raw?.split(':').orEmpty()
+            val fails = parts.getOrNull(0)?.toIntOrNull() ?: 0
+            val at = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+            val ms = parts.getOrNull(2)?.toIntOrNull() ?: 0
+            val recent = now - at in 0 until MAX_AGE_MS
+            val r = score.rank()
+            rankValue = when {
+                !recent -> r
+                // Failed 3 scans in a row on this network: behind everything for 6 h.
+                fails >= SCAN_FAIL_LIMIT -> maxOf(r, 950_000)
+                // Worked on this network recently: ahead of nodes without that evidence.
+                fails == 0 && ms > 0 -> (if (r >= 500_000) ms else r) - SCAN_RECENT_BONUS_MS
+                else -> r
+            }
+        }
+
+        fun rank(): Int = rankValue
+    }
+
+    /** Record one background-scan result for [node] on network [net]. */
+    fun recordScan(context: Context, node: ShardNode, net: String, ok: Boolean, latencyMs: Int) {
+        val prefs = context.getSharedPreferences(SCAN_PREFS, Context.MODE_PRIVATE)
+        val key = "$net|${node.key}"
+        val now = System.currentTimeMillis()
+        val prev = prefs.getString(key, null)?.split(':').orEmpty()
+        val prevAt = prev.getOrNull(1)?.toLongOrNull() ?: 0L
+        val prevFails = if (now - prevAt in 0 until MAX_AGE_MS) prev.getOrNull(0)?.toIntOrNull() ?: 0 else 0
+        val value = if (ok) "0:$now:${latencyMs.coerceAtLeast(1)}" else "${prevFails + 1}:$now:0"
+        synchronized(this) {
+            prefs.edit().putString(key, value).apply()
+        }
     }
 
     /**

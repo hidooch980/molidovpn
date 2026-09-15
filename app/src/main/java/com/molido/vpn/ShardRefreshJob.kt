@@ -42,6 +42,20 @@ class ShardRefreshJob : android.app.job.JobService() {
 
     override fun onStartJob(params: JobParameters?): Boolean {
         val jobId = params?.jobId ?: JOB_ID
+        if (jobId == BackgroundScanner.JOB_ID) {
+            val app = applicationContext
+            if (!BackgroundScanner.canRun(app)) return false
+            Thread({
+                try {
+                    BackgroundScanner.run(app)
+                } catch (e: Exception) {
+                    ConnectionLog.record("Background scan failed: ${e.message}")
+                } finally {
+                    jobFinished(params, false)
+                }
+            }, "bg-scan").apply { isDaemon = true }.start()
+            return true
+        }
         if (jobId == NODE_TEST_ID) {
             // Re-scan the pools from this internet so dead servers drop out of the
             // shared scores; only with reports on and nothing connected.
@@ -100,6 +114,7 @@ class ShardRefreshJob : android.app.job.JobService() {
     }
 
     override fun onStopJob(params: JobParameters?): Boolean {
+        if (params?.jobId == BackgroundScanner.JOB_ID) BackgroundScanner.cancel()
         // The fetch is a short GET with its own timeouts and it writes the cache
         // atomically enough (single writeText) that being killed mid-flight leaves
         // either the old file or the new one. Nothing to unwind, and no reason to
@@ -201,6 +216,7 @@ class ShardRefreshJob : android.app.job.JobService() {
             } catch (e: Exception) {
                 ConnectionLog.record("Daily node test job could not be scheduled: ${e.message}")
             }
+            BackgroundScanner.schedule(context)
             prewarmJobs.forEach { prewarm ->
                 try {
                     scheduler.schedule(prewarm)
