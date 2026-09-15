@@ -1,0 +1,60 @@
+name: Core updates (Android)
+
+# Every 6 h: sing-box 1.12.x patch pins and newer stable Xray-core for the Android app.
+# Xray -> new mirror release binaries-N+1 in this repo (libxray.so for arm64-v8a and armeabi-v7a).
+# Commits "Core update (Android): ..." to main using only this repo's GITHUB_TOKEN (no personal tokens).
+# That push builds this repo; hidooch980/mobin-vpn's core-updates workflow notices the commit and starts
+# its gated "Build & Release". Policy: tools/check-core-updates.py; state: .github/core-versions.json.
+
+on:
+  schedule:
+    - cron: '40 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: core-updates-android
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check upstream releases and rewrite pins
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/check-core-updates.py --apply --summary "$RUNNER_TEMP/summary.json"
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          MSG=$(jq -r .commit "$RUNNER_TEMP/summary.json")
+          git config user.name molido-bot
+          git config user.email molido-bot@users.noreply.github.com
+          git add tools/fetch-binaries.sh .github/core-versions.json
+          git diff --cached --quiet && { echo "nothing to commit"; exit 0; }
+          if [ -n "$MSG" ]; then
+            git commit -m "$MSG"
+          else
+            git commit -m "Core update state [skip ci]"
+          fi
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then ok=1; break; fi
+            sleep 15
+          done
+          [ "$ok" = 1 ]
+      - name: Summary
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/summary.json" ] && { echo '```json'; cat "$RUNNER_TEMP/summary.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
