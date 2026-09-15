@@ -4,10 +4,10 @@ Two lists the app fetches at runtime instead of having them compiled in. Editing
 this file changes behaviour on every installed copy within six hours. **No build,
 no release, no version bump.**
 
-Read by `RemotePolicy.kt`. The URL is pinned to the `master` branch of this repo:
+Read by `RemotePolicy.kt`. The URL is pinned to the `main` branch of this repo:
 
 ```
-https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote/policy.json
+https://raw.githubusercontent.com/hidooch980/molidovpn-android/main/remote/policy.json
 ```
 
 ## Fields

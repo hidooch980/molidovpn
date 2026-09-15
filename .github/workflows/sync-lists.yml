@@ -23,8 +23,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download upstream lists (keep the old copy if a download fails)
+        env:
+          UPSTREAM_LISTS_BASE: https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote
         run: |
-          base=https://raw.githubusercontent.com/mbm110/MSN-GUARD/master/remote
+          base="$UPSTREAM_LISTS_BASE"
           for f in shard-nodes.txt policy.json smart-split.json; do
             if curl -fsSL --retry 3 -o "/tmp/$f" "$base/$f" && [ -s "/tmp/$f" ]; then
               case "$f" in *.json) python3 -m json.tool "/tmp/$f" >/dev/null || { echo "invalid $f, skipped"; continue; } ;; esac

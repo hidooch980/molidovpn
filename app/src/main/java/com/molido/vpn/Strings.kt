@@ -729,7 +729,6 @@ object Strings {
         "Donate (حمایت مالی)" to Triple("Donate", "حمایت مالی (Donate)", "捐助"),
         "Copied" to Triple("Copied", "کپی شد", "已复制"),
         "Open" to Triple("Open", "باز کردن", "打开"),
-        "Original project" to Triple("Original project", "پروژهٔ اصلی", "原始项目"),
     )
 
     /** Translate [key] into the active language, falling back to English. */

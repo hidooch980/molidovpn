@@ -1,5 +1,3 @@
-> **MolidoVPN (اندروید)** — این نسخه بر پایه‌ی پروژه‌ی متن‌باز [MSN-GUARD](https://github.com/mbm110/MSN-GUARD) از [mbm110](https://github.com/mbm110) ساخته شده و تحت همان مجوز **AGPL-3.0** منتشر می‌شود. تغییرات: نام و لوگوی MolidoVPN، رنگ‌بندی، و انتشار در [Releases](https://github.com/hidooch980/mobin-vpn/releases/latest).
-
 <div align="center">
 
 <img src="docs/logo.png" width="160" alt="MolidoVPN">
@@ -8,9 +6,8 @@
 
 **تونل کامل دستگاه برای شبکه‌های تحت سانسور — پنج مسیر ترابری، هستهٔ Rust، رابط بومی اندروید**
 
-[![Build](https://img.shields.io/github/actions/workflow/status/mbm110/MSN-GUARD/build.yml?branch=master&style=for-the-badge&label=build)](https://github.com/mbm110/MSN-GUARD/actions)
-[![Version](https://img.shields.io/badge/version-1.7.18-5CE68F?style=for-the-badge)](https://github.com/mbm110/MSN-GUARD/releases)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3A4FB0?style=for-the-badge&logo=android&logoColor=white)](https://github.com/mbm110/MSN-GUARD)
+[![Release](https://img.shields.io/github/v/release/hidooch980/mobin-vpn?style=for-the-badge&color=5CE68F)](https://github.com/hidooch980/mobin-vpn/releases/latest)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3A4FB0?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hidooch980/mobin-vpn/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-6c5ce7?style=for-the-badge)](LICENSE)
 [![Transports](https://img.shields.io/badge/%D9%85%D8%B3%DB%8C%D8%B1%D9%87%D8%A7-MASQUE%20%C2%B7%20WireGuard%20%C2%B7%20WARP%C2%B7WARP%20%C2%B7%20Psiphon%20%C2%B7%20Tor-1f6f4a?style=for-the-badge)](#مسیرهای-ترابری)
 
@@ -181,12 +178,12 @@
 
 ## نصب
 
-آخرین APK را می‌توانید از [بخش Releases](https://github.com/mbm110/MSN-GUARD/releases) یا از artifact های [Actions](https://github.com/mbm110/MSN-GUARD/actions) بگیرید. نسخهٔ فعلی `1.7.18` است و خود برنامه هم آپدیت را از همان صفحهٔ Releases چک می‌کند.
+آخرین APK را از [بخش Releases](https://github.com/hidooch980/mobin-vpn/releases/latest) بگیرید؛ خود برنامه هم آپدیت را از همان‌جا چک می‌کند. پشتیبانی: تلگرام [@Molido_Vpn](https://t.me/Molido_Vpn).
 
 | معماری دستگاه | فایل |
 |---|---|
-| معماری ARM ۶۴ بیتی، یعنی اکثر گوشی‌های امروزی | `MolidoVPN-v1.7.18-arm64-v8a.apk` |
-| معماری ARM ۳۲ بیتی، دستگاه‌های قدیمی‌تر | `MolidoVPN-v1.7.18-armeabi-v7a.apk` |
+| معماری ARM ۶۴ بیتی، یعنی اکثر گوشی‌های امروزی | `MolidoVPN-v2.0.x-arm64-v8a.apk` |
+| معماری ARM ۳۲ بیتی، دستگاه‌های قدیمی‌تر | `MolidoVPN-v2.0.x-armeabi-v7a.apk` |
 
 حداقل نسخهٔ اندروید ۸.۰ یا همان API 26 است. موقع نصب اجازهٔ نصب از منبع نامشخص را بدهید و در اولین اتصال، درخواست مجوز VPN اندروید را تأیید کنید.
 
@@ -253,6 +250,10 @@ cargo install cargo-ndk
 
 <div align="center">
 
-**توسعه و نگهداری: [mbm110](https://github.com/mbm110)**
+**MolidoVPN — پشتیبانی: [@Molido_Vpn](https://t.me/Molido_Vpn)**
 
 </div>
+
+## License
+
+This is a modified version of an [AGPL-3.0 open-source project](https://github.com/mbm110/MSN-GUARD), distributed under the same license ([LICENSE](LICENSE)).

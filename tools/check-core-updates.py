@@ -14,7 +14,7 @@ starts its release.
 Safety policy (auto-apply only non-breaking updates, never pre-releases):
   sing-box   same major.minor as the current pin (1.12.x patches); a new minor/major opens an issue here
   Xray-core  any newer stable release -> new mirror release binaries-N+1 with the new libxray.so
-  Tor / lyrebird / Psiphon AAR come from the MSN-GUARD mirror and are not updated automatically.
+  Tor / lyrebird / Psiphon AAR come from the upstream core mirror and are not updated automatically.
 
 A version is attempted at most once per 24 h (state: .github/core-versions.json), so a failing build does
 not cause a retry loop.
@@ -213,7 +213,7 @@ def check_xray(ctx: Ctx) -> None:
     if not latest:
         print("Xray: no stable release found")
         return
-    # No recorded version yet: the mirror holds MSN-GUARD's build of unknown version -> adopt latest once.
+    # No recorded version yet: the mirror holds the upstream core build of unknown version -> adopt latest once.
     if cur and not is_newer(latest, cur):
         print(f"Xray: {cur} is current")
         return

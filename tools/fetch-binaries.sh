@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Downloads the prebuilt Psiphon AAR and the Tor / lyrebird / Xray executables into the app tree.
-# Source: our own release "binaries-2" (a mirror of mbm110/MSN-GUARD's files), verified by SHA-256.
+# Source: our own release "binaries-2" (a mirror of the upstream core's prebuilt files), verified by SHA-256.
 # Falls back to the upstream repository only if our release is unreachable.
 # sing-box (hysteria2 / tuic / anytls) comes straight from SagerNet's release, pinned by SHA-256.
 set -euo pipefail
 
 TAG="${BINARIES_TAG:-binaries-2}"
 OURS="https://github.com/hidooch980/molidovpn-android/releases/download/$TAG"
-UPSTREAM="https://github.com/mbm110/MSN-GUARD/raw/master/app"
+UPSTREAM_CORE_APP="https://github.com/mbm110/MSN-GUARD/raw/master/app"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 
@@ -17,7 +17,7 @@ SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/download/v$SINGBOX_VE
 get() { # name, upstream path
   curl -fsSL --retry 3 -o "$WORK/$1" "$OURS/$1" || {
     echo "mirror missing $1, using upstream"
-    curl -fsSL --retry 3 -o "$WORK/$1" "$UPSTREAM/$2"
+    curl -fsSL --retry 3 -o "$WORK/$1" "$UPSTREAM_CORE_APP/$2"
   }
 }
 

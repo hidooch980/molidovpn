@@ -9,7 +9,7 @@
 
 ## گزارش آسیب‌پذیری
 
-آسیب‌پذیری‌ها را به‌صورت خصوصی از راه [GitHub Security Advisories](https://github.com/mbm110/MSN-GUARD/security/advisories/new) گزارش کنید، نه در issue عمومی.
+آسیب‌پذیری‌ها را به‌صورت خصوصی از راه [GitHub Security Advisories](https://github.com/hidooch980/molidovpn-android/security/advisories/new) گزارش کنید، نه در issue عمومی.
 
 این موارد را بنویسید:
 

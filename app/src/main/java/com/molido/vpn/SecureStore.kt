@@ -12,19 +12,22 @@ import javax.crypto.spec.GCMParameterSpec
 
 object SecureStore {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-    // Renaming this is safe precisely because the package changed: AndroidKeyStore
-    // is scoped per app UID, so com.molido.vpn starts with an empty keystore and
-    // the alias is generated fresh on first use. There is nothing to migrate.
-    private const val KEY_ALIAS = "msnguard_credential_key"
+    private const val KEY_ALIAS = "molido_credential_key"
+    // Alias used by earlier builds. Keystore keys are non-exportable, so instead of
+    // copying the key we keep using it while it exists: new installs get the new
+    // alias, existing installs keep decrypting their stored credentials.
+    private const val LEGACY_KEY_ALIAS = "msnguard_credential_key"
     private const val PREFS_NAME = "secure_settings"
     private const val GCM_IV_LENGTH = 12
     private const val GCM_TAG_LENGTH = 128
 
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (keyStore.containsAlias(KEY_ALIAS)) {
-            val entry = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-            if (entry != null) return entry.secretKey
+        for (alias in arrayOf(KEY_ALIAS, LEGACY_KEY_ALIAS)) {
+            if (keyStore.containsAlias(alias)) {
+                val entry = keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry
+                if (entry != null) return entry.secretKey
+            }
         }
 
         val keyGenerator = KeyGenerator.getInstance(

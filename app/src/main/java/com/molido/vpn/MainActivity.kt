@@ -3035,11 +3035,6 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
-        sheet.addView(navRow(Strings.t("Original project"), "MSN-GUARD") {
-            openLink("https://github.com/mbm110/MSN-GUARD")
-        }, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { topMargin = dp(8) })
         dialog.setContentView(ScrollView(this).apply {
             setPadding(dp(16), 0, dp(16), dp(16))
             addView(sheet)
