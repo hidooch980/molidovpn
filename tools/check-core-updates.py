@@ -236,14 +236,8 @@ def check_singbox(ctx: Ctx) -> None:
     base = pin_group(RX_SB_VER, ctx.sh, "SINGBOX_VERSION")
     newest = newest_stable(tags)
     if newest and not same_minor(newest, base) and is_newer(newest, base):
-        v = parse_version(newest)
-        ctx.review.append({
-            "title": f"Core update needs review: sing-box {v[0]}.{v[1]}.x",
-            "body": (f"sing-box {newest} is out; Android is pinned to {base}.\n\n"
-                     "Minor/major sing-box releases change the config schema and are not applied "
-                     "automatically. Bump `SINGBOX_VERSION` + both hashes in `tools/fetch-binaries.sh` "
-                     "(and the Windows filter in hidooch980/mobin-vpn release.yml) after testing."),
-        })
+        # Owner decision: new sing-box minors are ignored (no issue); only patches of the pinned series.
+        print(f"sing-box: {newest} ignored; staying on {base} series")
     patch = newest_stable(tags, parse_version(base)[:2])
     if not patch or not is_newer(patch, base):
         print(f"sing-box: {base} is current in its series")
