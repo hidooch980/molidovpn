@@ -667,6 +667,12 @@ object Strings {
         ),
         "Source code (AGPL-3.0)" to Triple("Source code (AGPL-3.0)", "سورس‌کد (AGPL-3.0)", "源代码 (AGPL-3.0)"),
         "License text" to Triple("License text", "متن مجوز", "许可证全文"),
+        "Telegram support: @Molido_Vpn" to Triple("Telegram support: @Molido_Vpn", "پشتیبانی تلگرام: @Molido_Vpn", "Telegram 支持：@Molido_Vpn"),
+        "Telegram support" to Triple("Telegram support", "پشتیبانی تلگرام", "Telegram 支持"),
+        "Donate" to Triple("Donate", "حمایت مالی", "捐助"),
+        "Donate (حمایت مالی)" to Triple("Donate", "حمایت مالی (Donate)", "捐助"),
+        "Copied" to Triple("Copied", "کپی شد", "已复制"),
+        "Open" to Triple("Open", "باز کردن", "打开"),
         "Original project" to Triple("Original project", "پروژهٔ اصلی", "原始项目"),
     )
 

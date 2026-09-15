@@ -1294,6 +1294,16 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
+        addView(label("♥", 20f, palette.danger, TypefaceStyle.MEDIUM).apply {
+            gravity = Gravity.CENTER
+            contentDescription = Strings.t("Donate")
+            isClickable = true
+            isFocusable = true
+            val outValue = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
+            setOnClickListener { showDonateSheet() }
+        }, LinearLayout.LayoutParams(dp(40), dp(44)).apply { marginStart = dp(4) })
         addView(ImageView(this@MainActivity).apply {
             setImageResource(R.drawable.ic_settings)
             contentDescription = "تنظیمات"
@@ -1564,6 +1574,27 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(14) })
+
+        // Compact Telegram support row.
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = Sculpt.sculptedBackground(resources.displayMetrics.density, palette.surface, 16)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { openTelegramSupport() }
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_telegram)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(8) })
+            addView(label(Strings.t("Telegram support: @Molido_Vpn"), 12.5f, INK, TypefaceStyle.MEDIUM).apply {
+                maxLines = 1
+            })
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(10) })
 
         // Fills the gap that used to sit between the action bar and the bottom
         // inset. Weight is one Path; it only animates while connected.
@@ -2684,6 +2715,108 @@ class MainActivity : Activity() {
         sheet.addView(buttons, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(52),
         ).apply { topMargin = dp(16) })
+        dialog.setContentView(ScrollView(this).apply {
+            setPadding(dp(16), 0, dp(16), dp(16))
+            addView(sheet)
+        })
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setDimAmount(0.62f)
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+        }
+    }
+
+    /** Opens @Molido_Vpn in the Telegram app, falling back to t.me in a browser. */
+    private fun openTelegramSupport() {
+        val handle = Donate.TELEGRAM_HANDLE
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=$handle")))
+        } catch (e: Exception) {
+            openLink("https://t.me/$handle")
+        }
+    }
+
+    private fun showDonateSheet() {
+        val dialog = Dialog(this).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
+        val fa = AppLanguage.current() == "fa"
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            background = roundedBackground(SURFACE, 28, SURFACE)
+        }
+        val title = label("", 22f, INK, TypefaceStyle.MEDIUM)
+        sheet.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(createHeaderBackButton { dialog.dismiss() }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(title)
+        })
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        sheet.addView(body, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+
+        fun render(info: Donate.Info) {
+            title.text = if (fa) info.titleFa else info.titleEn
+            body.removeAllViews()
+            val text = if (fa) info.textFa else info.textEn
+            if (text.isNotBlank()) {
+                body.addView(label(text, 14f, MUTED), LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(8); bottomMargin = dp(12) })
+            }
+            info.items.forEach { item ->
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(12), dp(16), dp(12))
+                    background = roundedBackground(CANVAS, 18, CANVAS)
+                }
+                card.addView(label(item.label, 12f, MUTED, TypefaceStyle.MEDIUM))
+                card.addView(label(item.value, 15f, INK, TypefaceStyle.MEDIUM).apply {
+                    setTextIsSelectable(true)
+                }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(2) })
+                val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                actions.addView(createSettingsButton(Strings.t("Copy")) {
+                    runCatching {
+                        getSystemService(ClipboardManager::class.java)
+                            ?.setPrimaryClip(ClipData.newPlainText(item.label, item.value))
+                        toastShort(Strings.t("Copied"))
+                    }
+                }, LinearLayout.LayoutParams(0, dp(44), 1f))
+                if (item.url.isNotEmpty()) {
+                    actions.addView(createSettingsButton(Strings.t("Open")) {
+                        if (item.url.startsWith("https://t.me/")) {
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                                    "tg://resolve?domain=" + item.url.removePrefix("https://t.me/").substringBefore('/'),
+                                )))
+                            } catch (e: Exception) {
+                                openLink(item.url)
+                            }
+                        } else {
+                            openLink(item.url)
+                        }
+                    }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(10) })
+                }
+                card.addView(actions, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(44),
+                ).apply { topMargin = dp(10) })
+                body.addView(card, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(10) })
+            }
+        }
+
+        render(Donate.cached(this))
+        val app = applicationContext
+        Thread {
+            val fresh = Donate.fetch(app)
+            runOnUiThread { if (dialog.isShowing && !isFinishing) render(fresh) }
+        }.apply { isDaemon = true }.start()
+
         dialog.setContentView(ScrollView(this).apply {
             setPadding(dp(16), 0, dp(16), dp(16))
             addView(sheet)
@@ -3899,6 +4032,18 @@ class MainActivity : Activity() {
         ).apply { topMargin = dp(8) })
         content.addView(navRow(Strings.t("MolidoVPN website"), iconRes = R.drawable.ic_github) {
             openLink("https://hidooch980.github.io/mobin-vpn/")
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        content.addView(navRow(Strings.t("Telegram support"), "@Molido_Vpn", iconRes = R.drawable.ic_telegram) {
+            openTelegramSupport()
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        content.addView(navRow(Strings.t("Donate (حمایت مالی)"), "♥") {
+            showDonateSheet()
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,

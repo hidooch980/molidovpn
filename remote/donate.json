@@ -1,0 +1,13 @@
+{
+  "title_fa": "حمایت مالی",
+  "title_en": "Donate",
+  "text_fa": "از حمایت شما ممنونیم! برای دریافت روش‌های حمایت مالی، به پشتیبانی تلگرام پیام دهید.",
+  "text_en": "Thank you for supporting MolidoVPN! Message our Telegram support to get donation methods.",
+  "items": [
+    {
+      "label": "Telegram",
+      "value": "@Molido_Vpn",
+      "url": "https://t.me/Molido_Vpn"
+    }
+  ]
+}
