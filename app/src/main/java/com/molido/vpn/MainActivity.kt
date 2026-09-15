@@ -103,6 +103,13 @@ class MainActivity : Activity() {
     private var selectedProtocol = Protocol.AUTO
     /** Home-screen DNS chip under the rail; opens the same sheet as Settings. */
     private var homeDnsChip: TextView? = null
+
+    // Simple / Advanced home and collapsible settings.
+    private var homeAdvancedBox: LinearLayout? = null
+    private var homeLocationCard: TextView? = null
+    private var homeRetryButton: TextView? = null
+    private var homeAdvancedLink: TextView? = null
+    private var settingsAdvancedExpanded = false
     /** Settings DNS row while the settings page is built, so a home pick repaints it. */
     private var settingsDnsRow: OrbitSettingsRow? = null
     // v1.8.7: English keeps the exact v1.8.5 layout; fa/zh get tighter text
@@ -679,6 +686,7 @@ class MainActivity : Activity() {
         }
         val header = createHeader()
         val console = createConnectionConsole()
+        applyHomeMode()
         // The console can still scroll, but it is meant not to need it: the dial
         // shrinks first (see [fitConsoleToViewport]) and scrolling is only the
         // last resort on a screen too short even for the smallest dial. Clipping
@@ -736,6 +744,8 @@ class MainActivity : Activity() {
         setContentView(pageHost)
         configureSystemBars()
         showOpeningOverlay()
+        // After the splash overlay (~1.5 s) so the two never overlap.
+        pageHost.postDelayed({ maybeShowOnboarding() }, 1_700L)
         // Reattach to a tunnel that is already up. Without this the dial opens in
         // the disconnected state while the VPN is running, and the session timer
         // would only start on the next status broadcast. [adoptRunningTunnel]
@@ -1333,6 +1343,8 @@ class MainActivity : Activity() {
 
     /** Status LED colour + glow for the header chip. */
     private fun renderStatusLed() {
+        // Every state change passes here: the big retry button is for FAILED only.
+        homeRetryButton?.visibility = if (visualState == OrbitDialView.State.FAILED) View.VISIBLE else View.GONE
         val (fill, glow) = when (visualState) {
             OrbitDialView.State.CONNECTED -> connected to true
             OrbitDialView.State.DEGRADED -> palette.amber to true
@@ -1606,6 +1618,152 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(44),
         ).apply { topMargin = dp(8) })
+
+        // Simple / Advanced home ([applyHomeMode]). Everything between the status
+        // text and the Telegram row (chips, exit card, mode rail, DNS chip, add-on
+        // cards, stats) moves into one container the toggle hides. A container,
+        // not per-view visibility: renderChainCard and friends set their own
+        // cards' visibility, and must keep working inside it.
+        val firstAdvanced = indexOfChild(connectionDetail) + 1
+        val advancedBox = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
+        // The last two children (Telegram row, footer wave) stay in the console.
+        while (childCount - 2 > firstAdvanced) {
+            val child = getChildAt(firstAdvanced)
+            val params = child.layoutParams
+            removeViewAt(firstAdvanced)
+            advancedBox.addView(child, params)
+        }
+        homeAdvancedBox = advancedBox
+
+        val retry = label(Strings.t("Try again"), 15f, palette.mint, TypefaceStyle.MEDIUM).apply {
+            gravity = Gravity.CENTER
+            background = Sculpt.sculptedBackground(
+                resources.displayMetrics.density,
+                Sculpt.withAlpha(palette.mint, 0.16f),
+                14,
+                Sculpt.withAlpha(palette.mint, 0.4f),
+            )
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+            setOnClickListener {
+                if (homeSimple()) updateConnectionMode(Protocol.AUTO)
+                toggleTunnel()
+            }
+        }
+        homeRetryButton = retry
+        addView(retry, firstAdvanced, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(48),
+        ).apply { topMargin = dp(10) })
+
+        val location = label(locationCardText(), 14f, INK, TypefaceStyle.MEDIUM).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = Sculpt.sculptedBackground(resources.displayMetrics.density, palette.surface, 16)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { showCountryPicker { homeLocationCard?.text = locationCardText() } }
+        }
+        homeLocationCard = location
+        addView(location, firstAdvanced + 1, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(12) })
+
+        addView(advancedBox, firstAdvanced + 2, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+
+        val advancedLink = label("", 13f, MUTED, TypefaceStyle.MEDIUM).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(4))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                preferences().edit().putBoolean(HOME_SIMPLE_PREF, !homeSimple()).apply()
+                applyHomeMode()
+            }
+        }
+        homeAdvancedLink = advancedLink
+        // Before the footer wave, after the Telegram row.
+        addView(advancedLink, childCount - 1, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+    }
+
+    // ---------------------------------------------------------------- Simple home
+
+    private fun homeSimple(): Boolean = preferences().getBoolean(HOME_SIMPLE_PREF, true)
+
+    private fun locationCardText(): String {
+        val code = CountryFilter.selected(this)
+        return if (code.isEmpty()) {
+            "📍 " + Strings.t("Location: Automatic (best)")
+        } else {
+            "${CountryFilter.flag(code)} " + Strings.tf("Location: %s", code)
+        }
+    }
+
+    /**
+     * Simple view (the default): dial, one plain status line, location card and
+     * support row; always Auto. Advanced shows every control as before.
+     */
+    private fun applyHomeMode() {
+        val simple = homeSimple()
+        homeAdvancedBox?.visibility = if (simple) View.GONE else View.VISIBLE
+        homeLocationCard?.visibility = if (simple) View.VISIBLE else View.GONE
+        homeLocationCard?.text = locationCardText()
+        homeAdvancedLink?.text = if (simple) Strings.t("Advanced mode") else Strings.t("Simple mode")
+        if (simple && selectedProtocol != Protocol.AUTO && !TunnelStatus.isActive() &&
+            visualState != OrbitDialView.State.CONNECTING
+        ) {
+            updateConnectionMode(Protocol.AUTO)
+        }
+    }
+
+    /** Three plain steps on a fresh install, then the VPN permission prompt. */
+    private fun maybeShowOnboarding() {
+        if (isFinishing || preferences().getBoolean(ONBOARDING_PREF, false)) return
+        val freshInstall = runCatching {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            info.firstInstallTime == info.lastUpdateTime
+        }.getOrDefault(false)
+        if (!freshInstall) {
+            preferences().edit().putBoolean(ONBOARDING_PREF, true).apply()
+            return
+        }
+        val steps = listOf(
+            "ONBOARD_1_TITLE" to "ONBOARD_1_BODY",
+            "ONBOARD_2_TITLE" to "ONBOARD_2_BODY",
+            "ONBOARD_3_TITLE" to "ONBOARD_3_BODY",
+        )
+        fun show(index: Int) {
+            if (isFinishing) return
+            if (index >= steps.size) {
+                preferences().edit().putBoolean(ONBOARDING_PREF, true).apply()
+                if (!CoreConfig.proxyOnly(this)) {
+                    VpnService.prepare(this)?.let { runCatching { startActivityForResult(it, VPN_REQUEST) } }
+                }
+                return
+            }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("${index + 1}/${steps.size} · " + Strings.t(steps[index].first))
+                .setMessage(Strings.t(steps[index].second))
+                .setCancelable(false)
+                .setPositiveButton(
+                    if (index == steps.lastIndex) Strings.t("Allow VPN") else Strings.t("Next")
+                ) { _, _ -> show(index + 1) }
+                .show()
+        }
+        show(0)
     }
 
     private fun refreshPublicIp(resetRetry: Boolean = true) {
@@ -3280,10 +3438,58 @@ class MainActivity : Activity() {
                 setPadding(dp(4), 0, 0, 0)
             })
         }
+        // ---- Main settings: the few a beginner needs. Everything else is below,
+        // inside the collapsed "Advanced settings" container.
+        fun mainParams(top: Int = 8) = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(top) }
+        content.addView(sectionLabel(Strings.t("Main settings")), mainParams(0))
+        content.addView(navRow(Strings.t("Language"), AppLanguage.label(currentLanguagePref())) { chooseLanguage() }, mainParams(10))
+        content.addView(navRow(Strings.t("Theme"), AppAppearance.mode(this).label) { chooseTheme() }, mainParams())
+        content.addView(createToggleRow(
+            Strings.t("Auto-connect"),
+            Strings.t("Connect automatically after the phone restarts"),
+            preferences().getBoolean(AutoConnect.PREF, AutoConnect.DEFAULT),
+        ) { preferences().edit().putBoolean(AutoConnect.PREF, it).apply() }, mainParams())
+        content.addView(OrbitToggleRow(
+            this,
+            palette,
+            Strings.t("Iranian sites direct"),
+            Strings.t("IRAN_DIRECT_SUBTITLE"),
+            IranDirect.enabled(this),
+        ) { on -> IranDirect.setEnabled(this, on) }, mainParams())
+        content.addView(navRow(Strings.t("Telegram support"), "@Molido_Vpn", iconRes = R.drawable.ic_telegram) {
+            openTelegramSupport()
+        }, mainParams())
+        content.addView(navRow(Strings.t("Donate (حمایت مالی)"), "♥") { showDonateSheet() }, mainParams())
+        content.addView(navRow(Strings.t("About"), "v${appVersion()}") {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("MolidoVPN")
+                .setMessage("MolidoVPN ${appVersion()}\nAGPL-3.0")
+                .setPositiveButton(Strings.t("Check for updates")) { _, _ -> appUpdater.checkForUpdate() }
+                .setNeutralButton(Strings.t("Open-source licenses")) { _, _ -> showLicensesSheet() }
+                .setNegativeButton(Strings.t("Close"), null)
+                .show()
+        }, mainParams())
+        lateinit var advancedHeader: OrbitSettingsRow
+        advancedHeader = navRow(
+            Strings.t("Advanced settings"),
+            if (settingsAdvancedExpanded) "▴" else "▾",
+        ) {
+            settingsAdvancedExpanded = !settingsAdvancedExpanded
+            advancedHeader.setValue(if (settingsAdvancedExpanded) "▴" else "▾")
+            (content.getChildAt(content.childCount - 1) as? LinearLayout)?.takeIf { it.tag == ADVANCED_SETTINGS_TAG }
+                ?.visibility = if (settingsAdvancedExpanded) View.VISIBLE else View.GONE
+        }
+        content.addView(advancedHeader, mainParams(26))
+        // Everything added from here on moves into the collapsible container.
+        val advancedFrom = content.childCount
+
         content.addView(sectionLabel(Strings.t("PROTECTION")), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-        ))
+        ).apply { topMargin = dp(16) })
         lateinit var killSwitchRow: LinearLayout
         killSwitchRow = createToggleRow(Strings.t("Kill switch"), Strings.t("Block all traffic if the tunnel drops"), killSwitchEnabled()) {
             preferences().edit().putBoolean(KILL_SWITCH, it).apply()
@@ -4096,6 +4302,24 @@ class MainActivity : Activity() {
             letterSpacing = spacing(0.06f)
             setPadding(0, dp(22), 0, 0)
         })
+
+        // Collapse: move every advanced row into one container toggled by the
+        // "Advanced settings" header. Rows keep their own LayoutParams and views.
+        val advancedBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = ADVANCED_SETTINGS_TAG
+        }
+        while (content.childCount > advancedFrom) {
+            val child = content.getChildAt(advancedFrom)
+            val params = child.layoutParams
+            content.removeViewAt(advancedFrom)
+            advancedBox.addView(child, params)
+        }
+        advancedBox.visibility = if (settingsAdvancedExpanded) View.VISIBLE else View.GONE
+        content.addView(advancedBox, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
 
         scroll.addView(content)
         page.addView(scroll, FrameLayout.LayoutParams(
@@ -7095,7 +7319,14 @@ class MainActivity : Activity() {
         connectionTitle.setTextColor(ERROR_TEXT)
         connectionTitle.text = Strings.t("Connection failed")
         footerWave.setLit(false)
-        connectionDetail.text = detail ?: Strings.t("Check the server and try again")
+        // Simple view: one plain sentence plus the retry button; the technical
+        // reason goes to the log (and stays on screen in Advanced view).
+        if (detail != null) ConnectionLog.record("Connect failed: $detail")
+        connectionDetail.text = if (homeSimple()) {
+            Strings.t("FRIENDLY_CONNECT_FAILED")
+        } else {
+            detail ?: Strings.t("Check the server and try again")
+        }
         setModeEnabled(true)
     }
 
@@ -8200,6 +8431,9 @@ class MainActivity : Activity() {
         const val AMNEZIA_IMPORT_REQUEST = 104
         const val MY_CONFIGS_QR_REQUEST = 1105
         const val V2RAY_OVER_PSIPHON_PREF = "v2ray_over_psiphon"
+        const val HOME_SIMPLE_PREF = "home_simple"
+        const val ADVANCED_SETTINGS_TAG = "advanced_settings"
+        const val ONBOARDING_PREF = "onboarding_done"
         const val LOG_REFRESH_MS = 750L
         const val STATUS_POLL_MS = 2_000L
         const val PAGE_ANIMATION_MS = 220L
