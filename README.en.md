@@ -31,24 +31,53 @@ The thing that separates this from a generic VPN app: it was built for Iranian m
 
 ## Feature summary
 
-| | |
-|---|---|
-| Device-wide tunnel | `VpnService` + TUN; every app covered with zero per-app configuration |
-| Connection modes | Automatic, V2Ray servers, SHARD (CDN nodes), MASQUE over HTTP/3, WARP / WireGuard, WARP-on-WARP, built-in AmneziaWG, Psiphon (and Psiphon over WARP), Tor (and Tor over WARP), V2Ray over Psiphon, gaming-DNS-only |
-| Smart selection | Iran-exit avoidance, best mode per mobile operator from opt-in anonymous reports, hourly background scanner |
-| My configs | Import by paste, file, QR image or subscription URL; "fastest of my configs" |
-| Remote control | Owner announcements and remote mode flags from the MolidoVPN worker |
-| Extras | Simple/advanced mode, onboarding, Persian/English/Chinese UI, home-screen widget, Smart Split, Iran-direct, speed test, scheduled connect, settings backup, Share over LAN, auto update |
-| Tor and Tor-over-WARP | The Tor network on its own, or nested inside MASQUE where Tor itself is blocked |
-| Exit country picker | 27 countries for Tor, 25 for Psiphon, each shown with its real relay or server count |
-| One-tap connect | A single button. Gateway selection, negotiation and recovery are automatic |
-| Real UDP and QUIC | Datagrams bridged in userspace, so video, gaming and voice calls actually work |
-| Live status | Exit IP with country flag, data usage, session timer, streaming log |
-| Quick Settings tile | Connect and disconnect without opening the app |
-| Split tunnelling | Choose which apps stay outside the tunnel |
-| Kill switch | If the tunnel drops, the network drops with it — no plaintext leak |
-| DNS enforcement | Public resolvers only; carrier DNS is excluded outright |
-| Verified connect | The dial only reports success once traffic has actually moved |
+The device-wide tunnel runs on `VpnService` + a TUN interface, so every app — not just the browser — is covered with zero per-app setup. UDP and QUIC datagrams are bridged in userspace too, so video, gaming and voice calls actually work through the tunnel.
+
+### 🔌 Connection modes
+
+- **V2Ray servers** — VLESS, VMess, Trojan, Shadowsocks, Reality, XHTTP, Hysteria2, TUIC and AnyTLS sub-protocols
+- **SHARD** — CDN-edge routing over MASQUE/HTTP-3
+- **WARP / WireGuard** — direct to Cloudflare's network
+- **WARP-on-WARP** — layered WARP for networks that block WARP itself
+- **Built-in AmneziaWG** — no separate config import needed
+- **Psiphon** — and Psiphon over WARP for stricter networks
+- **Tor** — and Tor over WARP (inside a MASQUE tunnel) where Tor itself is blocked
+- **V2Ray over Psiphon** — layered from inside the Psiphon tunnel
+- **DNS-only + gaming DNS** — a lightweight mode for just swapping the resolver
+- **Automatic mode** — one button; gateway pick, negotiation and recovery are all automatic
+
+### 🧠 Smart selection
+
+- **Test-all mode** — scans every available mode to find the best one for the current network
+- **Iran-exit avoidance** — gateways that exit back inside Iran are excluded
+- **Best mode per operator** — scored and ranked from opt-in anonymous user reports
+- **Cloudflare clean-IP sharing** — users who opt in anonymously share the fastest clean SHARD edge IPs with other users on the same carrier
+- **Exit country picker** — 27 countries for Tor, 25 for Psiphon, each with a real relay/server count, plus **verified connect**: the dial only reports success once traffic has actually moved
+- **Background scanner** — periodically checks gateway health
+- **Anti-freeze / watchdog failover** — if a SHARD node stalls, the app swaps nodes without dropping the tunnel
+
+### ⭐ User experience
+
+- Simple / advanced home screen
+- Onboarding for first-time users
+- Announcements banner for owner messages
+- What's-new card after an update
+- Share-with-friends QR code
+- **My configs** — import by paste, file, QR image, subscription link or Outline; "fastest of my configs"
+- Remote control: mode on/off flags and announcements pushed from the MolidoVPN worker
+- Persian / English / Chinese UI, home-screen widget, Quick Settings tile
+- **Smart Split** and per-app split tunnelling
+- **Iran-direct** routing for domestic sites
+- Speed test, scheduled connect, settings backup, Share over LAN, auto update
+- Live status: exit IP with country flag, data usage, session timer, streaming log
+- **Kill switch** — if the tunnel drops, the network drops with it
+- **DNS enforcement** — public resolvers only; carrier DNS is excluded outright
+
+### 🔒 Privacy
+
+- Connection-quality reports are fully **opt-in and off by default**
+- Reports carry only an anonymous node fingerprint, success/failure, connect latency, network type, platform and app version
+- No IP address and no username is ever stored or sent
 
 ---
 

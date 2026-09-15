@@ -714,9 +714,9 @@ object Strings {
         // Connection extras (IR direct, MTU, speed test, schedule, backup).
         "Open-source licenses" to Triple("Open-source licenses", "مجوزهای متن‌باز", "开源许可"),
         "LICENSE_NOTICE" to Triple(
-            "MolidoVPN is free software based on the open-source project MSN-GUARD by mbm110, licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). You may use, study, share and modify it under that license. The complete corresponding source code is available at github.com/hidooch980/molidovpn-android. This program comes with ABSOLUTELY NO WARRANTY.",
-            "MolidoVPN نرم‌افزاری آزاد است که بر پایهٔ پروژهٔ متن‌باز MSN-GUARD (از mbm110) ساخته شده و تحت مجوز GNU Affero General Public License نسخهٔ ۳ (AGPL-3.0) منتشر می‌شود. استفاده، بررسی، انتشار و تغییر آن طبق همین مجوز آزاد است. سورس کامل برنامه در github.com/hidooch980/molidovpn-android در دسترس است. این برنامه بدون هیچ‌گونه ضمانتی ارائه می‌شود.",
-            "MolidoVPN 是自由软件，基于 mbm110 的开源项目 MSN-GUARD，采用 GNU Affero 通用公共许可证 v3.0 (AGPL-3.0) 授权。完整对应源代码见 github.com/hidooch980/molidovpn-android。本程序不提供任何担保。",
+            "MolidoVPN is free software based on an open-source project, licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). You may use, study, share and modify it under that license. The complete corresponding source code is available at github.com/hidooch980/molidovpn-android. This program comes with ABSOLUTELY NO WARRANTY.",
+            "MolidoVPN نرم‌افزاری آزاد است که بر پایهٔ یک پروژهٔ متن‌باز ساخته شده و تحت مجوز GNU Affero General Public License نسخهٔ ۳ (AGPL-3.0) منتشر می‌شود. استفاده، بررسی، انتشار و تغییر آن طبق همین مجوز آزاد است. سورس کامل برنامه در github.com/hidooch980/molidovpn-android در دسترس است. این برنامه بدون هیچ‌گونه ضمانتی ارائه می‌شود.",
+            "MolidoVPN 是自由软件，基于一个开源项目，采用 GNU Affero 通用公共许可证 v3.0 (AGPL-3.0) 授权。完整对应源代码见 github.com/hidooch980/molidovpn-android。本程序不提供任何担保。",
         ),
         "Source code (AGPL-3.0)" to Triple("Source code (AGPL-3.0)", "سورس‌کد (AGPL-3.0)", "源代码 (AGPL-3.0)"),
         "License text" to Triple("License text", "متن مجوز", "许可证全文"),
