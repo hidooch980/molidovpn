@@ -1,13 +1,10 @@
 {
-  "title_fa": "حمایت مالی",
-  "title_en": "Donate",
-  "text_fa": "از حمایت شما ممنونیم! برای دریافت روش‌های حمایت مالی، به پشتیبانی تلگرام پیام دهید.",
-  "text_en": "Thank you for supporting MolidoVPN! Message our Telegram support to get donation methods.",
+  "title_fa": "حمایت از MolidoVPN",
+  "title_en": "Support MolidoVPN",
+  "text_fa": "MolidoVPN رایگان است. اگر مفید بود، با حمایت مالی به ادامه‌ی کار و نگهداری سرورها کمک کنید. 💚",
+  "text_en": "MolidoVPN is free. If it helps you, a donation keeps it running.",
   "items": [
-    {
-      "label": "Telegram",
-      "value": "@Molido_Vpn",
-      "url": "https://t.me/Molido_Vpn"
-    }
+    {"label": "حمایت مالی (ری‌میت)", "value": "reymit.ir/molido", "url": "https://reymit.ir/molido"},
+    {"label": "پشتیبانی تلگرام", "value": "@Molido_Vpn", "url": "https://t.me/Molido_Vpn"}
   ]
 }
