@@ -4315,13 +4315,22 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
         try {
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
             // UDP blocked on this network: WireGuard and MASQUE (both UDP) cannot work.
-            val phaseAAll = if (udpBlocked()) {
-                autoPhaseA().filter {
+            // Modes the owner switched off in the panel ([AppRemote]) are never tried.
+            val phaseAEnabled = autoPhaseA().filter { !AppRemote.isDisabled(this, it.coreName) }
+            val phaseAUdp = if (udpBlocked()) {
+                phaseAEnabled.filter {
                     it.coreName != "wireguard" && it.coreName != "masque" && it.coreName != AmneziaConfig.PROTOCOL
                 }
             } else {
-                autoPhaseA()
+                phaseAEnabled
             }
+            // Best mode for this operator (shared reports; global when the operator has few) goes first.
+            // Stable: every other candidate keeps its tuned order.
+            val bestShared = phaseAUdp
+                .mapNotNull { c -> ConnectionReports.modeScore(this, c.coreName)?.let { c to it } }
+                .filter { it.second >= 0.6 }
+                .maxByOrNull { it.second }?.first
+            val phaseAAll = if (bestShared == null) phaseAUdp else listOf(bestShared) + (phaseAUdp - bestShared)
             // Iranian user: WARP exits in IR, so test the transports that exit abroad first.
             val homeIran = autoHomeIsIran(prefs)
             val phaseA = if (homeIran) {
@@ -4333,7 +4342,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             val countries = HashMap<String, String>()
             var irWinner: AutoCandidate? = null
             var irWinnerMs = -1L
-            val phaseB = autoPhaseB()
+            val phaseB = autoPhaseB().filter { !AppRemote.isDisabled(this, it.coreName) }
             // Learned winner for (operator, 3-hour bucket) first, global last winner second.
             val learnKey = autoLearnKey()
             val learned = autoLearned(prefs, learnKey)
@@ -5252,7 +5261,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
                     null
                 }
                 // ok=true is sent while the tunnel is up; failures are best-effort.
-                ConnectionReports.report(this, node, ok, ms)
+                ConnectionReports.report(this, node, ok, ms, mode = if (shardKey != null) currentProtocol else null)
             } catch (_: Exception) {
             }
         }

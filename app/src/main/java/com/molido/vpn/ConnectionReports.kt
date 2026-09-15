@@ -69,12 +69,27 @@ object ConnectionReports {
     fun remoteScores(context: Context): Map<String, Double> {
         val op = operator(context)
         if (scoresCacheOp == op) return scoresCache
-        val raw = context.getSharedPreferences(SCORES_PREFS, Context.MODE_PRIVATE)
-            .getString("json_$op", null)
-        val parsed = raw?.let { parseScores(it) } ?: emptyMap()
-        scoresCache = parsed
+        val prefs = context.getSharedPreferences(SCORES_PREFS, Context.MODE_PRIVATE)
+        // Operator score when it has enough reports, else the global score for that node.
+        val mine = prefs.getString("json_$op", null)?.let { parseScoresDetailed(it) } ?: emptyMap()
+        val global = prefs.getString("json_all", null)?.let { parseScoresDetailed(it) } ?: emptyMap()
+        val merged = HashMap<String, Double>()
+        for ((key, value) in global) merged[key] = value.first
+        for ((key, value) in mine) {
+            if (value.second >= MIN_OPERATOR_REPORTS || key !in merged) merged[key] = value.first
+        }
+        scoresCache = merged
         scoresCacheOp = op
-        return parsed
+        return merged
+    }
+
+    /** Reports needed before this operator's own score beats the global one. */
+    const val MIN_OPERATOR_REPORTS = 5
+
+    /** Shared success score (0..1) of a connection mode (core name) on this operator; null when unknown. */
+    fun modeScore(context: Context, coreName: String): Double? {
+        val name = coreName.lowercase()
+        return remoteScores(context)["mode:$name"]
     }
 
     /** Background fetch of `/scores?op=` at most hourly per operator. Never blocks. */
@@ -87,23 +102,25 @@ object ConnectionReports {
         if (!scoresRefreshing.compareAndSet(false, true)) return
         Thread({
             try {
-                val connection = URL(SCORES_ENDPOINT + op).openConnection() as HttpURLConnection
-                try {
-                    connection.connectTimeout = TIMEOUT_MS
-                    connection.readTimeout = TIMEOUT_MS
-                    connection.requestMethod = "GET"
-                    val editor = prefs.edit().putLong("at_$op", System.currentTimeMillis())
-                    if (connection.responseCode == 200) {
-                        val body = connection.inputStream.bufferedReader().use { it.readText() }
-                        if (parseScores(body).isNotEmpty()) {
-                            editor.putString("json_$op", body)
-                            scoresCacheOp = null
+                val editor = prefs.edit().putLong("at_$op", System.currentTimeMillis())
+                // This operator's scores, then the global ones (empty op) used when the operator has few reports.
+                for ((query, key) in listOf(op to "json_$op", "" to "json_all")) {
+                    val connection = URL(SCORES_ENDPOINT + query).openConnection() as HttpURLConnection
+                    try {
+                        connection.connectTimeout = TIMEOUT_MS
+                        connection.readTimeout = TIMEOUT_MS
+                        connection.requestMethod = "GET"
+                        if (connection.responseCode == 200) {
+                            val body = connection.inputStream.bufferedReader().use { it.readText() }
+                            if (parseScores(body).isNotEmpty()) editor.putString(key, body)
                         }
+                    } catch (_: Exception) {
+                    } finally {
+                        connection.disconnect()
                     }
-                    editor.apply()
-                } finally {
-                    connection.disconnect()
                 }
+                editor.apply()
+                scoresCacheOp = null
             } catch (_: Exception) {
                 // Best effort only; ranking falls back to local health.
             } finally {
@@ -133,6 +150,29 @@ object ConnectionReports {
         emptyMap()
     }
 
+    /** Node -> (score, report count); count from `n`, else ok+fail, else 0. */
+    private fun parseScoresDetailed(body: String): Map<String, Pair<Double, Int>> = try {
+        val root = JSONObject(body)
+        val obj = root.optJSONObject("scores") ?: root
+        val out = HashMap<String, Pair<Double, Int>>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = obj.opt(key)
+            when (value) {
+                is Number -> out[key] = value.toDouble() to 0
+                is JSONObject -> {
+                    val score = value.optDouble("score", Double.NaN)
+                    val n = value.optInt("n", value.optInt("ok", 0) + value.optInt("fail", 0))
+                    if (!score.isNaN()) out[key] = score to n
+                }
+            }
+        }
+        out
+    } catch (_: Exception) {
+        emptyMap()
+    }
+
     fun enabled(context: Context): Boolean =
         context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(PREF, DEFAULT)
 
@@ -143,7 +183,8 @@ object ConnectionReports {
         return digest.joinToString("") { "%02x".format(it) }.take(16)
     }
 
-    fun report(context: Context, node: String, ok: Boolean, ms: Int?) {
+    /** [mode]: connection mode core name (e.g. "shard", "v2ray") for fingerprint nodes; null when [node] is "mode:<name>". */
+    fun report(context: Context, node: String, ok: Boolean, ms: Int?, mode: String? = null) {
         if (!enabled(context)) return
         val app = context.applicationContext
         Thread({
@@ -155,6 +196,7 @@ object ConnectionReports {
                     put("ms", ms ?: JSONObject.NULL)
                     put("net", networkType(app))
                     put("op", operator(app))
+                    mode?.lowercase()?.takeIf { Regex("[a-z0-9_-]{1,20}").matches(it) }?.let { put("mode", it) }
                     put("app", "android")
                     put("ver", versionName(app))
                 }.toString()

@@ -110,6 +110,8 @@ class MainActivity : Activity() {
     private var homeRetryButton: TextView? = null
     private var homeSupportButton: TextView? = null
     private var homeAdvancedLink: TextView? = null
+    /** Owner announcement banner at the top of home ([renderNotice]); GONE when there is none. */
+    private var homeNoticeBox: LinearLayout? = null
     private var settingsAdvancedExpanded = false
     /** Settings DNS row while the settings page is built, so a home pick repaints it. */
     private var settingsDnsRow: OrbitSettingsRow? = null
@@ -564,6 +566,9 @@ class MainActivity : Activity() {
         RemotePolicy.refreshIfDue(this)
         // Operator-aware SHARD scores (tie-breaker only; hourly, background).
         ConnectionReports.refreshScoresIfDue(this)
+        // Owner panel flags (disabled modes, default mode) and the home announcement.
+        // The callback is posted, so it runs after onCreate has built every view.
+        AppRemote.refreshIfDue(this, force = true) { runOnUiThread { onRemoteUpdated() } }
         // And the Smart Split fragment profiles, on the same triggers and the
         // same floor — see [SmartSplitSub]. Same shape: a 304 costs nothing.
         SmartSplitSub.refreshIfDue(this)
@@ -651,7 +656,15 @@ class MainActivity : Activity() {
         mimCard = MimCard(this, palette) { armed -> setMimArmed(armed) }
         smartSplitCard = SmartSplitCard(this, palette) { on -> setSmartSplitEnabled(on) }
         transportRail = TransportRail(this, palette, Protocol.entries.map { railLabel(it) }) { index ->
-            updateConnectionMode(Protocol.entries[index])
+            val picked = Protocol.entries[index]
+            if (AppRemote.isDisabled(this, picked.coreName)) {
+                // Switched off from the owner panel: explain and snap back to the current mode.
+                toastShort(Strings.t("This mode is temporarily turned off by MolidoVPN support"))
+                transportRail.select(Protocol.entries.indexOf(selectedProtocol), animate = true)
+            } else {
+                markModeChosen()
+                updateConnectionMode(picked)
+            }
         }
         // Height follows the grid rather than being a constant: the rail decides how
         // many rows six transports need, and a hardcoded dp(46) would squash them.
@@ -796,6 +809,8 @@ class MainActivity : Activity() {
         // Background, bounded, at most every 30 min per network: see CleanIpScanner.
         CleanIpScanner.scanIfDue(this)
         maybeAskReportsConsent()
+        renderNotice()
+        AppRemote.refreshIfDue(this) { runOnUiThread { onRemoteUpdated() } }
         // Restart everything the pause stopped. Each of these is idempotent and
         // cheap; the point is that the screen is correct the instant it appears
         // rather than after one poll interval.
@@ -1468,6 +1483,20 @@ class MainActivity : Activity() {
         clipChildren = false
         clipToPadding = false
 
+        // Owner announcement (simple and advanced home); filled by [renderNotice].
+        val noticeBox = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(10), dp(6), dp(10))
+            visibility = View.GONE
+        }
+        homeNoticeBox = noticeBox
+        addView(noticeBox, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(6) })
+        renderNotice()
+
         addView(orbitDial, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1654,7 +1683,7 @@ class MainActivity : Activity() {
             isFocusable = true
             visibility = View.GONE
             setOnClickListener {
-                if (homeSimple()) updateConnectionMode(Protocol.AUTO)
+                if (homeSimple()) updateConnectionMode(simpleProtocol())
                 toggleTunnel()
             }
         }
@@ -1714,6 +1743,17 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
+        // "Tell your friends" (QR + share), under the mode link on both home views.
+        addView(label(Strings.t("Tell your friends"), 13f, palette.mint, TypefaceStyle.MEDIUM).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(6), dp(12), dp(4))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { showShareSheet() }
+        }, childCount - 1, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
     }
 
     // ---------------------------------------------------------------- Simple home
@@ -1739,10 +1779,11 @@ class MainActivity : Activity() {
         homeLocationCard?.visibility = if (simple) View.VISIBLE else View.GONE
         homeLocationCard?.text = locationCardText()
         homeAdvancedLink?.text = if (simple) Strings.t("Advanced mode") else Strings.t("Simple mode")
-        if (simple && selectedProtocol != Protocol.AUTO && !TunnelStatus.isActive() &&
+        val simpleTarget = simpleProtocol()
+        if (simple && selectedProtocol != simpleTarget && !TunnelStatus.isActive() &&
             visualState != OrbitDialView.State.CONNECTING
         ) {
-            updateConnectionMode(Protocol.AUTO)
+            updateConnectionMode(simpleTarget)
         }
     }
 
@@ -3390,6 +3431,7 @@ class MainActivity : Activity() {
 
     private fun createModeOption(protocol: Protocol): LinearLayout {
         val selected = protocol == selectedProtocol
+        val remoteOff = AppRemote.isDisabled(this, protocol.coreName)
         return LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             orientation = LinearLayout.HORIZONTAL
@@ -3401,9 +3443,14 @@ class MainActivity : Activity() {
             )
             isClickable = protocol.androidAvailable
             isFocusable = protocol.androidAvailable
-            alpha = if (protocol.androidAvailable) 1f else DISABLED_ALPHA
+            alpha = if (protocol.androidAvailable && !remoteOff) 1f else DISABLED_ALPHA
             setOnClickListener {
                 if (!protocol.androidAvailable) return@setOnClickListener
+                if (remoteOff) {
+                    toastShort(Strings.t("This mode is temporarily turned off by MolidoVPN support"))
+                    return@setOnClickListener
+                }
+                markModeChosen()
                 if (protocol != selectedProtocol) updateConnectionMode(protocol)
                 closeModeScreen()
             }
@@ -3418,7 +3465,8 @@ class MainActivity : Activity() {
             addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             if (selected) addView(label(Strings.t("CURRENT"), 11f, PRIMARY_TEXT, TypefaceStyle.MEDIUM).apply {
                 letterSpacing = spacing(0.08f)
-            }) else if (!protocol.androidAvailable) addView(label(Strings.t("DESKTOP ONLY"), 11f, MUTED, TypefaceStyle.MEDIUM).apply {
+            }) else if (remoteOff) addView(label(Strings.t("TEMPORARILY OFF"), 11f, MUTED, TypefaceStyle.MEDIUM))
+            else if (!protocol.androidAvailable) addView(label(Strings.t("DESKTOP ONLY"), 11f, MUTED, TypefaceStyle.MEDIUM).apply {
                 letterSpacing = spacing(0.05f)
             })
         }
@@ -4309,7 +4357,13 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(8) })
         content.addView(navRow(Strings.t("MolidoVPN website"), iconRes = R.drawable.ic_github) {
-            openLink("https://hidooch980.github.io/mobin-vpn/")
+            openLink(SITE_URL)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
+        content.addView(navRow(Strings.t("Tell your friends"), "QR") {
+            showShareSheet()
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -8052,7 +8106,150 @@ class MainActivity : Activity() {
             preferences().edit().putString(DEFAULT_PROTOCOL, Protocol.SHARD.coreName).apply()
         }
         val name = if (raw == "shard-gaming") Protocol.SHARD.coreName else raw
-        return Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.AUTO
+        val saved = Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable } ?: Protocol.AUTO
+        // Never picked a mode: the owner's default from the panel (Auto when none).
+        val base = if (modeChosen()) saved else remoteDefaultProtocol() ?: Protocol.AUTO
+        return if (base != Protocol.AUTO && AppRemote.isDisabled(this, base.coreName)) Protocol.AUTO else base
+    }
+
+    /** True once the user picked a mode themselves (existing installs with a non-Auto pick count). */
+    private fun modeChosen(): Boolean {
+        val prefs = preferences()
+        if (prefs.contains(MODE_CHOSEN_PREF)) return prefs.getBoolean(MODE_CHOSEN_PREF, false)
+        val raw = prefs.getString(DEFAULT_PROTOCOL, null)
+        return raw != null && raw != Protocol.AUTO.coreName
+    }
+
+    private fun markModeChosen() {
+        preferences().edit().putBoolean(MODE_CHOSEN_PREF, true).apply()
+    }
+
+    private fun remoteDefaultProtocol(): Protocol? = AppRemote.defaultMode(this)?.let { name ->
+        Protocol.entries.firstOrNull { it.coreName == name && it.androidAvailable }
+    }
+
+    /** Mode used by the simple home: the owner's default for users who never chose, else Auto. */
+    private fun simpleProtocol(): Protocol =
+        if (modeChosen()) Protocol.AUTO else remoteDefaultProtocol() ?: Protocol.AUTO
+
+    /** Fresh flags/notice arrived (UI thread): repaint the banner and move off a mode that was switched off. */
+    private fun onRemoteUpdated() {
+        if (isFinishing) return
+        renderNotice()
+        if (TunnelStatus.isActive() || visualState == OrbitDialView.State.CONNECTING) return
+        val target = if (homeSimple()) simpleProtocol() else savedProtocol()
+        if (target != selectedProtocol) updateConnectionMode(target)
+    }
+
+    /** Owner announcement at the top of home; dismissing remembers its id. */
+    private fun renderNotice() {
+        val box = homeNoticeBox ?: return
+        val notice = AppRemote.notice(this)
+        box.removeAllViews()
+        if (notice == null) {
+            box.visibility = View.GONE
+            return
+        }
+        box.visibility = View.VISIBLE
+        val accent = if (notice.warning) palette.amber else palette.mint
+        box.background = Sculpt.sculptedBackground(
+            resources.displayMetrics.density,
+            Sculpt.withAlpha(accent, 0.14f),
+            14,
+            Sculpt.withAlpha(accent, 0.45f),
+        )
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(label(notice.text, 13f, INK).apply {
+            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+        })
+        if (notice.link.isNotEmpty()) {
+            texts.addView(label(notice.linkLabel.ifBlank { Strings.t("Open link") }, 13f, accent, TypefaceStyle.MEDIUM).apply {
+                setPadding(0, dp(4), 0, 0)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { openLink(notice.link) }
+            })
+        }
+        box.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(label("✕", 15f, MUTED).apply {
+            gravity = Gravity.CENTER
+            contentDescription = Strings.t("Close announcement")
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                AppRemote.dismissNotice(this@MainActivity, notice.id)
+                renderNotice()
+            }
+        }, LinearLayout.LayoutParams(dp(36), dp(36)))
+    }
+
+    /** "Tell your friends": QR of the website plus the Android share sheet and copy. */
+    private fun showShareSheet() {
+        val dialog = Dialog(this).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            background = roundedBackground(SURFACE, 28, SURFACE)
+        }
+        sheet.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(createHeaderBackButton { dialog.dismiss() }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(label(Strings.t("Tell your friends"), 22f, INK, TypefaceStyle.MEDIUM))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        sheet.addView(label(Strings.t("Scan the QR code or share the link to install MolidoVPN"), 14f, MUTED).apply {
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8); bottomMargin = dp(14) })
+        QrCode.encodeText(SITE_URL)?.let { qr ->
+            sheet.addView(ImageView(this).apply {
+                setImageBitmap(qr.toBitmap(scale = 10))
+                scaleType = ScaleType.FIT_CENTER
+                contentDescription = SITE_URL
+                background = roundedBackground(Color.WHITE, 16, Color.WHITE)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+            }, LinearLayout.LayoutParams(dp(232), dp(232)))
+        }
+        sheet.addView(label(SITE_URL, 13f, INK).apply {
+            gravity = Gravity.CENTER
+            textDirection = View.TEXT_DIRECTION_LTR
+            setTextIsSelectable(true)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(12) })
+        val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        actions.addView(createSettingsButton(Strings.t("Share link")) {
+            runCatching {
+                val send = Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT, Strings.tf("MolidoVPN, free VPN for family and friends: %s", SITE_URL))
+                startActivity(Intent.createChooser(send, Strings.t("Tell your friends")))
+            }
+        }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        actions.addView(createSettingsButton(Strings.t("Copy")) {
+            runCatching {
+                getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("MolidoVPN", SITE_URL))
+                toastShort(Strings.t("Link copied"))
+            }
+        }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(10) })
+        sheet.addView(actions, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(44),
+        ).apply { topMargin = dp(16) })
+
+        dialog.setContentView(ScrollView(this).apply {
+            setPadding(dp(16), 0, dp(16), dp(16))
+            addView(sheet)
+        })
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setDimAmount(0.62f)
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+        }
     }
 
     /**
@@ -8492,6 +8689,9 @@ class MainActivity : Activity() {
         const val HOME_SIMPLE_PREF = "home_simple"
         const val ADVANCED_SETTINGS_TAG = "advanced_settings"
         const val ONBOARDING_PREF = "onboarding_done"
+        /** Set when the user picks a connection mode themselves; until then the owner's default applies. */
+        const val MODE_CHOSEN_PREF = "mode_user_chosen"
+        const val SITE_URL = "https://hidooch980.github.io/mobin-vpn/"
         const val LOG_REFRESH_MS = 750L
         const val STATUS_POLL_MS = 2_000L
         const val PAGE_ANIMATION_MS = 220L
