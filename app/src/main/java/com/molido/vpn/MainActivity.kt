@@ -4148,7 +4148,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(26) })
         addControl(Strings.t("Manual endpoint"), manualEndpoint() ?: Strings.t("Automatic")) { editManualEndpoint() }
-        amneziaRow = addControl(Strings.t("Import Amnezia config"), amneziaSummary()) { showAmneziaImport() }
+        amneziaRow = addControl(Strings.t("AmneziaWG personal config (optional)"), amneziaSummary()) { showAmneziaImport() }
         addControl(Strings.t("Gateway cache"), defaultEndpointDiscovery().label) { manageGatewayCache() }
         content.addView(sectionLabel(Strings.t("TROUBLESHOOTING")), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -5385,7 +5385,7 @@ class MainActivity : Activity() {
 
     private fun amneziaSummary(): String {
         val count = AmneziaConfig.endpointCount(this)
-        return if (count > 0) Strings.tf("%s endpoints", count) else Strings.t("Not imported")
+        return if (count > 0) Strings.tf("%s endpoints", count) else Strings.t("Built-in")
     }
 
     /** File picker or paste; Remove when a config is already stored. */
@@ -6342,11 +6342,8 @@ class MainActivity : Activity() {
 
         // Decided BEFORE the consent dialog, because the answer depends on the
         // selection and the user is about to be able to change nothing else.
-        // AmneziaWG with nothing imported: the import dialog IS the next step.
-        if (selectedProtocol == Protocol.AMNEZIA && !AmneziaConfig.isImported(this)) {
-            showAmneziaImport()
-            return
-        }
+        // AmneziaWG without an import connects with the built-in config
+        // (AmneziaConfig.builtinCoreJson); the import is an optional override.
         if (shouldAutoScan()) beginAutoScan()
         val config = configJson()
         // Proxy mode needs no VPN consent at all — no TUN is created, so asking for

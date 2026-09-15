@@ -4018,18 +4018,18 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
         val proxy = CoreConfig.proxyOnly(this)
         return listOfNotNull(
             AutoCandidate("wireguard", "WireGuard", 10_000L),
-            // Imported AmneziaWG (a WARP account, so an Iranian user's exit is IR and
-            // the IR-exit ranking below applies). Only when a config exists; budget
-            // is ~8 s per endpoint for the first few.
-            if (AmneziaConfig.isImported(this)) {
-                AutoCandidate(
-                    AmneziaConfig.PROTOCOL,
-                    "AmneziaWG",
-                    6_000L + 8_000L * AmneziaConfig.endpointCount(this).coerceIn(1, 4),
-                )
-            } else {
-                null
-            },
+            // AmneziaWG (a WARP account, so an Iranian user's exit is IR and the
+            // IR-exit ranking below applies). Always present: without an import it
+            // runs the built-in endpoint list. Budget ~8 s per endpoint for the first few.
+            AutoCandidate(
+                AmneziaConfig.PROTOCOL,
+                "AmneziaWG",
+                6_000L + 8_000L * (if (AmneziaConfig.isImported(this)) {
+                    AmneziaConfig.endpointCount(this)
+                } else {
+                    AmneziaConfig.BUILTIN_ENDPOINTS.size
+                }).coerceIn(1, 4),
+            ),
             AutoCandidate("masque", "MASQUE", if (CoreConfig.mimArmed(this)) 20_000L else 12_000L),
             // SHARD has no proxy mode (refused in startTunnel).
             if (proxy) null else AutoCandidate("shard", "SHARD", 16_000L),
@@ -4440,7 +4440,11 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             .let { if (it == "V2RAY") V2RAY_PROTOCOL_MARKER else it }
             // Imported AmneziaWG rides every WireGuard code path; the marker keeps
             // "WIREGUARD" in the name and is recognised by its identity file.
-            .let { if (it == "WIREGUARD" && config.contains(AmneziaConfig.TOML_NAME)) AMNEZIA_PROTOCOL_MARKER else it }
+            .let {
+                if (it == "WIREGUARD" &&
+                    (config.contains(AmneziaConfig.TOML_NAME) || config.contains(AmneziaConfig.BUILTIN_MARKER))
+                ) AMNEZIA_PROTOCOL_MARKER else it
+            }
         reportPending = true
         attemptStartedAt = SystemClock.elapsedRealtime()
         currentVpnIp = ""

@@ -38,6 +38,8 @@ pub struct StartOptions {
     /// Endpoints of an imported config, tried in order (WireGuard only). The one
     /// that last worked (lastconn) is moved to the front.
     pub forced_peers: Vec<SocketAddr>,
+    /// Scan normally once every [forced_peers] endpoint has failed.
+    pub forced_peers_scan_fallback: bool,
     pub scan_mode: ScanMode,
     pub ip_scan: IpScan,
     pub obfuscation_profile: Option<String>,
@@ -145,6 +147,7 @@ impl StartOptions {
             protocol,
             forced_peer: None,
             forced_peers: Vec::new(),
+            forced_peers_scan_fallback: false,
             scan_mode: ScanMode::Balanced,
             ip_scan: IpScan::V4,
             obfuscation_profile: None,
@@ -2106,7 +2109,7 @@ async fn run_wireguard(
     let forced = options.forced_peer.map(|p| p.to_string());
     // Imported config (AmneziaWG / WireGuard file): its endpoints, in file order,
     // with the one that last carried traffic moved to the front.
-    let forced_list: Vec<SocketAddr> = {
+    let mut forced_list: Vec<SocketAddr> = {
         let mut list = options.forced_peers.clone();
         if !list.is_empty() {
             if let Some(cached) = lastconn::load(&lastconn_path) {
@@ -2212,7 +2215,7 @@ async fn run_wireguard(
         }
     }
 
-    let (mode_str, ip) = if pinned || quick.is_some() {
+    let (mut mode_str, mut ip) = if pinned || quick.is_some() {
         (String::new(), prober::IpScan::V4)
     } else {
         let mode_str = select_scan_mode_str().await;
@@ -2311,6 +2314,13 @@ async fn run_wireguard(
                         }
                         match chosen {
                             Some(v) => v,
+                            None if options.forced_peers_scan_fallback && forced.is_none() => {
+                                log::warn!("[-] no listed endpoint worked; falling back to the WARP endpoint scan");
+                                forced_list.clear();
+                                mode_str = select_scan_mode_str().await;
+                                ip = select_ip_version().await;
+                                continue;
+                            }
                             None => return Err(AetherError::NoCleanEndpoint),
                         }
                     } else if let Some(ref p) = forced {

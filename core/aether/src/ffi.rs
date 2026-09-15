@@ -100,6 +100,9 @@ struct NativeStartOptions {
     /// Comma-separated `ip:port` list tried in order (an imported WireGuard /
     /// AmneziaWG config's endpoints). Empty or absent for none.
     forced_peers: Option<String>,
+    /// When every `forced_peers` endpoint fails, scan for a WARP endpoint instead
+    /// of giving up (the built-in AmneziaWG list). False for imported configs.
+    forced_peers_scan_fallback: bool,
     scan_mode: String,
     ip_scan: String,
     obfuscation_profile: Option<String>,
@@ -143,6 +146,7 @@ impl Default for NativeStartOptions {
             masque_config_path: None,
             forced_peer: None,
             forced_peers: None,
+            forced_peers_scan_fallback: false,
             scan_mode: "balanced".into(),
             ip_scan: "v4".into(),
             obfuscation_profile: None,
@@ -197,6 +201,7 @@ impl TryFrom<NativeStartOptions> for StartOptions {
             .filter(|peer| !peer.is_empty())
             .map(|peer| parse_address("forced_peers", peer))
             .collect::<Result<Vec<SocketAddr>, String>>()?;
+        options.forced_peers_scan_fallback = value.forced_peers_scan_fallback;
         options.scan_mode = ScanMode::parse(&value.scan_mode);
         options.ip_scan = IpScan::parse(&value.ip_scan);
         options.obfuscation_profile = value.obfuscation_profile;

@@ -29,6 +29,30 @@ object AmneziaConfig {
     /** Identity file name; the service recognises an Amnezia session by it. */
     const val TOML_NAME = "amnezia-wg.toml"
 
+    /**
+     * Built-in mode (nothing imported): the app's own WARP identity — the one
+     * WireGuard mode registers and caches — with fixed Amnezia junk parameters and
+     * this endpoint list, tried in order (the core moves the last working one to
+     * the front), then the core's normal WARP endpoint scan as the last fallback.
+     * No key is bundled: every install uses its own registered account.
+     */
+    val BUILTIN_ENDPOINTS = listOf(
+        "188.114.97.6:7281",
+        "162.159.195.8:3581",
+        "162.159.192.2:878",
+        "8.6.112.224:8886",
+        "162.159.192.64:894",
+    )
+    private const val BUILTIN_JC = 5
+    private const val BUILTIN_JMIN = 10
+    private const val BUILTIN_JMAX = 40
+
+    /** Copy of WireGuard's identity, so the built-in mode keeps its own lastconn. */
+    private const val BUILTIN_TOML_NAME = "amnezia-wg-auto.toml"
+
+    /** Present in every built-in Amnezia core config; the service's session marker. */
+    const val BUILTIN_MARKER = "\"forced_peers_scan_fallback\":true"
+
     private const val SECRET_KEY = "amnezia_wg_config"
     private const val MAX_ENDPOINTS = 16
     const val MAX_TEXT_CHARS = 64 * 1024
@@ -257,6 +281,41 @@ object AmneziaConfig {
 
     // ------------------------------------------------------------------ core config
 
+    /** Whether the built-in (no import) mode is what a connect will use. */
+    fun usesBuiltin(context: Context): Boolean = !isImported(context)
+
+    /**
+     * Built-in AmneziaWG: WireGuard's own config (identity, team, DNS, listen) with
+     * the fixed endpoint list and junk parameters. When WireGuard's identity file
+     * exists it is copied so this mode's lastconn stays separate; before the first
+     * registration the core provisions straight into WireGuard's file, which
+     * WireGuard mode then reuses.
+     */
+    private fun builtinCoreJson(context: Context, listenOverride: Int?, ipScanOverride: String?): String {
+        val base = JSONObject(CoreConfig.json(context, "wireguard", listenOverride, ipScanOverride))
+        val shared = File(base.optString("config_path"))
+        if (base.optString("team").isEmpty() && shared.isFile) {
+            val copy = File(context.filesDir, BUILTIN_TOML_NAME)
+            val copied = runCatching {
+                shared.copyTo(copy, overwrite = true)
+                copy.setReadable(false, false)
+                copy.setReadable(true, true)
+                true
+            }.getOrDefault(false)
+            if (copied) base.put("wireguard_config_path", copy.absolutePath)
+        }
+        base.remove("forced_peer")
+        base.put("forced_peers", BUILTIN_ENDPOINTS.joinToString(","))
+        base.put("forced_peers_scan_fallback", true)
+        base.put("obfuscation_profile", "off")
+        base.put(
+            "obfuscation_parameters",
+            JSONObject().put("jc", BUILTIN_JC).put("jmin", BUILTIN_JMIN).put("jmax", BUILTIN_JMAX).toString(),
+        )
+        base.put("retry_obfuscation_profiles", false)
+        return base.toString()
+    }
+
     /**
      * Written before every connect: if this file were missing, the core would
      * provision a brand-new WARP account instead of using the imported one.
@@ -287,11 +346,7 @@ object AmneziaConfig {
      * protocol is still "amnezia"; the service refuses that with a clear message.
      */
     fun coreJson(context: Context, listenOverride: Int?, ipScanOverride: String?): String {
-        val parsed = load(context)
-            ?: return JSONObject()
-                .put("config_path", File(context.filesDir, "aether.toml").absolutePath)
-                .put("protocol", PROTOCOL)
-                .toString()
+        val parsed = load(context) ?: return builtinCoreJson(context, listenOverride, ipScanOverride)
         val base = JSONObject(CoreConfig.json(context, "wireguard", listenOverride, ipScanOverride))
         val identity = writeIdentity(context, parsed)
         base.put("wireguard_config_path", identity.absolutePath)
