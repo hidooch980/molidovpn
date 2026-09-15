@@ -437,6 +437,8 @@ object ShardManager {
         // Remembered working REALITY SNIs (see [RealitySni]); a no-op for SHARD.
         val pool = ShardEdges.expand(context, source).let { if (v2ray) RealitySni.applyRemembered(context, it) else it }
             // hysteria2/tuic/anytls: bring up the sing-box sidecar, or drop them.
+            // Preferred country (V2Ray pools only), before the sidecar sees the nodes.
+            .let { if (v2ray) CountryFilter.apply(context, it) else it }
             .let { SingBox.prepare(context, it) }
         if (pool.isEmpty()) {
             lastError = "no nodes available"
@@ -768,7 +770,11 @@ object ShardManager {
         Thread({
             try {
                 val active = activeNode
-                val source = if (sessionV2ray) V2raySubscription.shardNodes(app) else ShardSubscription.nodes(app)
+                val source = if (sessionV2ray) {
+                    CountryFilter.apply(app, V2raySubscription.shardNodes(app), log = false)
+                } else {
+                    ShardSubscription.nodes(app)
+                }
                 // allowRestart = false: the sidecar may be carrying the live session.
                 val ranked = diversify(ShardHealth.rank(app, SingBox.prepare(app, ShardEdges.expand(app, source), allowRestart = false)))
                     .filter { active == null || it.key != active.key }

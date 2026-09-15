@@ -3923,6 +3923,15 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
+        // Preferred exit country for V2Ray servers and My configs (CountryFilter).
+        var v2rayCountryRow: OrbitSettingsRow? = null
+        v2rayCountryRow = navRow(Strings.t("Country"), countryLabel()) {
+            showCountryPicker { v2rayCountryRow?.setValue(countryLabel()) }
+        }
+        content.addView(v2rayCountryRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Probe the V2Ray + SHARD pool from this internet connection (NodeTest).
         content.addView(navRow(Strings.t("Test servers from my internet"), Strings.t("V2Ray + SHARD, per protocol")) {
             runNodeTest()
@@ -5379,6 +5388,45 @@ class MainActivity : Activity() {
                     .forEach { (key, value) -> if (value.isBlank()) remove(key) else putString(key, value) }
             }.apply()
         }
+    }
+
+    // ---------------------------------------------------------------- Country filter
+
+    private fun countryLabel(): String {
+        val code = CountryFilter.selected(this)
+        return if (code.isEmpty()) Strings.t("Any country") else "${CountryFilter.flag(code)} $code"
+    }
+
+    /** Countries found in the pools plus common ones; a country with no servers is refused. */
+    private fun showCountryPicker(onChanged: () -> Unit) {
+        Thread({
+            val counts = CountryFilter.counts(CountryFilter.pool(this))
+            val codes = (counts.keys.sortedByDescending { counts[it] ?: 0 } + CountryFilter.COMMON).distinct()
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                val labels = (listOf(Strings.t("Any country")) + codes.map { code ->
+                    "${CountryFilter.flag(code)} $code · " + Strings.tf("%s servers", counts[code] ?: 0)
+                }).toTypedArray<CharSequence>()
+                android.app.AlertDialog.Builder(this)
+                    .setTitle(Strings.t("Country"))
+                    .setItems(labels) { _, which ->
+                        if (which == 0) {
+                            CountryFilter.set(this, "")
+                            onChanged()
+                            return@setItems
+                        }
+                        val code = codes[which - 1]
+                        if ((counts[code] ?: 0) == 0) {
+                            toastShort(Strings.t("No server from this country is available"))
+                            return@setItems
+                        }
+                        CountryFilter.set(this, code)
+                        onChanged()
+                    }
+                    .setNegativeButton(Strings.t("Close"), null)
+                    .show()
+            }
+        }, "country-picker").start()
     }
 
     // ---------------------------------------------------------------- AmneziaWG import

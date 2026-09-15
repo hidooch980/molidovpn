@@ -63,6 +63,8 @@ data class V2rayNode(
     val congestion: String = "",
     /** tuic UDP relay mode: native or quic. */
     val udpRelayMode: String = "",
+    /** The share link's `#name` (vmess: `ps`); country detection and My configs only. */
+    val name: String = "",
 )
 
 object V2rayNodes {
@@ -135,10 +137,26 @@ object V2rayNodes {
             "tuic" -> parseTuic(line)
             "anytls" -> parseAnyTls(line)
             else -> null
-        }
+        }?.let { node -> node.copy(name = nameOf(line, node)) }
     } catch (_: Exception) {
         null
     }
+
+    private fun nameOf(line: String, node: V2rayNode): String {
+        val fragment = line.substringAfter('#', "")
+        if (fragment.isNotEmpty()) return decode(fragment).trim()
+        if (node.protocol != "vmess") return ""
+        val payload = line.substringAfter("://").substringBefore('#').trim()
+        return runCatching { JSONObject(base64Text(payload) ?: "{}").optString("ps").trim() }.getOrDefault("")
+    }
+
+    /** Canonical share line: the identity URI plus its `#name` when it has one. */
+    fun shareLine(node: V2rayNode): String =
+        if (node.name.isEmpty() || node.protocol == "vmess") {
+            node.uri
+        } else {
+            node.uri + "#" + java.net.URLEncoder.encode(node.name, "UTF-8").replace("+", "%20")
+        }
 
     private fun parseVlessOrTrojan(line: String, scheme: String): V2rayNode? {
         val uri = line.substringBefore('#').trim()
@@ -420,7 +438,8 @@ object V2rayNodes {
         cipherSuites = "",
         finalMask = "",
         alpn = node.alpn,
-        label = "",
+        // Read by ShardNode.countryCode (flag / ISO prefix); never shown as-is.
+        label = node.name,
         v2ray = node,
     )
 
@@ -634,7 +653,8 @@ object V2raySubscription {
             return cachedCount(context)
         }
         // Stored as one canonical URI per line; vmess keeps its payload form.
-        cacheFile(context).writeText(parsed.joinToString("\n") { it.uri })
+        // Names kept (#fragment) so the country filter can read them from the cache.
+        cacheFile(context).writeText(parsed.joinToString("\n") { V2rayNodes.shareLine(it) })
         prefs(context).edit()
             .putLong(LAST_CHECK_PREF, System.currentTimeMillis())
             .putInt(LAST_COUNT_PREF, parsed.size)
