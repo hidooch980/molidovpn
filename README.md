@@ -4,7 +4,7 @@
 
 # برنامه MolidoVPN
 
-**تونل کامل دستگاه برای شبکه‌های تحت سانسور — پنج مسیر ترابری، هستهٔ Rust، رابط بومی اندروید**
+**VPN رایگان کل دستگاه برای خانواده‌های ایرانی — هستهٔ Rust، رابط بومی اندروید، حالت‌های اتصال متعدد**
 
 [![Release](https://img.shields.io/github/v/release/hidooch980/mobin-vpn?style=for-the-badge&color=5CE68F)](https://github.com/hidooch980/mobin-vpn/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3A4FB0?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hidooch980/mobin-vpn/releases/latest)
@@ -34,7 +34,11 @@
 | | |
 |---|---|
 | تونل کل دستگاه | با `VpnService` و TUN؛ همهٔ اپ‌ها بدون تنظیم اضافه پوشش می‌گیرند |
-| پنج مسیر ترابری | پروتکل‌های MASQUE روی HTTP/3، WireGuard، WARP-on-WARP، Psiphon و Tor |
+| حالت‌های اتصال | خودکار، سرورهای V2Ray، شارد (SHARD، سرورهای CDN)، MASQUE روی HTTP/3، وارپ / WireGuard، وارپ در وارپ، AmneziaWG داخلی، سایفون (و سایفون روی وارپ)، تور (و تور روی وارپ)، V2Ray از روی سایفون، فقط DNS گیمینگ |
+| انتخاب هوشمند | پرهیز از خروجی ایران، بهترین حالت برای هر اپراتور از گزارش‌های ناشناس (با اجازهٔ کاربر)، اسکنر ساعتی پس‌زمینه |
+| کانفیگ‌های من | وارد کردن با چسباندن، فایل، تصویر QR یا لینک اشتراک؛ «سریع‌ترین کانفیگ من» |
+| کنترل از راه دور | اطلاعیه‌های مدیر و خاموش/روشن کردن حالت‌ها از Worker |
+| امکانات دیگر | حالت ساده/پیشرفته، راهنمای شروع، رابط فارسی/انگلیسی/چینی، ویجت، Smart Split، عبور مستقیم ایران، تست سرعت، اتصال زمان‌بندی‌شده، پشتیبان تنظیمات، اشتراک در LAN، به‌روزرسانی خودکار |
 | حالت Tor و Tor روی WARP | شبکهٔ Tor به‌تنهایی، یا داخل تونل MASQUE برای شبکه‌ای که خود Tor را بسته |
 | انتخاب کشور خروج | ۲۷ کشور برای Tor و ۲۵ کشور برای Psiphon، با تعداد واقعی رله و سرور هر کدام |
 | اتصال یک‌کلیکی | فقط یک دکمه؛ انتخاب گیت‌وی و مذاکره و بازیابی همه خودکار انجام می‌شود |
@@ -182,8 +186,11 @@
 
 | معماری دستگاه | فایل |
 |---|---|
-| معماری ARM ۶۴ بیتی، یعنی اکثر گوشی‌های امروزی | `MolidoVPN-v2.0.x-arm64-v8a.apk` |
-| معماری ARM ۳۲ بیتی، دستگاه‌های قدیمی‌تر | `MolidoVPN-v2.0.x-armeabi-v7a.apk` |
+| معماری ARM ۶۴ بیتی، یعنی اکثر گوشی‌های امروزی | `MobinVPN-android-arm64.apk` |
+| معماری ARM ۳۲ بیتی، دستگاه‌های قدیمی‌تر | `MobinVPN-android-armv7.apk` |
+| مطمئن نیستید | `MobinVPN-android-universal.apk` |
+
+دانلود ویندوز و آیفون، فهرست کامل قابلیت‌ها و مستندات در مخزن اصلی است: [hidooch980/mobin-vpn](https://github.com/hidooch980/mobin-vpn) · [قابلیت‌ها](https://github.com/hidooch980/mobin-vpn/blob/main/docs/FEATURES.md) · [معماری](https://github.com/hidooch980/mobin-vpn/blob/main/docs/ARCHITECTURE.md) · سایت: https://hidooch980.github.io/mobin-vpn/ · حمایت مالی: https://reymit.ir/molido
 
 حداقل نسخهٔ اندروید ۸.۰ یا همان API 26 است. موقع نصب اجازهٔ نصب از منبع نامشخص را بدهید و در اولین اتصال، درخواست مجوز VPN اندروید را تأیید کنید.
 
@@ -202,7 +209,7 @@ cargo install cargo-ndk
 
 خروجی در `app/build/outputs/apk/debug/` ساخته می‌شود. اسکریپت `core/build-android.sh` هستهٔ Rust را برای هر ABI کامپایل می‌کند و `libaether.so` را سر جایش می‌گذارد؛ خود Gradle این اسکریپت را صدا می‌زند و لازم نیست دستی اجرایش کنید.
 
-هر push روی شاخهٔ `master` گردش‌کار [`build.yml`](.github/workflows/build.yml) را اجرا می‌کند و APK هر دو معماری را به‌عنوان artifact آپلود می‌کند.
+هر push روی شاخهٔ `main` گردش‌کار [`release.yml`](.github/workflows/release.yml) را اجرا می‌کند و APKها را به‌عنوان artifact آپلود می‌کند. نسخه‌های منتشرشده از همین مخزن توسط [گردش‌کار انتشار mobin-vpn](https://github.com/hidooch980/mobin-vpn/blob/main/.github/workflows/release.yml) و پس از تست اتصال روی شبیه‌ساز ساخته می‌شوند. گردش‌کار `sync-lists.yml` هر ساعت فهرست‌های `remote/` را تازه می‌کند و `core-updates.yml` هر ۶ ساعت هسته‌ها را به‌روز می‌کند.
 
 ---
 

@@ -4,7 +4,7 @@
 
 # MolidoVPN
 
-**Device-wide tunnelling for censored networks — five transports, Rust core, native Android client**
+**Free device-wide VPN for Iranian families — Rust core, native Android client, many connection modes**
 
 [![Release](https://img.shields.io/github/v/release/hidooch980/mobin-vpn?style=for-the-badge&color=5CE68F)](https://github.com/hidooch980/mobin-vpn/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3A4FB0?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hidooch980/mobin-vpn/releases/latest)
@@ -34,7 +34,11 @@ The thing that separates this from a generic VPN app: it was built for Iranian m
 | | |
 |---|---|
 | Device-wide tunnel | `VpnService` + TUN; every app covered with zero per-app configuration |
-| Five transports | MASQUE over HTTP/3, WireGuard, WARP-on-WARP, Psiphon, Tor |
+| Connection modes | Automatic, V2Ray servers, SHARD (CDN nodes), MASQUE over HTTP/3, WARP / WireGuard, WARP-on-WARP, built-in AmneziaWG, Psiphon (and Psiphon over WARP), Tor (and Tor over WARP), V2Ray over Psiphon, gaming-DNS-only |
+| Smart selection | Iran-exit avoidance, best mode per mobile operator from opt-in anonymous reports, hourly background scanner |
+| My configs | Import by paste, file, QR image or subscription URL; "fastest of my configs" |
+| Remote control | Owner announcements and remote mode flags from the MolidoVPN worker |
+| Extras | Simple/advanced mode, onboarding, Persian/English/Chinese UI, home-screen widget, Smart Split, Iran-direct, speed test, scheduled connect, settings backup, Share over LAN, auto update |
 | Tor and Tor-over-WARP | The Tor network on its own, or nested inside MASQUE where Tor itself is blocked |
 | Exit country picker | 27 countries for Tor, 25 for Psiphon, each shown with its real relay or server count |
 | One-tap connect | A single button. Gateway selection, negotiation and recovery are automatic |
@@ -182,8 +186,11 @@ Grab the latest APK from [Releases](https://github.com/hidooch980/mobin-vpn/rele
 
 | Device architecture | File |
 |---|---|
-| ARM 64-bit — most current handsets | `MolidoVPN-v2.0.x-arm64-v8a.apk` |
-| ARM 32-bit — older devices | `MolidoVPN-v2.0.x-armeabi-v7a.apk` |
+| ARM 64-bit — most current handsets | `MobinVPN-android-arm64.apk` |
+| ARM 32-bit — older devices | `MobinVPN-android-armv7.apk` |
+| Not sure | `MobinVPN-android-universal.apk` |
+
+Windows and iPhone downloads, the full feature list and project docs live in the main repository: [hidooch980/mobin-vpn](https://github.com/hidooch980/mobin-vpn) · [Features](https://github.com/hidooch980/mobin-vpn/blob/main/docs/FEATURES.md) · [Architecture](https://github.com/hidooch980/mobin-vpn/blob/main/docs/ARCHITECTURE.md) · Website: https://hidooch980.github.io/mobin-vpn/ · Donate: https://reymit.ir/molido
 
 Android 8.0 (API 26) or newer. Allow installation from unknown sources, and approve Android's VPN permission prompt on first connect.
 
@@ -202,7 +209,7 @@ cargo install cargo-ndk
 
 Output lands in `app/build/outputs/apk/debug/`. `core/build-android.sh` compiles the Rust core per ABI and places `libaether.so`; Gradle invokes it, so you don't run it by hand.
 
-Every push to `master` runs [`build.yml`](.github/workflows/build.yml), which builds and uploads APKs for both architectures as artifacts.
+Every push to `main` runs [`release.yml`](.github/workflows/release.yml), which builds APKs as artifacts. Published releases are built from this repository by [mobin-vpn's release workflow](https://github.com/hidooch980/mobin-vpn/blob/main/.github/workflows/release.yml) after an emulator connection test. `sync-lists.yml` refreshes `remote/*` hourly and `core-updates.yml` updates bundled cores every 6 hours.
 
 ---
 
