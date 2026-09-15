@@ -176,7 +176,15 @@ async def _tcp(node: Node, sem: asyncio.Semaphore):
 async def tcp_filter(nodes: list[Node]) -> list[Node]:
     sem = asyncio.Semaphore(TCP_CONCURRENCY)
     tcp_nodes = [n for n in nodes if n.outbound["type"] not in UDP_TYPES]
-    await asyncio.gather(*(_tcp(n, sem) for n in tcp_nodes))
+    # Probe each server:port once (many configs share an endpoint) so more sources don't stretch the run.
+    groups = defaultdict(list)
+    for n in tcp_nodes:
+        groups[(n.outbound["server"], n.outbound["server_port"])].append(n)
+    heads = [g[0] for g in groups.values()]
+    await asyncio.gather(*(_tcp(n, sem) for n in heads))
+    for g in groups.values():
+        for n in g[1:]:
+            n.tcp_ms, n.ip = g[0].tcp_ms, g[0].ip
     alive = sorted((n for n in tcp_nodes if n.tcp_ms is not None), key=lambda n: n.tcp_ms)
     udp = [n for n in nodes if n.outbound["type"] in UDP_TYPES]
     return alive + udp
