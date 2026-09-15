@@ -111,7 +111,7 @@ object CleanIpScanner {
         // With global IPv6 a share of the sample is Cloudflare IPv6; without it
         // the scan is exactly the IPv4 one it always was.
         val v6 = if (NetworkV6.hasGlobalIpv6(context)) ShardEdges.sampleCloudflareIpv6(SAMPLE / 3) else emptyList()
-        val candidates = (best(context) + ShardEdges.edges(context) +
+        val candidates = (best(context) + sharedIps(context) + ShardEdges.edges(context) +
             ShardEdges.sampleCloudflareIps(SAMPLE) + v6)
             .filter { ShardEdges.isCloudflareAddress(it) }
             .distinct()
@@ -134,11 +134,55 @@ object CleanIpScanner {
         // An empty result keeps the previous list: a scan on a momentarily dead
         // link must not erase what worked an hour ago.
         if (top.isNotEmpty()) editor.putString("ips_$key", top.joinToString(",") { it.first })
+        top.firstOrNull { !it.first.contains(':') }?.let {
+            editor.putString("pending_share", "${it.first},${it.second.coerceIn(1, 10_000)}")
+        }
         editor.apply()
         val line = "net=$key sni=$sni probed=${candidates.size} ok=${results.size} best=" +
             top.joinToString(",") { "${it.first}(${it.second}ms)" }
         Log.i(TAG, line)
         ConnectionLog.record("Clean IP scan: $line")
+    }
+
+    /** Working clean IP from the last scan as {ip, ms}, handed out once for the next successful report. */
+    fun takePendingShare(context: Context): org.json.JSONObject? = try {
+        val prefs = prefs(context)
+        val raw = prefs.getString("pending_share", null)
+        prefs.edit().remove("pending_share").apply()
+        raw?.split(',')?.takeIf { it.size == 2 }?.let {
+            org.json.JSONObject().put("ip", it[0]).put("ms", it[1].toInt())
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Clean IPs other users on this operator reported (/cfip); cached per operator, empty when unreachable. */
+    private fun sharedIps(context: Context): List<String> {
+        val op = ConnectionReports.operator(context)
+        val prefs = prefs(context)
+        var body: String? = null
+        try {
+            val connection = java.net.URL("https://molido-sub.hidooch980.workers.dev/cfip?op=$op")
+                .openConnection() as java.net.HttpURLConnection
+            try {
+                connection.connectTimeout = 5_000
+                connection.readTimeout = 5_000
+                if (connection.responseCode == 200) {
+                    body = connection.inputStream.bufferedReader().use { it.readText() }
+                    prefs.edit().putString("shared_$op", body).apply()
+                }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+        }
+        return try {
+            val array = org.json.JSONArray(body ?: prefs.getString("shared_$op", null) ?: return emptyList())
+            (0 until array.length()).mapNotNull { array.optJSONObject(it)?.optString("ip") }
+                .filter { it.isNotEmpty() && ShardEdges.isCloudflareAddress(it) }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     /** Handshake time through [ip] with SNI [sni], or null when it did not complete. */

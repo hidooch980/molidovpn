@@ -199,6 +199,7 @@ object ConnectionReports {
                     mode?.lowercase()?.takeIf { Regex("[a-z0-9_-]{1,20}").matches(it) }?.let { put("mode", it) }
                     put("app", "android")
                     put("ver", versionName(app))
+                    if (ok) CleanIpScanner.takePendingShare(app)?.let { put("cfip", it) }
                 }.toString()
                 val connection = URL(ENDPOINT).openConnection() as HttpURLConnection
                 try {
