@@ -11,6 +11,7 @@ import java.net.SocketTimeoutException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * DNS-only mode's data path.
@@ -21,6 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * normal internet, and the answer is wrapped back into an IPv4/UDP packet on the TUN.
  * Everything else (TCP 53, DoT 853, stray packets) is dropped; Android's resolver
  * falls back to UDP.
+ *
+ * Every milestone (reader started, first packet, first answer, first failure) goes to
+ * [ConnectionLog], so a forwarded user log shows exactly where a session stalls.
  */
 class DnsOnlyForwarder(
     private val tun: ParcelFileDescriptor,
@@ -32,31 +36,61 @@ class DnsOnlyForwarder(
     private val out = FileOutputStream(tun.fileDescriptor)
     private val writeLock = Any()
 
+    private val firstPacket = AtomicBoolean(false)
+    private val firstAnswer = AtomicBoolean(false)
+    private val firstFailure = AtomicBoolean(false)
+    private val firstNonDns = AtomicBoolean(false)
+    private val answered = AtomicInteger(0)
+    private val failed = AtomicInteger(0)
+
     fun start() {
         if (!running.compareAndSet(false, true)) return
         reader = Thread({ readLoop() }, "MolidoDnsForwarder").apply { isDaemon = true; start() }
+        ConnectionLog.record("DNS-only: forwarder started")
     }
 
     fun stop() {
-        running.set(false)
+        if (!running.getAndSet(false)) return
         reader?.interrupt()
         reader = null
         pool.shutdownNow()
+        ConnectionLog.record("DNS-only: forwarder stopped (answered=${answered.get()} failed=${failed.get()})")
     }
 
     private fun readLoop() {
         val input = FileInputStream(tun.fileDescriptor)
         val buf = ByteArray(32767)
+        ConnectionLog.record("DNS-only: reading the interface")
         while (running.get()) {
             val n = try {
                 input.read(buf)
             } catch (e: Exception) {
-                if (running.get()) Log.w(TAG, "tun read ended: ${e.message}")
+                if (running.get()) {
+                    Log.w(TAG, "tun read ended: ${e.message}")
+                    ConnectionLog.record("DNS-only: interface read ended: ${e.javaClass.simpleName} ${e.message}")
+                }
                 break
             }
-            if (n <= 0) continue
+            if (n < 0) {
+                // EOF: the fd was closed underneath us. Spinning on it would burn a core.
+                if (running.get()) ConnectionLog.record("DNS-only: interface closed")
+                break
+            }
+            if (n == 0) {
+                // Only a non-blocking fd returns 0; back off instead of busy-looping.
+                try { Thread.sleep(20) } catch (_: InterruptedException) { break }
+                continue
+            }
+            if (firstPacket.compareAndSet(false, true)) {
+                ConnectionLog.record("DNS-only: first packet from the system resolver ($n bytes)")
+            }
             val packet = buf.copyOf(n)
-            if (!isUdpDnsQuery(packet)) continue
+            if (!isUdpDnsQuery(packet)) {
+                if (firstNonDns.compareAndSet(false, true)) {
+                    ConnectionLog.record("DNS-only: dropping non-UDP-53 packet (${describe(packet)}); resolver will retry over UDP")
+                }
+                continue
+            }
             try {
                 pool.execute { forward(packet) }
             } catch (_: Exception) {
@@ -65,12 +99,22 @@ class DnsOnlyForwarder(
         }
     }
 
+    private fun describe(p: ByteArray): String {
+        if (p.isEmpty()) return "empty"
+        val version = p[0].toInt() ushr 4
+        if (version != 4 || p.size < 20) return "IPv$version"
+        val ihl = (p[0].toInt() and 0x0f) * 4
+        val proto = p[9].toInt() and 0xff
+        val port = if (p.size >= ihl + 4) u16(p, ihl + 2) else -1
+        return "proto=$proto port=$port"
+    }
+
     private fun isUdpDnsQuery(p: ByteArray): Boolean {
         if (p.size < 28) return false
         if ((p[0].toInt() ushr 4) != 4) return false
         if (p[9].toInt() != 17) return false
         val ihl = (p[0].toInt() and 0x0f) * 4
-        if (p.size < ihl + 8) return false
+        if (ihl < 20 || p.size < ihl + 8) return false
         return u16(p, ihl + 2) == 53
     }
 
@@ -85,23 +129,42 @@ class DnsOnlyForwarder(
         try {
             DatagramSocket().use { socket ->
                 if (!protect(socket)) {
+                    failed.incrementAndGet()
                     Log.w(TAG, "protect() failed; dropping query")
+                    if (firstFailure.compareAndSet(false, true)) {
+                        ConnectionLog.record("DNS-only: protect() failed — the query would loop into the VPN; dropped")
+                    }
                     return
                 }
                 socket.soTimeout = TIMEOUT_MS
                 val server = InetAddress.getByAddress(dstIp)
                 socket.send(DatagramPacket(payload, payload.size, server, 53))
-                val reply = ByteArray(4096)
+                // 65535: EDNS answers larger than 4096 bytes were silently truncated.
+                val reply = ByteArray(65535)
                 val rp = DatagramPacket(reply, reply.size)
                 socket.receive(rp)
                 val answer = buildReply(dstIp, srcIp, srcPort, reply, rp.length)
                 synchronized(writeLock) {
                     if (running.get()) out.write(answer)
                 }
+                answered.incrementAndGet()
+                if (firstAnswer.compareAndSet(false, true)) {
+                    ConnectionLog.record("DNS-only: first query answered by ${server.hostAddress} (${rp.length} bytes)")
+                }
             }
         } catch (_: SocketTimeoutException) {
+            failed.incrementAndGet()
+            if (running.get() && firstFailure.compareAndSet(false, true)) {
+                ConnectionLog.record("DNS-only: no answer from ${InetAddress.getByAddress(dstIp).hostAddress} in ${TIMEOUT_MS / 1000}s (server unreachable from this network?)")
+            }
         } catch (e: Exception) {
-            if (running.get()) Log.w(TAG, "forward failed: ${e.message}")
+            failed.incrementAndGet()
+            if (running.get()) {
+                Log.w(TAG, "forward failed: ${e.message}")
+                if (firstFailure.compareAndSet(false, true)) {
+                    ConnectionLog.record("DNS-only: forward failed: ${e.javaClass.simpleName} ${e.message}")
+                }
+            }
         }
     }
 
@@ -111,7 +174,7 @@ class DnsOnlyForwarder(
         val r = ByteArray(total)
         r[0] = 0x45
         put16(r, 2, total)
-        r[6] = 0x40 // don't fragment
+        // No DF: a large answer must stay deliverable on a small-MTU interface.
         r[8] = 64
         r[9] = 17
         System.arraycopy(from, 0, r, 12, 4)

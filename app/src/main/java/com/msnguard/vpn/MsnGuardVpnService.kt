@@ -2684,28 +2684,68 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 val preset = DnsSettings.preset(this)
                 val fellBack = preset == DnsSettings.Preset.AUTO || preset.servers.isEmpty()
                 val used = if (fellBack) DnsSettings.Preset.RADAR else preset
+                ConnectionLog.record("DNS-only: building interface for ${used.enLabel} ${used.servers.joinToString(",")}")
+                // Private DNS in strict mode (a hostname) sends every lookup over TLS
+                // to that host and never uses the VPN's resolvers, so this mode can
+                // not change anything there. Logged, not refused: the tunnel itself
+                // is still valid and the user may switch Private DNS off afterwards.
+                runCatching {
+                    val cm = getSystemService(ConnectivityManager::class.java)
+                    val lp = cm?.activeNetwork?.let { cm.getLinkProperties(it) }
+                    if (lp != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        val host = lp.privateDnsServerName
+                        if (!host.isNullOrBlank()) {
+                            ConnectionLog.record("DNS-only: Android Private DNS is set to a hostname — it bypasses VPN DNS; set Private DNS to Off/Automatic")
+                        } else if (lp.isPrivateDnsActive) {
+                            ConnectionLog.record("DNS-only: Private DNS is Automatic; TLS lookups are dropped here and fall back to UDP")
+                        }
+                    }
+                }
+                // 10.111.0.1/32 does not overlap the gaming servers: the routes below
+                // are host routes, and 10.202.10.x is not on the interface's subnet.
                 val builder = Builder()
                     .setSession("MolidoVPN")
                     .setMtu(1500)
+                    .setBlocking(true)
                     .addAddress("10.111.0.1", 32)
                 used.servers.forEach { ip ->
                     builder.addDnsServer(ip)
                     builder.addRoute(ip, 32)
                 }
-                tun = builder.establish() ?: error("Android could not establish the VPN interface")
+                // Without an IPv6 address or route Android BLOCKS the whole IPv6
+                // family for every app while the VPN is up. On Iranian IPv6-enabled
+                // carriers that broke games and apps that prefer v6, which read as
+                // "DNS mode breaks the internet". Nothing IPv6 should touch this
+                // interface, so let the family bypass it.
+                runCatching { builder.allowFamily(android.system.OsConstants.AF_INET6) }
+                    .onFailure { ConnectionLog.record("DNS-only: allowFamily(v6) failed: ${it.message}") }
+                // Our own process stays IN the VPN on purpose: the forwarder's sockets
+                // are protect()ed, and nothing else here reaches the /32 routes.
+                val established = builder.establish()
+                if (established == null) {
+                    // null = consent revoked or another VPN app took over since prepare().
+                    ConnectionLog.record("DNS-only: establish() returned null — VPN permission missing or another VPN is active")
+                    error("Android could not establish the VPN interface")
+                }
+                tun = established
                 vpnModeActive.set(true)
+                TunnelStatus.isDnsOnlyMode = true
+                ConnectionLog.record("DNS-only: interface established (fd ok)")
                 logDns("dns-only", used.servers, "preset=${used.key}" + if (fellBack) " fallback=auto->radar" else "")
-                ConnectionLog.record("DNS-only: ${used.enLabel} ${used.servers.joinToString(",")}")
-                dnsForwarder = DnsOnlyForwarder(tun!!) { socket -> protect(socket) }.also { it.start() }
+                dnsForwarder = DnsOnlyForwarder(established) { socket -> protect(socket) }.also { it.start() }
                 currentVpnIp = ""
                 val text = Strings.tf("DNS: %s is active", used.label) +
                     if (fellBack) " · " + Strings.t("DNS was Automatic — using Radar Game") else ""
+                // Counted as connected as soon as the interface is up: DNS-only has no
+                // handshake to wait for, and the forwarder logs its first answer.
                 sendStatus(STATUS_CONNECTED, text)
+                ConnectionLog.record("DNS-only: status CONNECTED sent")
                 repostNotification()
             } catch (e: Exception) {
-                ConnectionLog.record("DNS-only start failed: ${e.message}")
+                ConnectionLog.record("DNS-only start failed: ${e.javaClass.simpleName} ${e.message}")
                 dnsForwarder?.stop()
                 dnsForwarder = null
+                TunnelStatus.isDnsOnlyMode = false
                 failAndStop(e.message ?: "DNS-only start failed")
             }
         }
@@ -4915,6 +4955,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         if (currentProtocol == DNS_ONLY_PROTOCOL) {
             dnsForwarder?.stop()
             dnsForwarder = null
+            TunnelStatus.isDnsOnlyMode = false
             vpnModeActive.set(false)
             tun?.close()
             tun = null

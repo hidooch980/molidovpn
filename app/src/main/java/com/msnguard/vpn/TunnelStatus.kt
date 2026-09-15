@@ -32,8 +32,20 @@ object TunnelStatus {
     var isProxyMode: Boolean = false
         internal set
 
-    /** True when either data path is up: Rust core (proxy/other protocols) or tun2socks (VPN). */
-    fun isActive(): Boolean = NativeCore.isRunning() || Tun2SocksManager.isRunning || isProxyMode
+    /**
+     * True while the DNS-only mode's interface is established.
+     *
+     * That mode starts neither the Rust core nor tun2socks and is not a proxy, so
+     * without this flag [isActive] answered false over a working DNS session and
+     * MainActivity's status poll repainted it as "Tunnel stopped unexpectedly".
+     */
+    @Volatile
+    var isDnsOnlyMode: Boolean = false
+        internal set
+
+    /** True when any data path is up: Rust core, tun2socks, proxy, or DNS-only. */
+    fun isActive(): Boolean =
+        NativeCore.isRunning() || Tun2SocksManager.isRunning || isProxyMode || isDnsOnlyMode
 
     /**
      * True when the whole device is being routed through tun2socks.

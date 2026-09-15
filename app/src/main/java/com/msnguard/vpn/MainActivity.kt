@@ -906,6 +906,9 @@ class MainActivity : Activity() {
 
     private fun pingConnection() {
         if (!isTunnelActive() || pingInFlight) return
+        // No tunnel to judge in DNS-only mode; a failure streak here would only
+        // paint a working session DEGRADED.
+        if (selectedProtocol == Protocol.DNS_ONLY || TunnelStatus.isDnsOnlyMode) return
         pingInFlight = true
         val request = ++latencyRequest
         chipLatency.text = Strings.t("Latency …")
@@ -1095,6 +1098,17 @@ class MainActivity : Activity() {
             visualState == OrbitDialView.State.DEGRADED
         ) return
         if (verifyInFlight) return
+        // DNS-only carries no app traffic through the interface and has no SOCKS
+        // listener, so the gate below could only fail (its probe dialled
+        // 127.0.0.1:<socksPort>, which does not exist in this mode) and then tore
+        // the session down via failFakeConnection(). An established interface IS
+        // the connection for this mode; the forwarder logs its first answer.
+        if (selectedProtocol == Protocol.DNS_ONLY || TunnelStatus.isDnsOnlyMode) {
+            ++verifyRequest
+            ConnectionLog.record("DNS-only: interface up — skipping the traffic verification gate")
+            showConnected()
+            return
+        }
         verifyInFlight = true
         val request = ++verifyRequest
         // Byte counter at the moment the transport claimed to be up. The probe
@@ -1733,6 +1747,8 @@ class MainActivity : Activity() {
         // So the honest signal is elsewhere: watchForTunnelBytes() reads the byte
         // counters the core emits from inside the TUN bridge. Keep both.
         val useSocksProxy = TunnelStatus.isActive() &&
+            // DNS-only has no local listener; its probes go direct.
+            !TunnelStatus.isDnsOnlyMode &&
             // tun2socks is up, which only happens in Psiphon VPN mode, and it
             // implies a live SOCKS listener on this port. Otherwise the Rust core
             // is running: it only has a SOCKS listener in proxy mode, never when
