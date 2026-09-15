@@ -6,7 +6,7 @@ name: Sync server and policy lists
 # (VLESS/Trojan over WebSocket+TLS behind Cloudflare), capped so they cannot crowd out upstream nodes.
 on:
   schedule:
-    - cron: '17 */6 * * *'
+    - cron: '17 * * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -132,19 +132,19 @@ jobs:
           git pull -q --rebase
           git push -q
 
-  # GitHub often skips cron on quiet repos, so each run also starts the next one ~6 hours later.
+  # GitHub often skips cron on quiet repos, so each run also starts the next one ~1 hour later.
   schedule-next:
     needs: sync
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    timeout-minutes: 70
     permissions:
       actions: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Start the next sync in ~5h45m
+      - name: Start the next sync in ~55 min
         run: |
-          sleep 20700
+          sleep 3300
           waiting=$(gh run list -R "$GITHUB_REPOSITORY" --workflow sync-lists.yml --json status --jq '[.[]|select(.status=="queued" or .status=="pending" or .status=="waiting")]|length')
           [ "$waiting" = "0" ] && gh workflow run sync-lists.yml -R "$GITHUB_REPOSITORY" --ref main || echo "a sync is already queued"
