@@ -68,6 +68,8 @@ object Strings {
         "AmneziaWG personal config (optional)" to Triple("AmneziaWG personal config (optional)", "کانفیگ شخصی (اختیاری)", "AmneziaWG 个人配置（可选）"),
         "Built-in" to Triple("Built-in", "داخلی", "内置"),
         "Country" to Triple("Country", "کشور", "国家"),
+        "Last server update: %s min ago" to Triple("Last server update: %s min ago", "آخرین به‌روزرسانی سرورها: %s دقیقه پیش", "服务器上次更新：%s 分钟前"),
+        "Servers not updated yet" to Triple("Servers not updated yet", "سرورها هنوز به‌روزرسانی نشده‌اند", "服务器尚未更新"),
         "My configs" to Triple("My configs", "کانفیگ‌های من", "我的配置"),
         "Your own configs and subscriptions" to Triple("Your own configs and subscriptions", "کانفیگ‌ها و اشتراک‌های خودتان", "您自己的配置和订阅"),
         "Add" to Triple("Add", "افزودن", "添加"),

@@ -42,6 +42,22 @@ class ShardRefreshJob : android.app.job.JobService() {
 
     override fun onStartJob(params: JobParameters?): Boolean {
         val jobId = params?.jobId ?: JOB_ID
+        if (jobId == NODE_TEST_ID) {
+            // Re-scan the pools from this internet so dead servers drop out of the
+            // shared scores; only with reports on and nothing connected.
+            val app = applicationContext
+            if (TunnelStatus.isActive() || !ConnectionReports.enabled(app)) return false
+            Thread({
+                try {
+                    NodeTest.run(app) { _, _, _ -> }
+                } catch (e: Exception) {
+                    ConnectionLog.record("Daily node test failed: ${e.message}")
+                } finally {
+                    jobFinished(params, false)
+                }
+            }, "node-test-daily").apply { isDaemon = true }.start()
+            return true
+        }
         if (jobId == PREWARM_UNMETERED_ID || jobId == PREWARM_CHARGING_ID) {
             // Pre-warm: only while nothing is connected, on its own thread.
             if (TunnelStatus.isActive()) return false
@@ -106,7 +122,11 @@ class ShardRefreshJob : android.app.job.JobService() {
          * four opportunities a day already means we are never more than a few
          * hours behind a rebuild.
          */
-        private const val PERIOD_MS = 6 * 60 * 60 * 1000L
+        private const val PERIOD_MS = 60 * 60 * 1000L
+
+        /** Daily "test servers from my internet" (Wi-Fi + charging, reports on). */
+        private const val NODE_TEST_ID = 0x5A50
+        private const val NODE_TEST_PERIOD_MS = 24 * 60 * 60 * 1000L
 
         /**
          * Register the periodic job. Idempotent: scheduling the same id replaces
@@ -170,6 +190,17 @@ class ShardRefreshJob : android.app.job.JobService() {
                     .setPeriodic(PREWARM_PERIOD_MS)
                     .build(),
             )
+            try {
+                scheduler.schedule(
+                    JobInfo.Builder(NODE_TEST_ID, component)
+                        .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
+                        .setRequiresCharging(true)
+                        .setPeriodic(NODE_TEST_PERIOD_MS)
+                        .build()
+                )
+            } catch (e: Exception) {
+                ConnectionLog.record("Daily node test job could not be scheduled: ${e.message}")
+            }
             prewarmJobs.forEach { prewarm ->
                 try {
                     scheduler.schedule(prewarm)

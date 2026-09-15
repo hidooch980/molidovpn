@@ -3181,7 +3181,11 @@ class MainActivity : Activity() {
         content.addView(label(Strings.t("Choose how MolidoVPN connects"), 14f, MUTED), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { leftMargin = dp(4); bottomMargin = dp(24) })
+        ).apply { leftMargin = dp(4); bottomMargin = dp(4) })
+        content.addView(label(serversUpdatedText(), 12.5f, MUTED), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { leftMargin = dp(4); bottomMargin = dp(20) })
 
         val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         Protocol.entries.forEachIndexed { index, protocol ->
@@ -7911,6 +7915,14 @@ class MainActivity : Activity() {
      * precise minute count on a list the publisher rebuilds once a day would be
      * false precision.
      */
+    /** "Last server update: N min ago" — the newer of the SHARD and V2Ray lists. */
+    private fun serversUpdatedText(): String {
+        val last = maxOf(ShardSubscription.lastCheckMillis(this), V2raySubscription.lastCheckMillis(this))
+        if (last <= 0L) return Strings.t("Servers not updated yet")
+        val minutes = ((System.currentTimeMillis() - last) / 60_000L).coerceAtLeast(0L)
+        return Strings.tf("Last server update: %s min ago", minutes)
+    }
+
     private fun shardPoolSummary(): String {
         val count = ShardSubscription.cachedCount(this)
         val last = ShardSubscription.lastCheckMillis(this)

@@ -33,7 +33,7 @@ object MyConfigs {
 
     private const val FILE = "my-configs.json"
     private const val PIN_PREF = "my_configs_pinned"
-    private const val SUB_INTERVAL_MS = 6 * 60 * 60 * 1000L
+    private const val SUB_INTERVAL_MS = 60 * 60 * 1000L
     private const val MAX_ENTRIES = 500
     private const val MAX_BODY_CHARS = 2 * 1024 * 1024
 
@@ -338,10 +338,15 @@ object MyConfigs {
     }
 
     /** Re-fetches subscriptions older than [SUB_INTERVAL_MS] (all when [force]); own thread. */
-    fun refreshIfDue(context: Context, force: Boolean = false, onDone: (() -> Unit)? = null) {
+    fun refreshIfDue(
+        context: Context,
+        force: Boolean = false,
+        maxAgeMs: Long = SUB_INTERVAL_MS,
+        onDone: (() -> Unit)? = null,
+    ) {
         val app = context.applicationContext
         val now = System.currentTimeMillis()
-        val due = subs(app).filter { force || now - it.lastFetch !in 0 until SUB_INTERVAL_MS }
+        val due = subs(app).filter { force || now - it.lastFetch !in 0 until maxAgeMs }
         if (due.isEmpty() || !refreshing.compareAndSet(false, true)) {
             onDone?.invoke()
             return

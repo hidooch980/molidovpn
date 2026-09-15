@@ -575,6 +575,9 @@ object V2raySubscription {
 
     fun cachedCount(context: Context): Int = prefs(context).getInt(LAST_COUNT_PREF, 0)
 
+    /** When the pool was last fetched successfully, 0 if never. */
+    fun lastCheckMillis(context: Context): Long = prefs(context).getLong(LAST_CHECK_PREF, 0L)
+
     /** Nodes from the cache; with no usable cache, fetches synchronously (worker thread only). */
     fun nodes(context: Context): List<V2rayNode> {
         val cached = readCache(context)
@@ -601,10 +604,15 @@ object V2raySubscription {
         emptyList()
     }
 
-    fun refreshIfDue(context: Context, force: Boolean = false, onDone: ((Int) -> Unit)? = null) {
+    fun refreshIfDue(
+        context: Context,
+        force: Boolean = false,
+        maxAgeMs: Long = MIN_INTERVAL_MS,
+        onDone: ((Int) -> Unit)? = null,
+    ) {
         val app = context.applicationContext
         val elapsed = System.currentTimeMillis() - prefs(app).getLong(LAST_CHECK_PREF, 0L)
-        if (!force && elapsed in 0 until MIN_INTERVAL_MS && cacheFile(app).exists()) {
+        if (!force && elapsed in 0 until maxAgeMs && cacheFile(app).exists()) {
             onDone?.invoke(cachedCount(app))
             return
         }

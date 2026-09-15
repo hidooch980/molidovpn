@@ -41,6 +41,18 @@ object ShardHealth {
     private const val FAILURE_TOLERANCE = 2
 
     /**
+     * Memory older than this is forgotten, so a server that died (or came back)
+     * is re-judged from scratch instead of riding an old score. The timestamp is
+     * the 5th field; entries written before it existed count as expired.
+     */
+    private const val MAX_AGE_MS = 6 * 60 * 60 * 1000L
+
+    private fun expired(raw: String, now: Long): Boolean {
+        val at = raw.split(':').getOrNull(4)?.toLongOrNull() ?: 0L
+        return now - at !in 0 until MAX_AGE_MS
+    }
+
+    /**
      * Ceiling and exchange rate for the measured-bandwidth bonus in [Score.rank].
      *
      * 30 Mbps × 50 ms = 1500 ms, i.e. a fast node may jump ahead of one whose
@@ -114,6 +126,7 @@ object ShardHealth {
 
     fun score(context: Context, node: ShardNode): Score {
         val raw = prefs(context).getString(node.key, null) ?: return Score(0, 0, 0)
+        if (expired(raw, System.currentTimeMillis())) return Score(0, 0, 0)
         val parts = raw.split(':')
         return Score(
             latencyMs = parts.getOrNull(0)?.toIntOrNull() ?: 0,
@@ -142,7 +155,7 @@ object ShardHealth {
             latencyMs
         }
         prefs(context).edit()
-            .putString(node.key, "$blended:${previous.streak + 1}:0:${previous.kbps}")
+            .putString(node.key, "$blended:${previous.streak + 1}:0:${previous.kbps}:${System.currentTimeMillis()}")
             .apply()
     }
 
@@ -168,7 +181,7 @@ object ShardHealth {
         prefs(context).edit()
             .putString(
                 node.key,
-                "${previous.latencyMs}:${previous.streak}:${previous.failures}:$blended"
+                "${previous.latencyMs}:${previous.streak}:${previous.failures}:$blended:${System.currentTimeMillis()}"
             )
             .apply()
     }
@@ -179,7 +192,7 @@ object ShardHealth {
         prefs(context).edit()
             .putString(
                 node.key,
-                "${previous.latencyMs}:0:${previous.failures + 1}:${previous.kbps}"
+                "${previous.latencyMs}:0:${previous.failures + 1}:${previous.kbps}:${System.currentTimeMillis()}"
             )
             .apply()
     }
@@ -220,11 +233,16 @@ object ShardHealth {
      */
     fun prune(context: Context, nodes: List<ShardNode>) {
         val live = nodes.map { it.key }.toSet()
-        // SHARD and V2Ray servers share this file; each prunes only its own keys.
         val v2 = nodes.firstOrNull()?.v2ray != null
+        val now = System.currentTimeMillis()
         val editor = prefs(context).edit()
-        prefs(context).all.keys.forEach { key ->
-            if (key.startsWith("v2|") == v2 && key !in live) editor.remove(key)
+        prefs(context).all.forEach { (key, value) ->
+            // Expired entries go for every pool. Departed keys are pruned by SHARD
+            // only: the V2Ray servers and My configs share the "v2|" prefix, so
+            // racing one must not wipe the other's memory — expiry cleans those.
+            val stale = expired(value as? String ?: "", now)
+            val departedShard = !v2 && !key.startsWith("v2|") && key !in live
+            if (stale || departedShard) editor.remove(key)
         }
         editor.apply()
     }

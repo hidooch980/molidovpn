@@ -2633,11 +2633,16 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
                 sendStatus(STATUS_CONNECTING, Strings.t("Finding a fast node…"), 15)
                 ConnectionLog.record("SHARD: TUN ready — racing the pool")
 
-                if (isMyConfigsSession()) {
-                    MyConfigs.refreshIfDue(this)
-                } else if (isV2raySession()) {
-                    V2raySubscription.refreshIfDue(this)
+                // Fresh lists on every connect once a cache is over 30 min old. In the
+                // background beside the race, which uses the cache immediately. The
+                // V2Ray pool is skipped without a cache: its first fetch must stay
+                // synchronous inside V2raySubscription.nodes().
+                val connectMaxAgeMs = 30 * 60 * 1000L
+                ShardSubscription.refreshIfDue(this, maxAgeMs = connectMaxAgeMs)
+                if (V2raySubscription.cachedCount(this) > 0) {
+                    V2raySubscription.refreshIfDue(this, maxAgeMs = connectMaxAgeMs)
                 }
+                MyConfigs.refreshIfDue(this, maxAgeMs = connectMaxAgeMs)
                 if (!ShardManager.start(this, verboseShardLog(), v2ray = isV2raySession(), mine = isMyConfigsSession())) {
                     error(
                         ShardManager.lastError.ifBlank { "No public node could be reached" }

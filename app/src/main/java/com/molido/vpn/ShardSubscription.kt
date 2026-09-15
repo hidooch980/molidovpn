@@ -73,7 +73,8 @@ object ShardSubscription {
      * opens the app daily always has the current list within a day, sparse enough
      * that opening the app ten times in an afternoon costs one request.
      */
-    private const val MIN_INTERVAL_MS = 6 * 60 * 60 * 1000L
+    // Hourly: servers must stay fresh. Cheap — the ETag makes an unchanged list a 304.
+    private const val MIN_INTERVAL_MS = 60 * 60 * 1000L
 
     private const val CONNECT_TIMEOUT_MS = 12_000
     private const val READ_TIMEOUT_MS = 20_000
@@ -146,9 +147,14 @@ object ShardSubscription {
      *
      * @param force ignores [MIN_INTERVAL_MS]; used by the manual settings row.
      */
-    fun refreshIfDue(context: Context, force: Boolean = false, onDone: ((Int) -> Unit)? = null) {
+    fun refreshIfDue(
+        context: Context,
+        force: Boolean = false,
+        maxAgeMs: Long = MIN_INTERVAL_MS,
+        onDone: ((Int) -> Unit)? = null,
+    ) {
         val elapsed = System.currentTimeMillis() - lastCheckMillis(context)
-        if (!force && elapsed in 0 until MIN_INTERVAL_MS) {
+        if (!force && elapsed in 0 until maxAgeMs) {
             onDone?.invoke(cachedCount(context))
             return
         }
