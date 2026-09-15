@@ -19,7 +19,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.msnguard.vpn"
+    namespace = "com.molido.vpn"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "26.3.11579264"

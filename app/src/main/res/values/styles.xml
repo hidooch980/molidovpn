@@ -12,7 +12,7 @@
   surfaces with near-white text on them.
 -->
 <resources>
-    <style name="Theme.MsnGuard" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.Molido" parent="Theme.Material3.Dark.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <!-- mint / neon accents, straight from the approved mock -->
         <item name="colorPrimary">#2DD4BF</item>
@@ -30,7 +30,7 @@
         <item name="android:statusBarColor">#07110F</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
-        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MsnGuard.AlertDialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Molido.AlertDialog</item>
    </style>
 
     <!--
@@ -38,7 +38,7 @@
       as the canvas, so launching the app does not flash a lighter panel before
       the Orbit console appears.
     -->
-    <style name="Theme.MsnGuard.Starting" parent="Theme.MsnGuard">
+    <style name="Theme.Molido.Starting" parent="Theme.Molido">
         <item name="android:windowBackground">#07110F</item>
    </style>
 
@@ -47,7 +47,7 @@
       shade (see ShadeCollapseActivity). It must never paint anything: a normal
       theme would flash the void background over whatever is behind the shade.
     -->
-    <style name="Theme.MsnGuard.Invisible" parent="android:Theme.Translucent.NoTitleBar">
+    <style name="Theme.Molido.Invisible" parent="android:Theme.Translucent.NoTitleBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowNoTitle">true</item>
@@ -56,14 +56,14 @@
         <item name="android:backgroundDimEnabled">false</item>
    </style>
 
-    <style name="ThemeOverlay.MsnGuard.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.MsnGuard.Dialog</item>
+    <style name="ThemeOverlay.Molido.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Molido.Dialog</item>
         <item name="colorSurface">#0E1C19</item>
         <item name="colorOnSurface">#EAF7F3</item>
         <item name="colorPrimary">#2DD4BF</item>
    </style>
 
-    <style name="ShapeAppearance.MsnGuard.Dialog" parent="ShapeAppearance.Material3.MediumComponent">
+    <style name="ShapeAppearance.Molido.Dialog" parent="ShapeAppearance.Material3.MediumComponent">
         <item name="cornerSize">24dp</item>
    </style>
 
@@ -81,7 +81,7 @@
       window — reads from here, and a mismatch here is how a white app ends up
       with one black dialog.
     -->
-    <style name="Theme.MsnGuard.Light" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.Molido.Light" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="colorPrimary">#0F9E8A</item>
         <item name="colorOnPrimary">#FFFFFF</item>
@@ -98,11 +98,11 @@
         <!-- Dark icons in the bars: the bars are now near-white. -->
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MsnGuard.Light.AlertDialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Molido.Light.AlertDialog</item>
    </style>
 
-    <style name="ThemeOverlay.MsnGuard.Light.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.MsnGuard.Dialog</item>
+    <style name="ThemeOverlay.Molido.Light.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Molido.Dialog</item>
         <item name="colorSurface">#FFFFFF</item>
         <item name="colorOnSurface">#0B1F1B</item>
         <item name="colorPrimary">#0B7A6B</item>

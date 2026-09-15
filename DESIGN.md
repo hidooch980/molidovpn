@@ -1,13 +1,13 @@
-# MSN-GUARD Android design contract
+# MolidoVPN Android design contract
 
 ## Intent
 
-MSN-GUARD should feel like a calm, trustworthy dark Android system tool. The home screen is a
+MolidoVPN should feel like a calm, trustworthy dark Android system tool. The home screen is a
 single-purpose connection console: the connection state is visible at a glance, the main
 action is physically obvious, and live connection facts (exit IP, country, data, duration)
 are readable without scrolling.
 
-This is MSN-GUARD's own visual system. Any third-party app is an interaction reference only;
+This is MolidoVPN's own visual system. Any third-party app is an interaction reference only;
 do not copy its code, wording, logo, or branding.
 
 ## Foundations

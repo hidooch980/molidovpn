@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/logo.png" width="160" alt="MSN-GUARD">
+<img src="docs/logo.png" width="160" alt="MolidoVPN">
 
-# MSN-GUARD
+# MolidoVPN
 
 **Device-wide tunnelling for censored networks — five transports, Rust core, native Android client**
 
@@ -20,7 +20,7 @@
 
 ## What this is
 
-MSN-GUARD is a native Android VPN client that moves every packet leaving the device through one of five independent transports. That word *native* is doing real work here. Most tools in this space are proxies: they hand you a local SOCKS port, and whatever bothers to read the system proxy setting — usually just a browser — gets protected. Everything else leaks. MSN-GUARD binds Android's own `VpnService`, stands up a TUN interface, and takes ownership of the whole routing table. Every TCP stream, every UDP datagram, every QUIC flow, from every installed app, goes through the tunnel whether that app knows about proxies or not.
+MolidoVPN is a native Android VPN client that moves every packet leaving the device through one of five independent transports. That word *native* is doing real work here. Most tools in this space are proxies: they hand you a local SOCKS port, and whatever bothers to read the system proxy setting — usually just a browser — gets protected. Everything else leaks. MolidoVPN binds Android's own `VpnService`, stands up a TUN interface, and takes ownership of the whole routing table. Every TCP stream, every UDP datagram, every QUIC flow, from every installed app, goes through the tunnel whether that app knows about proxies or not.
 
 The codebase splits cleanly in two. A **Rust network core** implements the transports and negotiates with upstream gateways. A **Kotlin layer** owns the Android VPN lifecycle, the interface, and platform plumbing. The last two transports — Psiphon and Tor — bring their own cores and attach to the same TUN through a local SOCKS listener. There is no relay server of ours in the middle — the handset speaks directly to the upstream gateway.
 
@@ -67,8 +67,8 @@ Three layers of code make that path:
 | File | Responsibility |
 |---|---|
 | `MainActivity` | Interface, connection console, settings |
-| `MsnGuardVpnService` | VPN lifecycle, TUN construction, transport supervision |
-| `MsnGuardTileService` | Quick Settings tile |
+| `MolidoVpnService` | VPN lifecycle, TUN construction, transport supervision |
+| `MolidoTileService` | Quick Settings tile |
 | `Tun2SocksManager` | Native tun2socks process supervision |
 | `TorManager` | tor startup, torrc generation, mode ladder and bridge selection |
 | `TorSocksFront` | SOCKS front-end for Tor; where DNS is steered to Tor's own DNSPort |
@@ -183,8 +183,8 @@ Grab the latest APK from [Releases](https://github.com/mbm110/MSN-GUARD/releases
 
 | Device architecture | File |
 |---|---|
-| ARM 64-bit — most current handsets | `MSN-GUARD-v1.7.17-arm64-v8a.apk` |
-| ARM 32-bit — older devices | `MSN-GUARD-v1.7.17-armeabi-v7a.apk` |
+| ARM 64-bit — most current handsets | `MolidoVPN-v1.7.17-arm64-v8a.apk` |
+| ARM 32-bit — older devices | `MolidoVPN-v1.7.17-armeabi-v7a.apk` |
 
 Android 8.0 (API 26) or newer. Allow installation from unknown sources, and approve Android's VPN permission prompt on first connect.
 

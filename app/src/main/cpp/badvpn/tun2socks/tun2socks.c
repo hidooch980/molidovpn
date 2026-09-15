@@ -118,7 +118,7 @@ struct {
     int udpgw_max_connections;
     int udpgw_connection_buffer_size;
     int udpgw_transparent_dns;
-    // MSN-GUARD: accept only DNS (destination port 53) into udpgw. Used on the
+    // MolidoVPN: accept only DNS (destination port 53) into udpgw. Used on the
     // Tor path, where non-DNS UDP can never be delivered but would still claim
     // one of the 256 never-expiring udpgw connection slots (see
     // process_device_udp_packet below).
@@ -1433,7 +1433,7 @@ int process_device_udp_packet (uint8_t *data, int data_len)
         } break;
     }
     
-    // MSN-GUARD: on Tor, udpgw carries DNS only. Everything else (QUIC, NTP,
+    // MolidoVPN: on Tor, udpgw carries DNS only. Everything else (QUIC, NTP,
     // STUN...) could never be delivered through Tor anyway — the SOCKS front
     // discards it — yet each new flow used to claim one of the 256 never-expiring
     // conids until the table saturated and DNS replies started landing on

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Extract fragment profiles from patterniha's Serverless-for-Iran subscription
-into the MSN-GUARD mirror format. Used both to build the initial mirror/seed and
+into the MolidoVPN mirror format. Used both to build the initial mirror/seed and
 (inline) by the smart-split-sync workflow.
 
 Profiles the field has measured dead on Iranian carriers (fragA) are dropped

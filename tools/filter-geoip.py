@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shrink Tor's GeoIP database to the countries MSN-GUARD actually offers.
+"""Shrink Tor's GeoIP database to the countries MolidoVPN actually offers.
 
 Why this exists
 ---------------
@@ -89,7 +89,7 @@ def filter_geoip(src: Path, keep: set[str]) -> tuple[str, int, int]:
     if not kept:
         raise SystemExit(f"{src}: filtering kept zero ranges — wrong input file?")
     note = [
-        "# Filtered for MSN-GUARD: only the countries offered by the app's Tor",
+        "# Filtered for MolidoVPN: only the countries offered by the app's Tor",
         f"# exit-country picker are kept ({len(kept)} of {total} ranges).",
         "# Regenerate with tools/filter-geoip.py; see TorRegions.kt for the list.",
         "#",
@@ -98,7 +98,7 @@ def filter_geoip(src: Path, keep: set[str]) -> tuple[str, int, int]:
 
 
 STUB6 = """\
-# MSN-GUARD: intentionally contains no ranges.
+# MolidoVPN: intentionally contains no ranges.
 #
 # ExitNodes {cc} was verified to be honoured with the IPv4 database alone, both
 # with IPv6 disabled (FR DE NL RO SE, 5/5) and with the app's real settings of

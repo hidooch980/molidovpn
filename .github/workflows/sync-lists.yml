@@ -1,6 +1,6 @@
 name: Sync server and policy lists
 
-# Keeps our own copy of the upstream MSN-GUARD lists, so the app never depends on
+# Keeps our own copy of the upstream MolidoVPN lists, so the app never depends on
 # the upstream repository staying online. The app reads remote/* from this repo.
 # Also appends MolidoVPN's own tested servers that fit the SHARD transport
 # (VLESS/Trojan over WebSocket+TLS behind Cloudflare), capped so they cannot crowd out upstream nodes.
