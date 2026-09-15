@@ -57,23 +57,43 @@ jobs:
         continue-on-error: true
         run: curl -fsSL -o GeoLite2-Country.mmdb https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb
 
-      - name: Discover candidate sources (GitHub search, every ~6 hours)
+      # Hourly: the last discovery time lives in health.json on the `sub` branch, so the ~15-min
+      # self-dispatch chain can't skip or double an hour. Uses GITHUB_TOKEN: search API 30 req/min,
+      # core API 1000 req/h per repo; this step makes 2 searches + at most ~60 commit lookups.
+      - name: Discover candidate sources (GitHub search, every hour)
         continue-on-error: true
+        timeout-minutes: 4
         run: |
-          [ $(( $(date -u +%H) % 6 )) -eq 0 ] && [ $(date -u +%M) -lt 15 ] || exit 0
-          gh api -X GET search/repositories -f q='v2ray configs subscription pushed:>'"$(date -u -d '3 days ago' +%F)" \
-             -f sort=updated -f per_page=30 --jq '.items[] | .full_name + " " + .default_branch' |
+          LAST=$(curl -fsSL -H 'Cache-Control: no-cache' "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/sub/health.json" \
+                 2>/dev/null | jq -r '._discovered_at // 0' 2>/dev/null || echo 0)
+          [ $(( $(date +%s) - ${LAST:-0} )) -ge 3300 ] || { echo "discovery ran $(( ($(date +%s) - LAST) / 60 )) min ago"; exit 0; }
+          SINCE=$(date -u -d '24 hours ago' +%FT%TZ)
+          KNOWN=$(cat sources.txt discover.txt 2>/dev/null)
+          MAX_NEW=15; LOOKUPS=0
+          for q in 'v2ray configs subscription' 'vless vmess sub collector'; do
+            gh api -X GET search/repositories -f q="$q pushed:>${SINCE%T*}" -f sort=updated -f per_page=30 \
+               --jq '.items[] | .full_name + " " + .default_branch'
+          done | sort -u |
           while read -r repo branch; do
             for path in All_Configs_Sub.txt sub/mix sub.txt configs.txt v2ray.txt All_Configs_base64_Sub.txt; do
               url="https://raw.githubusercontent.com/$repo/$branch/$path"
-              curl -fsI -m 8 "$url" >/dev/null 2>&1 && echo "$url"
+              grep -qxF "$url" <<<"$KNOWN" && continue
+              curl -fsI -m 8 "$url" >/dev/null 2>&1 || continue
+              LOOKUPS=$((LOOKUPS + 1)); [ $LOOKUPS -le 60 ] || exit 0
+              # Only files actually updated in the last 24 h.
+              n=$(gh api -X GET "repos/$repo/commits" -f path="$path" -f since="$SINCE" -f per_page=1 --jq length 2>/dev/null)
+              [ "${n:-0}" -gt 0 ] && echo "$url"
             done
-          done | head -40 >> discover.txt
+          done | head -n $MAX_NEW > new_sources.txt || true
+          echo "new sources: $(wc -l < new_sources.txt)"; cat new_sources.txt
+          cat new_sources.txt >> discover.txt
           sort -u discover.txt -o discover.txt
+          echo "DISCOVERED=1" >> "$GITHUB_ENV"
 
       - name: Run scanner
         env:
           HEALTH_URL: https://raw.githubusercontent.com/${{ github.repository }}/sub/health.json
+          SEEN_URL: https://raw.githubusercontent.com/${{ github.repository }}/sub/seen.json
         run: python scanner.py
 
       - name: Publish to 'sub' branch (no history, keeps repo small)

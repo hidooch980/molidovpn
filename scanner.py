@@ -56,6 +56,13 @@ PREFERRED_COUNTRIES = [c.strip().upper() for c in
                        os.environ.get("PREFERRED_COUNTRIES", "TR,AE,AM,DE,NL").split(",") if c.strip()]
 PREFERRED_KEEP = int(os.environ.get("PREFERRED_KEEP", "30"))
 PREFERRED_TEST_MAX = int(os.environ.get("PREFERRED_TEST_MAX", "1500"))
+# Freshness: seen.json on the `sub` branch maps fingerprint -> {"f": first_seen, "o": last_ok} (unix seconds).
+SEEN_URL = os.environ.get("SEEN_URL", "")
+NEW_WINDOW = 6 * 3600         # "new" = first seen working within this window
+STALE_AFTER = 12 * 3600       # never publish configs without a passed test in this window
+SEEN_FORGET = 48 * 3600       # forget fingerprints not working for this long (keeps the file small)
+NEW_SHARE = float(os.environ.get("NEW_SHARE", "0.4"))  # up to this share of MAX_OUTPUT reserved for new configs
+NOW = int(time.time())
 
 
 @dataclass
@@ -70,17 +77,58 @@ class Node:
     ip: str = ""
     hint: str = ""  # guessed country before the real test (remark flag / GeoIP of server IP)
     extra: dict = field(default_factory=dict)
+    first_seen: int = 0  # first time this config passed a real test (0 = never before this run)
+    last_ok: int = 0
 
     @property
     def proto(self) -> str:
         return self.outbound["type"].replace("shadowsocks", "ss")
+
+    @property
+    def fp(self) -> str:
+        import hashlib
+        return hashlib.sha1(dedupe_key(self.outbound).encode()).hexdigest()[:16]
+
+    def is_new(self, window: int = NEW_WINDOW) -> bool:
+        return bool(self.first_seen) and NOW - self.first_seen <= window
+
+
+# ---------------------------------------------------------------- freshness state
+
+def load_seen() -> dict:
+    if not SEEN_URL:
+        return {}
+    try:
+        req = urllib.request.Request(SEEN_URL, headers={"Cache-Control": "no-cache"})
+        with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def apply_seen(nodes: list[Node], seen: dict):
+    for n in nodes:
+        s = seen.get(n.fp) or {}
+        n.first_seen, n.last_ok = int(s.get("f", 0)), int(s.get("o", 0))
+
+
+def update_seen(seen: dict, alive: list[Node]) -> dict:
+    """Mark this run's working configs; new ones get first_seen = now. Drop long-dead fingerprints."""
+    for n in alive:
+        s = seen.setdefault(n.fp, {"f": NOW})
+        s["o"] = NOW
+        n.first_seen, n.last_ok = int(s["f"]), NOW
+    return {k: v for k, v in seen.items() if NOW - int(v.get("o", 0)) <= SEEN_FORGET}
 
 
 # ---------------------------------------------------------------- fetch
 
 def fetch(url: str) -> tuple[str, str]:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        # Always re-fetched every run; ask intermediaries not to serve a cached copy.
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache",
+                                                   "Pragma": "no-cache"})
         with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:
             return url, resp.read().decode("utf-8", errors="ignore")
     except Exception as e:
@@ -202,8 +250,14 @@ def pick_candidates(nodes: list[Node]) -> list[Node]:
         reserved.extend(q[i] for q in queues if i < len(q))
     reserved = reserved[:PREFERRED_TEST_MAX]
     taken = {id(n) for n in reserved}
+    budget = max(0, MAX_REAL_TEST - len(reserved))
+    # Half of the remaining budget goes to configs never seen working, so new ones get tested
+    # even when known-good configs alone would fill the budget; unused share flows to the other group.
     rest = diversify([n for n in nodes if id(n) not in taken])
-    return reserved + rest[:max(0, MAX_REAL_TEST - len(reserved))]
+    unknown = [n for n in rest if not n.last_ok]
+    known = [n for n in rest if n.last_ok]
+    take_unknown = min(len(unknown), max(budget // 2, budget - len(known)))
+    return reserved + unknown[:take_unknown] + known[:budget - take_unknown]
 
 
 # ---------------------------------------------------------------- real test via sing-box
@@ -344,8 +398,12 @@ def publish(nodes: list[Node], stats: dict, mode: str):
             per_pref[n.country] += 1
             kept.append(n)
     kept_ids = {id(n) for n in kept}
-    fill = [n for n in by_latency if id(n) not in kept_ids][:max(0, MAX_OUTPUT - len(kept))]
-    fastest_first = sorted(kept + fill, key=lambda n: n.latency)
+    # Then configs first seen working in the last 6 h (reserved share), then the rest (all passed this run).
+    new_cap = max(0, min(int(MAX_OUTPUT * NEW_SHARE), MAX_OUTPUT - len(kept)))
+    fresh = [n for n in by_latency if id(n) not in kept_ids and n.is_new()][:new_cap]
+    kept_ids |= {id(n) for n in fresh}
+    fill = [n for n in by_latency if id(n) not in kept_ids][:max(0, MAX_OUTPUT - len(kept) - len(fresh))]
+    fastest_first = sorted(kept + fresh + fill, key=lambda n: n.latency)
     by_country = defaultdict(list)
     for n in fastest_first:
         by_country[n.country].append(n)
@@ -355,7 +413,7 @@ def publish(nodes: list[Node], stats: dict, mode: str):
 
     ordered = []
     for code in order:
-        for i, n in enumerate(sorted(by_country[code], key=lambda n: n.latency), 1):
+        for i, n in enumerate(sorted(by_country[code], key=lambda n: (not n.is_new(), n.latency)), 1):
             n.name = f"{BRAND} ✦ {countries.flag(code)} {countries.name(code)} {i:02d} · {n.proto.upper()}"
             ordered.append(n)
 
@@ -368,7 +426,7 @@ def publish(nodes: list[Node], stats: dict, mode: str):
     write_lines(f"{OUT_DIR}/fastest.txt", renamed(sorted(ordered, key=lambda n: n.latency)[:FASTEST_COUNT]))
 
     lite, per_country = [], Counter()
-    for n in sorted(ordered, key=lambda n: (n.country not in PREFERRED_COUNTRIES, n.latency)):
+    for n in sorted(ordered, key=lambda n: (n.country not in PREFERRED_COUNTRIES, not n.is_new(), n.latency)):
         if len(lite) < LITE_COUNT and per_country[n.country] < LITE_PER_COUNTRY:
             per_country[n.country] += 1
             lite.append(n)
@@ -401,7 +459,13 @@ def publish(nodes: list[Node], stats: dict, mode: str):
         "median_ms": round(fastest_first[len(fastest_first) // 2].latency) if fastest_first else None,
         "countries": {countries.name(c): len(by_country[c]) for c in order},
         "protocols": dict(Counter(n.proto for n in ordered)),
+        "total": len(ordered),
+        "new_last_hour": sum(n.is_new(3600) for n in ordered),
+        "new_last_6h": sum(n.is_new() for n in ordered),
+        "by_country": dict(Counter(n.country or "XX" for n in ordered).most_common(10)),
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW)),
     })
+    print(f"  [freshness] published={len(ordered)} new_1h={stats['new_last_hour']} new_6h={stats['new_last_6h']}")
     with open(f"{OUT_DIR}/stats.json", "w", encoding="utf-8") as f:
         json.dump(stats, f, ensure_ascii=False, indent=2)
     write_readme(stats)
@@ -475,6 +539,8 @@ def update_health(health: dict, stats: dict, candidates: list[str]):
             h["promoted"] = h["good_runs"] >= PROMOTE_AFTER_RUNS or h.get("promoted", False)
         h["last_alive"] = alive
         h["pref_hints"] = s.get("pref_hints", 0)
+        if url in candidates:
+            h["candidate"] = True
 
 
 def main():
@@ -485,6 +551,12 @@ def main():
         with open(DISCOVER_FILE, encoding="utf-8") as f:
             candidates = [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
     health = load_health()
+    # discover.txt found by earlier runs is not committed; remember candidates through health.json.
+    candidates += [u for u, h in health.items() if isinstance(h, dict) and h.get("candidate")]
+    candidates = list(dict.fromkeys(candidates))
+    if os.environ.get("DISCOVERED"):
+        health["_discovered_at"] = NOW
+    seen = load_seen()
     sources, paused = pick_sources(base, candidates, health)
     stats = {"last_run_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "sources": {}, "paused_sources": paused}
 
@@ -495,6 +567,7 @@ def main():
 
     print("TCP pre-filter...")
     tcp_alive = asyncio.run(tcp_filter(nodes))
+    apply_seen(tcp_alive, seen)
     hint_countries(tcp_alive)
     for n in tcp_alive:
         if n.hint in PREFERRED_COUNTRIES and n.source in stats["sources"]:
@@ -518,10 +591,15 @@ def main():
     geo_fallback(alive)
     log_countries("alive (real exit country)", (n.country for n in alive))
     print(f"Alive: {len(alive)}")
+    seen = update_seen(seen, alive)
+    # Everything published passed a test in this run, so nothing is older than STALE_AFTER.
+    alive = [n for n in alive if NOW - n.last_ok <= STALE_AFTER]
     publish(alive, stats, mode)
     update_health(health, stats, candidates)
     with open(f"{OUT_DIR}/health.json", "w", encoding="utf-8") as f:
         json.dump(health, f, indent=1)
+    with open(f"{OUT_DIR}/seen.json", "w", encoding="utf-8") as f:
+        json.dump(seen, f, separators=(",", ":"))
     print(f"Paused dead sources: {len(paused)}")
     print("Done.")
 
