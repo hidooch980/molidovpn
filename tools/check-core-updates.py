@@ -14,7 +14,10 @@ starts its release.
 Safety policy (auto-apply only non-breaking updates, never pre-releases):
   sing-box   same major.minor as the current pin (1.12.x patches); a new minor/major opens an issue here
   Xray-core  any newer stable release -> new mirror release binaries-N+1 with the new libxray.so
-  Tor / lyrebird / Psiphon AAR come from the upstream core mirror and are not updated automatically.
+  Psiphon    Psiphon-Labs/psiphon-tunnel-core-binaries android/ca.psiphon.aar, when its build commit is a
+             stable psiphon-tunnel-core tag newer than ours -> binaries-N+1 with psiphontunnel-<ver>.aar
+             (versions listed in core-versions.json components.psiphon-android.skip are never applied)
+  Tor / lyrebird come from the upstream core mirror and are not updated automatically.
 
 A version is attempted at most once per 24 h (state: .github/core-versions.json), so a failing build does
 not cause a retry loop.
@@ -193,6 +196,7 @@ class Ctx:
         self.changes: list[str] = []
         self.review: list[dict] = []
         self.mirror_replace: dict[str, bytes] = {}
+        self.mirror_remove: set[str] = set()
 
     def skip_recent(self, component: str, version: str) -> bool:
         if recently_attempted(self.state, component, version, self.now):
@@ -228,6 +232,72 @@ def check_xray(ctx: Ctx) -> None:
         print(f"Xray: would mirror {latest} ({', '.join(XRAY_ASSETS.values())})")
     ctx.changes.append(f"Xray {cur or 'mirror build'} → {latest}")
     record(ctx.state, "xray", latest, ctx.now)
+
+
+PSI_BIN_REPO = "Psiphon-Labs/psiphon-tunnel-core-binaries"
+PSI_CORE_REPO = "Psiphon-Labs/psiphon-tunnel-core"
+RX_PSI_AAR = r"psiphontunnel-(\d+(?:\.\d+)+)\.aar"
+
+
+def verify_aar(data: bytes) -> None:
+    if len(data) < 5_000_000:
+        raise RuntimeError(f"Psiphon AAR too small ({len(data)} bytes)")
+    z = zipfile.ZipFile(io.BytesIO(data))
+    bad = z.testzip()
+    if bad:
+        raise RuntimeError(f"Psiphon AAR corrupt entry {bad}")
+    names = set(z.namelist())
+    for need in ("classes.jar", "jni/arm64-v8a/libgojni.so", "jni/armeabi-v7a/libgojni.so"):
+        if need not in names:
+            raise RuntimeError(f"Psiphon AAR lacks {need}")
+
+
+def check_psiphon_android(ctx: Ctx) -> None:
+    cur_names = set(re.findall(RX_PSI_AAR, ctx.sh))
+    if len(cur_names) != 1:
+        raise ValueError(f"expected one psiphontunnel-<ver>.aar pin, found {len(cur_names)}")
+    cur = cur_names.pop()
+    commits = gh_api(f"repos/{PSI_BIN_REPO}/commits?path=android/ca.psiphon.aar&per_page=1")
+    if not commits:
+        return
+    bin_sha = commits[0]["sha"]
+    m = re.search(r"\b([0-9a-f]{7,40})\b", commits[0]["commit"]["message"])
+    if not m:
+        print(f"Psiphon (Android): cannot read core commit from binaries commit {bin_sha[:7]}")
+        return
+    core = m.group(1)
+    # Only stable tagged core builds (a release that is not a pre-release).
+    ver = None
+    for r in stable_releases(PSI_CORE_REPO):
+        if parse_version(r["tag_name"]) is None:
+            continue
+        sha = gh_api(f"repos/{PSI_CORE_REPO}/commits/{r['tag_name']}")["sha"]
+        if sha.startswith(core):
+            ver = r["tag_name"].lstrip("v")
+            break
+    if not ver:
+        print(f"Psiphon (Android): upstream AAR build {core} is not a stable release, skipping")
+        return
+    comp = ctx.state.get("components", {}).get("psiphon-android", {})
+    if not is_newer(ver, cur):
+        print(f"Psiphon (Android): {cur} is current")
+        return
+    if ver in comp.get("skip", []):
+        print(f"Psiphon (Android): {ver} is in the skip list")
+        return
+    if ctx.skip_recent("psiphon-android", ver):
+        return
+    new_name, old_name = f"psiphontunnel-{ver}.aar", f"psiphontunnel-{cur}.aar"
+    if ctx.args.apply:
+        data = http_get(f"https://raw.githubusercontent.com/{PSI_BIN_REPO}/{bin_sha}/android/ca.psiphon.aar")
+        verify_aar(data)
+        ctx.mirror_replace[new_name] = data
+        ctx.mirror_remove.add(old_name)
+    else:
+        print(f"Psiphon (Android): would mirror {ver} from {PSI_BIN_REPO}@{bin_sha[:7]}")
+    ctx.sh = ctx.sh.replace(old_name, new_name)
+    ctx.changes.append(f"Psiphon {cur} → {ver}")
+    record(ctx.state, "psiphon-android", ver, ctx.now)
 
 
 def check_singbox(ctx: Ctx) -> None:
@@ -287,6 +357,9 @@ def publish_mirror(ctx: Ctx) -> None:
                     with open(os.path.join(work, parts[1].lstrip("*")), "rb") as fh:
                         if sha256(fh.read()) != parts[0].lower():
                             raise RuntimeError(f"{cur_tag}: checksum mismatch for {parts[1]}")
+        for name in ctx.mirror_remove - set(ctx.mirror_replace):
+            if os.path.exists(os.path.join(work, name)):
+                os.remove(os.path.join(work, name))
         for name, data in ctx.mirror_replace.items():
             with open(os.path.join(work, name), "wb") as f:
                 f.write(data)
@@ -328,7 +401,7 @@ def main() -> int:
 
     ctx = Ctx(args)
     errors = []
-    for check in (check_singbox, check_xray):
+    for check in (check_singbox, check_xray, check_psiphon_android):
         try:
             check(ctx)
         except Exception as e:  # one broken upstream must not block the other
