@@ -5939,10 +5939,22 @@ class MainActivity : Activity() {
     /** Countries found in the pools plus common ones; a country with no servers is refused. */
     private fun showCountryPicker(onChanged: () -> Unit) {
         Thread({
-            val counts = CountryFilter.counts(CountryFilter.pool(this))
-            val codes = (counts.keys.sortedByDescending { counts[it] ?: 0 } + CountryFilter.COMMON).distinct()
+            var counts = CountryFilter.counts(CountryFilter.pool(this))
+            if (counts.isEmpty()) {
+                // Empty cache or a stale one without names: fetch now instead of listing zeros.
+                val done = java.util.concurrent.CountDownLatch(1)
+                V2raySubscription.refreshIfDue(this, force = true) { done.countDown() }
+                done.await(40, java.util.concurrent.TimeUnit.SECONDS)
+                counts = CountryFilter.counts(CountryFilter.pool(this))
+            }
+            // Only countries that really have servers; zeros only confuse beginners.
+            val codes = counts.keys.sortedByDescending { counts[it] ?: 0 }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
+                if (codes.isEmpty()) {
+                    toastShort(Strings.t("Server list is not ready yet. Check the internet and try again."))
+                    return@runOnUiThread
+                }
                 val labels = (listOf(Strings.t("Any country")) + codes.map { code ->
                     "${CountryFilter.flag(code)} $code · " + Strings.tf("%s servers", counts[code] ?: 0)
                 }).toTypedArray<CharSequence>()

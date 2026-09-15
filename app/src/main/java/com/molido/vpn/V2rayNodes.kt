@@ -560,6 +560,10 @@ object V2raySubscription {
     private const val BASE = "https://molido-sub.hidooch980.workers.dev"
     private val SOURCES = (1..5).map { "$BASE/sub/$it" }
     private const val FALLBACK = "$BASE/ios"
+    private val MIRRORS = listOf(
+        "https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub.txt",
+        "https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt",
+    )
 
     private const val CACHE_FILE = "v2ray-configs.txt"
     private const val LAST_CHECK_PREF = "v2ray_last_check"
@@ -655,6 +659,11 @@ object V2raySubscription {
         var parsed = V2rayNodes.parse(lines)
         if (parsed.isEmpty()) {
             parsed = V2rayNodes.parse(fetchLines(FALLBACK))
+        }
+        // workers.dev is often filtered in Iran: the aggregator's GitHub copy has the same flags.
+        for (mirror in MIRRORS) {
+            if (parsed.isNotEmpty()) break
+            parsed = V2rayNodes.parse(fetchLines(mirror))
         }
         if (parsed.isEmpty()) {
             ConnectionLog.record("$TAG no usable nodes — keeping previous cache")

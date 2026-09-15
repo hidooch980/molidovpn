@@ -111,6 +111,7 @@ object Strings {
         "Clipboard is empty" to Triple("Clipboard is empty", "کلیپ‌بورد خالی است", "剪贴板为空"),
         "Any country" to Triple("Any country (automatic)", "هر کشوری (خودکار)", "任意国家（自动）"),
         "%s servers" to Triple("%s servers", "%s سرور", "%s 个服务器"),
+        "Server list is not ready yet. Check the internet and try again." to Triple("Server list is not ready yet. Check the internet and try again.", "لیست سرورها هنوز آماده نیست. اینترنت را بررسی و دوباره امتحان کنید.", "服务器列表尚未就绪，请检查网络后重试。"),
         "No server from this country is available" to Triple("No server from this country is available", "سروری از این کشور در دسترس نیست", "该国家暂无可用服务器"),
         "Import Amnezia config" to Triple("Import Amnezia config", "وارد کردن کانفیگ Amnezia", "导入 Amnezia 配置"),
         "Choose file" to Triple("Choose file", "انتخاب فایل", "选择文件"),
