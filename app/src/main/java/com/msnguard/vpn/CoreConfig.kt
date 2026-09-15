@@ -100,6 +100,13 @@ object CoreConfig {
      */
     fun json(context: Context, protocol: String?, listenOverride: Int?, ipScanOverride: String?): String {
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        // Imported AmneziaWG config: the WireGuard transport with the user's own
+        // identity and endpoint list, built on top of the plain WireGuard config.
+        // Central here so the rail, Auto, the tile and auto-connect all agree.
+        val requested = protocol ?: prefs.getString("default_protocol", "auto")?.trim().orEmpty()
+        if (requested == AmneziaConfig.PROTOCOL) {
+            return AmneziaConfig.coreJson(context, listenOverride, ipScanOverride)
+        }
         fun text(key: String, fallback: String = "") =
             prefs.getString(key, fallback)?.trim().orEmpty()
                 // The removed gaming mode ("shard-gaming") is plain SHARD now.

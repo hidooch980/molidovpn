@@ -35,6 +35,9 @@ pub struct StartOptions {
     pub masque_config_path: Option<String>,
     pub protocol: Protocol,
     pub forced_peer: Option<SocketAddr>,
+    /// Endpoints of an imported config, tried in order (WireGuard only). The one
+    /// that last worked (lastconn) is moved to the front.
+    pub forced_peers: Vec<SocketAddr>,
     pub scan_mode: ScanMode,
     pub ip_scan: IpScan,
     pub obfuscation_profile: Option<String>,
@@ -141,6 +144,7 @@ impl StartOptions {
             masque_config_path: None,
             protocol,
             forced_peer: None,
+            forced_peers: Vec::new(),
             scan_mode: ScanMode::Balanced,
             ip_scan: IpScan::V4,
             obfuscation_profile: None,
@@ -2100,6 +2104,25 @@ async fn run_wireguard(
     )?;
 
     let forced = options.forced_peer.map(|p| p.to_string());
+    // Imported config (AmneziaWG / WireGuard file): its endpoints, in file order,
+    // with the one that last carried traffic moved to the front.
+    let forced_list: Vec<SocketAddr> = {
+        let mut list = options.forced_peers.clone();
+        if !list.is_empty() {
+            if let Some(cached) = lastconn::load(&lastconn_path) {
+                if let Ok(peer) = cached.peer.parse::<SocketAddr>() {
+                    if let Some(pos) = list.iter().position(|p| *p == peer) {
+                        let remembered = list.remove(pos);
+                        log::info!("[*] trying the last working imported endpoint {remembered} first");
+                        list.insert(0, remembered);
+                    }
+                }
+            }
+        }
+        list
+    };
+    // Either kind of pin skips the team endpoint, the cached quick path and scanning.
+    let pinned = forced.is_some() || !forced_list.is_empty();
 
     let private_key = identity.private_key_bytes()?;
     let peer_public = identity.peer_public_key_bytes()?;
@@ -2110,7 +2133,7 @@ async fn run_wireguard(
 
     let mut quick: Option<(SocketAddr, aethernoize::AetherNoizeConfig, String)> = None;
 
-    if forced.is_none() {
+    if !pinned {
         if let Some(assigned) = std::env::var("AETHER_TEAM_ENDPOINT")
             .ok()
             .and_then(|value| value.parse::<SocketAddr>().ok())
@@ -2152,7 +2175,7 @@ async fn run_wireguard(
         }
     }
 
-    if forced.is_none() && quick.is_none() && options.obfuscation_parameters.is_none() {
+    if !pinned && quick.is_none() && options.obfuscation_parameters.is_none() {
         if let Some(cached) = lastconn::load(&lastconn_path) {
             if let Ok(peer) = cached.peer.parse::<SocketAddr>() {
                 if want_quick_reconnect(&cached).await {
@@ -2189,7 +2212,7 @@ async fn run_wireguard(
         }
     }
 
-    let (mode_str, ip) = if forced.is_some() || quick.is_some() {
+    let (mode_str, ip) = if pinned || quick.is_some() {
         (String::new(), prober::IpScan::V4)
     } else {
         let mode_str = select_scan_mode_str().await;
@@ -2251,7 +2274,46 @@ async fn run_wireguard(
             match retried {
                 Some(v) => v,
                 None => {
-                    if let Some(ref p) = forced {
+                    if !forced_list.is_empty() {
+                        // Imported endpoints: a short budget each, first that passes
+                        // handshake + data-plane wins. lastconn::save below records
+                        // it (forced is None here), so the next connect starts there.
+                        let mut chosen = None;
+                        'peers: for peer in &forced_list {
+                            for (name, profile) in &candidates {
+                                log::info!("[*] testing imported endpoint {peer} with profile '{name}'");
+                                match wireguard::verify_endpoint(
+                                    *peer,
+                                    private_key,
+                                    peer_public,
+                                    identity.client_id,
+                                    ipv4,
+                                    profile,
+                                    options.wireguard_data_check,
+                                    std::time::Duration::from_secs(8),
+                                    None,
+                                )
+                                .await
+                                {
+                                    Ok(rtt) => {
+                                        log::info!(
+                                            "[+] imported endpoint {peer} passed handshake + data-plane (rtt {:?})",
+                                            rtt
+                                        );
+                                        chosen = Some((*peer, profile.clone(), name.clone()));
+                                        break 'peers;
+                                    }
+                                    Err(e) => {
+                                        log::warn!("[-] imported endpoint {peer} failed: {e}");
+                                    }
+                                }
+                            }
+                        }
+                        match chosen {
+                            Some(v) => v,
+                            None => return Err(AetherError::NoCleanEndpoint),
+                        }
+                    } else if let Some(ref p) = forced {
                         let peer: SocketAddr = p
                             .parse()
                             .map_err(|_| AetherError::Other(format!("bad peer address {p}")))?;

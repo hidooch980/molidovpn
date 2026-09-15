@@ -292,9 +292,16 @@ object LogRedactor {
      * port with `-` and never `.`, so [HOST] cannot then swallow a reversible
      * address token and turn it into a one-way digest.
      */
+    /**
+     * A WireGuard key (32 bytes = 43 base64 chars + '='). Coded first and one-way:
+     * an imported AmneziaWG private key must never survive into a forwarded log.
+     */
+    private val WG_KEY = Regex("(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{43}=")
+
     fun redact(line: String): String {
         if (line.isEmpty()) return line
-        var out = PATH.replace(line) { "f" + digest(it.value, 4) }
+        val keyless = WG_KEY.replace(line) { "k" + digest(it.value, 4) }
+        var out = PATH.replace(keyless) { "f" + digest(it.value, 4) }
         // Flags first: that collapses `AL 🇦🇱` to one spaceless field, which is what
         // lets LABEL_RUN match the label without reaching back into the prose.
         out = FLAG.replace(out) { "" }

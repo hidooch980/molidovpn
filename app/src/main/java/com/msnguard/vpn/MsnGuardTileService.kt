@@ -277,6 +277,8 @@ class MsnGuardTileService : TileService() {
             AUTO("Auto", "auto", "Tests every connection type and connects with the best one"),
             DNS_ONLY("DNS", "dns", "Gaming DNS only, no VPN tunnel"),
             WIREGUARD("WireGuard", "wireguard", "WireGuard tunnel"),
+            // Without this entry a saved "amnezia" pick fell back to Auto on the tile.
+            AMNEZIA("AmneziaWG", "amnezia", "Your imported AmneziaWG (WARP) config"),
             MASQUE("MASQUE", "masque", "HTTP/3 tunnel"),
             WARP_IN_WARP("WARP-on-WARP", "gool", "Double-layer tunnel"),
             PSIPHON("Psiphon", "psiphon", "SOCKS5 proxy tunnel"),

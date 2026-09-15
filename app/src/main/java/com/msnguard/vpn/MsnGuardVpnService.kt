@@ -859,6 +859,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
 
         /** currentProtocol for coreName "v2ray": contains "SHARD" so it takes the SHARD path. */
         const val V2RAY_PROTOCOL_MARKER = "SHARD-V2RAY"
+        const val AMNEZIA_PROTOCOL_MARKER = "AMNEZIA-WIREGUARD"
 
         /** currentProtocol for coreName "dns" (DNS-only gaming mode). */
         const val DNS_ONLY_PROTOCOL = "DNS"
@@ -4017,6 +4018,18 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         val proxy = CoreConfig.proxyOnly(this)
         return listOfNotNull(
             AutoCandidate("wireguard", "WireGuard", 10_000L),
+            // Imported AmneziaWG (a WARP account, so an Iranian user's exit is IR and
+            // the IR-exit ranking below applies). Only when a config exists; budget
+            // is ~8 s per endpoint for the first few.
+            if (AmneziaConfig.isImported(this)) {
+                AutoCandidate(
+                    AmneziaConfig.PROTOCOL,
+                    "AmneziaWG",
+                    6_000L + 8_000L * AmneziaConfig.endpointCount(this).coerceIn(1, 4),
+                )
+            } else {
+                null
+            },
             AutoCandidate("masque", "MASQUE", if (CoreConfig.mimArmed(this)) 20_000L else 12_000L),
             // SHARD has no proxy mode (refused in startTunnel).
             if (proxy) null else AutoCandidate("shard", "SHARD", 16_000L),
@@ -4208,7 +4221,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
             // UDP blocked on this network: WireGuard and MASQUE (both UDP) cannot work.
             val phaseAAll = if (udpBlocked()) {
-                autoPhaseA().filter { it.coreName != "wireguard" && it.coreName != "masque" }
+                autoPhaseA().filter {
+                    it.coreName != "wireguard" && it.coreName != "masque" && it.coreName != AmneziaConfig.PROTOCOL
+                }
             } else {
                 autoPhaseA()
             }
@@ -4423,6 +4438,9 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
             // V2Ray servers ride every SHARD code path (TUN, front-end, watchdog,
             // rotation, proxy-mode refusal); the marker keeps "SHARD" in the name.
             .let { if (it == "V2RAY") V2RAY_PROTOCOL_MARKER else it }
+            // Imported AmneziaWG rides every WireGuard code path; the marker keeps
+            // "WIREGUARD" in the name and is recognised by its identity file.
+            .let { if (it == "WIREGUARD" && config.contains(AmneziaConfig.TOML_NAME)) AMNEZIA_PROTOCOL_MARKER else it }
         reportPending = true
         attemptStartedAt = SystemClock.elapsedRealtime()
         currentVpnIp = ""
@@ -4504,6 +4522,15 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
                 return
             }
             startDnsOnlyTunnel()
+            return
+        }
+
+        // AmneziaWG picked but nothing imported (tile, auto-connect, a removed
+        // config): CoreConfig left the protocol as "amnezia", which the core would
+        // silently parse as MASQUE. Refuse with a message instead.
+        if (currentProtocol == AmneziaConfig.PROTOCOL.uppercase()) {
+            connected.set(false)
+            failAndStop(Strings.t("Import an AmneziaWG config first"))
             return
         }
 
@@ -5645,6 +5672,7 @@ class MsnGuardVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.
         currentProtocol.contains("SHARD") -> Strings.t("SHARD")
         currentProtocol.contains("MIM") -> Strings.t("Masque over Masque")
         currentProtocol.contains("MASQUE") -> Strings.t("MASQUE")
+        currentProtocol.contains("AMNEZIA") -> Strings.t("AmneziaWG")
         currentProtocol.contains("WIREGUARD") -> Strings.t("WireGuard")
         currentProtocol.contains("GOOL") -> Strings.t("WARP-on-WARP")
         currentProtocol.isBlank() -> Strings.t("Tunnel")

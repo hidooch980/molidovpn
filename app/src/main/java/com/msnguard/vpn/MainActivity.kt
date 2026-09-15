@@ -214,6 +214,9 @@ class MainActivity : Activity() {
     private var torChainOuterRow: OrbitSettingsRow? = null
     private var egressRegionRow: OrbitSettingsRow? = null
 
+    /** "Import Amnezia config" row; repainted after an import or removal. */
+    private var amneziaRow: OrbitSettingsRow? = null
+
     /** LAN-sharing switch; its subtitle carries the live proxy address. */
     private var lanSharingRow: OrbitToggleRow? = null
 
@@ -840,6 +843,10 @@ class MainActivity : Activity() {
         }
         if (requestCode == BACKUP_IMPORT_REQUEST) {
             if (resultCode == RESULT_OK) data?.data?.let(::readBackup)
+            return
+        }
+        if (requestCode == AMNEZIA_IMPORT_REQUEST) {
+            if (resultCode == RESULT_OK) data?.data?.let(::readAmneziaFile)
             return
         }
         if (requestCode == VPN_REQUEST && resultCode == RESULT_OK) {
@@ -3944,6 +3951,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(26) })
         addControl(Strings.t("Manual endpoint"), manualEndpoint() ?: Strings.t("Automatic")) { editManualEndpoint() }
+        amneziaRow = addControl(Strings.t("Import Amnezia config"), amneziaSummary()) { showAmneziaImport() }
         addControl(Strings.t("Gateway cache"), defaultEndpointDiscovery().label) { manageGatewayCache() }
         content.addView(sectionLabel(Strings.t("TROUBLESHOOTING")), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -5176,6 +5184,115 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---------------------------------------------------------------- AmneziaWG import
+
+    private fun amneziaSummary(): String {
+        val count = AmneziaConfig.endpointCount(this)
+        return if (count > 0) Strings.tf("%s endpoints", count) else Strings.t("Not imported")
+    }
+
+    /** File picker or paste; Remove when a config is already stored. */
+    private fun showAmneziaImport() {
+        val imported = AmneziaConfig.isImported(this)
+        val builder = android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("Import Amnezia config"))
+            .setMessage(
+                (if (imported) amneziaSummary() + "\n\n" else "") +
+                    Strings.t("Stored encrypted on this phone. Keys are never logged or backed up.")
+            )
+            .setPositiveButton(Strings.t("Choose file")) { _, _ -> pickAmneziaFile() }
+            .setNeutralButton(Strings.t("Paste text")) { _, _ -> pasteAmneziaConfig() }
+        if (imported) {
+            builder.setNegativeButton(Strings.t("Remove config")) { _, _ ->
+                AmneziaConfig.clear(this)
+                ConnectionLog.record("AmneziaWG config removed")
+                toastShort(Strings.t("AmneziaWG config removed"))
+                amneziaRow?.setValue(amneziaSummary())
+            }
+        } else {
+            builder.setNegativeButton(Strings.t("Close"), null)
+        }
+        builder.show()
+    }
+
+    /**
+     * Wildcard MIME, same reasoning as [importSettings]: .conf files from Telegram
+     * or a download folder usually arrive as octet-stream or with no type at all.
+     */
+    private fun pickAmneziaFile() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+        runCatching { startActivityForResult(intent, AMNEZIA_IMPORT_REQUEST) }
+            .onFailure { toastShort(Strings.t("This device has no file picker")) }
+    }
+
+    private fun readAmneziaFile(uri: Uri) {
+        val text = runCatching {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val n = stream.read(buffer)
+                    if (n < 0) break
+                    out.write(buffer, 0, n)
+                    // Past the cap parse() rejects it anyway; stop reading.
+                    if (out.size() > AmneziaConfig.MAX_TEXT_CHARS) break
+                }
+                out.toString("UTF-8")
+            }
+        }.getOrNull()
+        if (text == null) {
+            toastShort(Strings.t("Could not read the file"))
+            return
+        }
+        applyAmneziaText(text)
+    }
+
+    private fun pasteAmneziaConfig() {
+        val field = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            minLines = 6
+            maxLines = 12
+            gravity = Gravity.TOP or Gravity.START
+            textDirection = View.TEXT_DIRECTION_LTR
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
+            hint = "[Interface]\nPrivateKey = …\n\n[Peer]\nEndpoint = …"
+        }
+        val box = FrameLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(field)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("Import Amnezia config"))
+            .setMessage(Strings.t("Paste the full AmneziaWG config ([Interface] and [Peer])"))
+            .setView(box)
+            .setPositiveButton(Strings.t("Import")) { _, _ -> applyAmneziaText(field.text.toString()) }
+            .setNegativeButton(Strings.t("Close"), null)
+            .show()
+    }
+
+    /** Parses, validates and stores. Never logs the text or any key. */
+    private fun applyAmneziaText(text: String) {
+        val parsed = try {
+            AmneziaConfig.parse(text)
+        } catch (e: AmneziaConfig.Invalid) {
+            ConnectionLog.record("AmneziaWG import rejected: ${e.message}")
+            toastShort(Strings.tf("Invalid AmneziaWG config: %s", e.message.orEmpty()))
+            return
+        }
+        AmneziaConfig.store(this, parsed)
+        ConnectionLog.record(
+            "AmneziaWG config imported: ${parsed.endpoints.size} endpoints, jc=${parsed.jc} jmin=${parsed.jmin} jmax=${parsed.jmax}"
+        )
+        toastShort(Strings.tf("AmneziaWG config imported: %s endpoints", parsed.endpoints.size))
+        amneziaRow?.setValue(amneziaSummary())
+    }
+
     private fun <T> showChoiceSheet(
         title: String,
         subtitle: String,
@@ -6028,6 +6145,11 @@ class MainActivity : Activity() {
 
         // Decided BEFORE the consent dialog, because the answer depends on the
         // selection and the user is about to be able to change nothing else.
+        // AmneziaWG with nothing imported: the import dialog IS the next step.
+        if (selectedProtocol == Protocol.AMNEZIA && !AmneziaConfig.isImported(this)) {
+            showAmneziaImport()
+            return
+        }
         if (shouldAutoScan()) beginAutoScan()
         val config = configJson()
         // Proxy mode needs no VPN consent at all — no TUN is created, so asking for
@@ -7363,6 +7485,12 @@ class MainActivity : Activity() {
          */
         DNS_ONLY("DNS", "dns", "Gaming DNS only, no VPN tunnel"),
         WIREGUARD("WireGuard", "wireguard", "WireGuard tunnel"),
+
+        /**
+         * The user's imported AmneziaWG config, over the core's WireGuard path.
+         * Tapping connect without an import opens the import dialog.
+         */
+        AMNEZIA("AmneziaWG", "amnezia", "Your imported AmneziaWG (WARP) config"),
         MASQUE("MASQUE", "masque", "HTTP/3 tunnel"),
         WARP_IN_WARP("WARP-on-WARP", "gool", "Double-layer tunnel"),
         PSIPHON("Psiphon", "psiphon", "Anti-censorship tunnel"),
@@ -7536,6 +7664,7 @@ class MainActivity : Activity() {
         const val NOTIFICATION_PERMISSION_REQUEST = 101
         const val BACKUP_EXPORT_REQUEST = 102
         const val BACKUP_IMPORT_REQUEST = 103
+        const val AMNEZIA_IMPORT_REQUEST = 104
         const val LOG_REFRESH_MS = 750L
         const val STATUS_POLL_MS = 2_000L
         const val PAGE_ANIMATION_MS = 220L

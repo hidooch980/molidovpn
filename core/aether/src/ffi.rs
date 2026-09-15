@@ -97,6 +97,9 @@ struct NativeStartOptions {
     wireguard_config_path: Option<String>,
     masque_config_path: Option<String>,
     forced_peer: Option<String>,
+    /// Comma-separated `ip:port` list tried in order (an imported WireGuard /
+    /// AmneziaWG config's endpoints). Empty or absent for none.
+    forced_peers: Option<String>,
     scan_mode: String,
     ip_scan: String,
     obfuscation_profile: Option<String>,
@@ -139,6 +142,7 @@ impl Default for NativeStartOptions {
             wireguard_config_path: None,
             masque_config_path: None,
             forced_peer: None,
+            forced_peers: None,
             scan_mode: "balanced".into(),
             ip_scan: "v4".into(),
             obfuscation_profile: None,
@@ -184,6 +188,15 @@ impl TryFrom<NativeStartOptions> for StartOptions {
             .forced_peer
             .map(|peer| parse_address("forced_peer", &peer))
             .transpose()?;
+        options.forced_peers = value
+            .forced_peers
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|peer| !peer.is_empty())
+            .map(|peer| parse_address("forced_peers", peer))
+            .collect::<Result<Vec<SocketAddr>, String>>()?;
         options.scan_mode = ScanMode::parse(&value.scan_mode);
         options.ip_scan = IpScan::parse(&value.ip_scan);
         options.obfuscation_profile = value.obfuscation_profile;
