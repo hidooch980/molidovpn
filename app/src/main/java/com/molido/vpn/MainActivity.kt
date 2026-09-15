@@ -108,6 +108,7 @@ class MainActivity : Activity() {
     private var homeAdvancedBox: LinearLayout? = null
     private var homeLocationCard: TextView? = null
     private var homeRetryButton: TextView? = null
+    private var homeSupportButton: TextView? = null
     private var homeAdvancedLink: TextView? = null
     private var settingsAdvancedExpanded = false
     /** Settings DNS row while the settings page is built, so a home pick repaints it. */
@@ -1344,7 +1345,9 @@ class MainActivity : Activity() {
     /** Status LED colour + glow for the header chip. */
     private fun renderStatusLed() {
         // Every state change passes here: the big retry button is for FAILED only.
-        homeRetryButton?.visibility = if (visualState == OrbitDialView.State.FAILED) View.VISIBLE else View.GONE
+        val failedVisibility = if (visualState == OrbitDialView.State.FAILED) View.VISIBLE else View.GONE
+        homeRetryButton?.visibility = failedVisibility
+        homeSupportButton?.visibility = failedVisibility
         val (fill, glow) = when (visualState) {
             OrbitDialView.State.CONNECTED -> connected to true
             OrbitDialView.State.DEGRADED -> palette.amber to true
@@ -1660,6 +1663,20 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(48),
         ).apply { topMargin = dp(10) })
+
+        val support = label(Strings.t("Having trouble? Message support"), 13f, palette.mint, TypefaceStyle.MEDIUM).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+            setOnClickListener { openTelegramSupport() }
+        }
+        homeSupportButton = support
+        addView(support, firstAdvanced + 1, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(4) })
 
         val location = label(locationCardText(), 14f, INK, TypefaceStyle.MEDIUM).apply {
             gravity = Gravity.CENTER
@@ -8051,12 +8068,21 @@ class MainActivity : Activity() {
         try {
             getSystemService(android.content.ClipboardManager::class.java)
                 ?.setPrimaryClip(android.content.ClipData.newPlainText("MolidoVPN report", text))
-            startActivity(
-                Intent.createChooser(
-                    Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text),
-                    Strings.t("Report a problem"),
-                )
-            )
+            android.app.AlertDialog.Builder(this)
+                .setTitle(Strings.t("Report a problem"))
+                .setMessage(Strings.t("REPORT_COPIED_BODY"))
+                .setPositiveButton(Strings.t("Send to support")) { _, _ -> openTelegramSupport() }
+                .setNeutralButton(Strings.t("Share")) { _, _ ->
+                    runCatching {
+                        startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text),
+                                Strings.t("Report a problem"),
+                            )
+                        )
+                    }.onFailure { ConnectionLog.record("Report share failed: ${it.message}") }
+                }
+                .show()
         } catch (e: Exception) {
             ConnectionLog.record("Report a problem failed: ${e.message}")
         }
