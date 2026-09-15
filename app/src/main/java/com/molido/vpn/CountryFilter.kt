@@ -26,6 +26,17 @@ object CountryFilter {
         ConnectionLog.record(if (code.isEmpty()) "Country filter off" else "Country filter: $code")
     }
 
+    /** Country name in the UI language (e.g. "ایالات متحده"), falling back to the code. */
+    fun displayName(code: String): String = runCatching {
+        java.util.Locale("", code).getDisplayCountry(java.util.Locale(AppLanguage.current())).ifBlank { code }
+    }.getOrDefault(code)
+
+    /** Shown when no server from the chosen country connected with an exit in that country. */
+    fun noServerMessage(context: Context): String {
+        val code = selected(context)
+        return Strings.tf("No working server from %s was found; choose another country or tap Automatic", "${flag(code)} ${displayName(code)}".trim())
+    }
+
     /** Regional-indicator flag for an ISO pair, or "" for anything else. */
     fun flag(code: String): String {
         if (code.length != 2 || code.any { it !in 'A'..'Z' }) return ""
@@ -40,14 +51,18 @@ object CountryFilter {
     fun counts(pool: List<ShardNode>): Map<String, Int> =
         pool.map { it.countryCode }.filter { it.isNotEmpty() }.groupingBy { it }.eachCount()
 
-    /** [pool] narrowed to the chosen country; the whole pool when none matches. */
+    /**
+     * [pool] narrowed to the chosen country. An explicit choice is never widened:
+     * empty when no server from that country exists (the caller fails with
+     * [noServerMessage] instead of silently exiting somewhere else).
+     */
     fun apply(context: Context, pool: List<ShardNode>, log: Boolean = true): List<ShardNode> {
         val code = selected(context)
         if (code.isEmpty() || pool.isEmpty()) return pool
         val matching = pool.filter { it.countryCode == code }
         if (matching.isEmpty()) {
-            if (log) ConnectionLog.record("Country filter: no $code server available — using all servers")
-            return pool
+            if (log) ConnectionLog.record("Country filter: no $code server available — not connecting elsewhere")
+            return emptyList()
         }
         if (log) ConnectionLog.record("Country filter: ${matching.size} $code servers")
         return matching

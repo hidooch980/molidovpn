@@ -4315,8 +4315,16 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
         try {
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
             // UDP blocked on this network: WireGuard and MASQUE (both UDP) cannot work.
+            // A chosen country ([CountryFilter]): only the pools that can exit there (V2Ray servers and
+            // My configs, already narrowed to that country), the exit must be in it, and nothing else
+            // (WARP/WireGuard/Amnezia/MASQUE/Psiphon/Tor, an Iran exit) is ever used instead.
+            val wantedCountry = CountryFilter.selected(this)
+            fun countryOk(cc: String) = wantedCountry.isEmpty() || cc.isEmpty() || cc == wantedCountry
             // Modes the owner switched off in the panel ([AppRemote]) are never tried.
-            val phaseAEnabled = autoPhaseA().filter { !AppRemote.isDisabled(this, it.coreName) }
+            val phaseAEnabled = autoPhaseA().filter {
+                !AppRemote.isDisabled(this, it.coreName) &&
+                    (wantedCountry.isEmpty() || it.coreName == "v2ray" || it.coreName == MyConfigs.PROTOCOL)
+            }
             val phaseAUdp = if (udpBlocked()) {
                 phaseAEnabled.filter {
                     it.coreName != "wireguard" && it.coreName != "masque" && it.coreName != AmneziaConfig.PROTOCOL
@@ -4342,7 +4350,12 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             val countries = HashMap<String, String>()
             var irWinner: AutoCandidate? = null
             var irWinnerMs = -1L
-            val phaseB = autoPhaseB().filter { !AppRemote.isDisabled(this, it.coreName) }
+            val phaseB = if (wantedCountry.isNotEmpty()) {
+                emptyList()
+            } else {
+                autoPhaseB().filter { !AppRemote.isDisabled(this, it.coreName) }
+            }
+            if (wantedCountry.isNotEmpty()) ConnectionLog.record("Auto: country $wantedCountry — V2Ray/My configs from it only")
             // Learned winner for (operator, 3-hour bucket) first, global last winner second.
             val learnKey = autoLearnKey()
             val learned = autoLearned(prefs, learnKey)
@@ -4368,7 +4381,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
                     if (token != autoToken) return
                     countries[remembered.label] = cc
                     if (cc == "IR") results[remembered.label] = "${ms}ms IR"
-                    if (cc != "IR" && (!fast || lastMs <= 0L || ms <= lastMs * 5 / 4)) {
+                    if (cc != "IR" && countryOk(cc) && (!fast || lastMs <= 0L || ms <= lastMs * 5 / 4)) {
                         winner = remembered
                         winnerMs = ms
                     }
@@ -4394,6 +4407,33 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
                         }
                     }
                     if (ms == null) continue
+                    if (!countryOk(countries[candidate.label].orEmpty())) {
+                        // Exit outside the chosen country: set that node back and let the pool
+                        // race pick another server from the country, twice at most.
+                        ConnectionLog.record("Auto: ${candidate.label} exit ${countries[candidate.label]} is not $wantedCountry")
+                        var matchedMs: Long? = null
+                        var tries = 0
+                        while (tries++ < 2) {
+                            ShardManager.activeNode?.let { ShardHealth.recordFailure(this, it) }
+                            val again = runAutoTrial(candidate, token, measure = true)
+                            if (token != autoToken) return
+                            live = if (again != null) candidate else null
+                            if (again == null) break
+                            val cc = autoExitCountry(candidate)
+                            if (token != autoToken) return
+                            countries[candidate.label] = cc
+                            if (countryOk(cc)) {
+                                matchedMs = again
+                                break
+                            }
+                        }
+                        results[candidate.label] = matchedMs?.let { "${it}ms $wantedCountry" } ?: "exit not $wantedCountry"
+                        if (matchedMs != null && (winnerMs < 0L || matchedMs < winnerMs)) {
+                            winner = candidate
+                            winnerMs = matchedMs
+                        }
+                        continue
+                    }
                     if (countries[candidate.label] == "IR") {
                         // Iran exit: only a fallback while any non-IR candidate works.
                         if (irWinnerMs < 0L || ms < irWinnerMs) {
@@ -4435,7 +4475,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
 
             // Every working candidate exits in Iran: use the best of them, with a warning.
             var iranExit = false
-            if (winner == null && irWinner != null) {
+            if (winner == null && irWinner != null && wantedCountry.isEmpty()) {
                 winner = irWinner
                 winnerMs = irWinnerMs
                 iranExit = true
@@ -4507,7 +4547,11 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
         // Trials re-armed the watchdog, which zeroes the backoff counter; restore it
         // so repeated full failures back off instead of looping every 5 s.
         reconnectAttempts = attempts
-        val detail = Strings.t("No connection type worked on this network")
+        val detail = if (CountryFilter.selected(this).isNotEmpty()) {
+            CountryFilter.noServerMessage(this)
+        } else {
+            Strings.t("No connection type worked on this network")
+        }
         if (willAutoReconnect()) {
             sealWithKillSwitch(armed)
             scheduleAutoReconnect(detail)

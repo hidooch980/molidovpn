@@ -453,7 +453,11 @@ object ShardManager {
             .let { if (upstreamSocksPort > 0) it.filterNot { n -> SingBox.isSingBox(n) } else it }
             .let { SingBox.prepare(context, it) }
         if (pool.isEmpty()) {
-            lastError = "no nodes available"
+            lastError = if (v2ray && CountryFilter.selected(context).isNotEmpty()) {
+                CountryFilter.noServerMessage(context)
+            } else {
+                "no nodes available"
+            }
             ConnectionLog.record("$TAG pool empty — cache and seed both unusable")
             return false
         }

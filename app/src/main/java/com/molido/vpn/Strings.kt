@@ -725,6 +725,7 @@ object Strings {
         "Having trouble? Message support" to Triple("Having trouble? Message support", "مشکل دارید؟ پیام به پشتیبانی", "遇到问题？联系支持"),
         "Send to support" to Triple("Send to support", "ارسال به پشتیبانی", "发送给支持"),
         "REPORT_COPIED_BODY" to Triple("The report was copied. Open Telegram support and paste it into the chat.", "گزارش کپی شد. پشتیبانی تلگرام را باز کنید و گزارش را در گفتگو جای‌گذاری (Paste) کنید.", "报告已复制。打开 Telegram 支持并粘贴到对话中。"),
+        "No working server from %s was found; choose another country or tap Automatic" to Triple("No working server from %s was found; choose another country or tap “Automatic”", "سرور سالمی از %s پیدا نشد؛ کشور دیگری انتخاب کنید یا «خودکار» را بزنید", "未找到来自 %s 的可用服务器；请选择其他国家或点击“自动”"),
         "Tell your friends" to Triple("Tell your friends", "معرفی به دوستان", "推荐给朋友"),
         "Scan the QR code or share the link to install MolidoVPN" to Triple("Scan the QR code or share the link to install MolidoVPN", "کد QR را اسکن کنید یا لینک را بفرستید تا MolidoVPN را نصب کنند", "扫描二维码或分享链接来安装 MolidoVPN"),
         "Share link" to Triple("Share link", "اشتراک‌گذاری لینک", "分享链接"),

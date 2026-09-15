@@ -6021,6 +6021,13 @@ class MainActivity : Activity() {
                             return@setItems
                         }
                         CountryFilter.set(this, code)
+                        // WARP/WireGuard/Psiphon/Tor/DNS cannot exit in a chosen country: Auto limits
+                        // itself to that country's V2Ray servers and My configs.
+                        if (selectedProtocol != Protocol.AUTO && selectedProtocol != Protocol.V2RAY &&
+                            selectedProtocol != Protocol.MY_CONFIGS && !TunnelStatus.isActive()
+                        ) {
+                            updateConnectionMode(Protocol.AUTO)
+                        }
                         onChanged()
                     }
                     .setNegativeButton(Strings.t("Close"), null)
@@ -8129,8 +8136,12 @@ class MainActivity : Activity() {
     }
 
     /** Mode used by the simple home: the owner's default for users who never chose, else Auto. */
-    private fun simpleProtocol(): Protocol =
-        if (modeChosen()) Protocol.AUTO else remoteDefaultProtocol() ?: Protocol.AUTO
+    private fun simpleProtocol(): Protocol = when {
+        // A chosen country is honoured only by Auto (V2Ray / My configs from that country).
+        CountryFilter.selected(this).isNotEmpty() -> Protocol.AUTO
+        modeChosen() -> Protocol.AUTO
+        else -> remoteDefaultProtocol() ?: Protocol.AUTO
+    }
 
     /** Fresh flags/notice arrived (UI thread): repaint the banner and move off a mode that was switched off. */
     private fun onRemoteUpdated() {
