@@ -123,6 +123,8 @@ android {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("com.google.android.material:material:1.12.0")
+    // QR decode from a picked image (My configs). Core only: no camera stack.
+    implementation("com.google.zxing:core:3.5.3")
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }
 

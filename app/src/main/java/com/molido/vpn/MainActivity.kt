@@ -849,6 +849,10 @@ class MainActivity : Activity() {
             if (resultCode == RESULT_OK) data?.data?.let(::readAmneziaFile)
             return
         }
+        if (requestCode == MY_CONFIGS_QR_REQUEST) {
+            if (resultCode == RESULT_OK) data?.data?.let(::readQrImage)
+            return
+        }
         if (requestCode == VPN_REQUEST && resultCode == RESULT_OK) {
             pendingConfig?.let(::connect)
         } else if (requestCode == VPN_REQUEST) {
@@ -3923,6 +3927,13 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply { topMargin = dp(10) })
+        // The user's own configs, QR images and subscriptions (MyConfigs).
+        content.addView(navRow(Strings.t("My configs"), MyConfigs.entries(this).size.toString()) {
+            openMyConfigs()
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(8) })
         // Preferred exit country for V2Ray servers and My configs (CountryFilter).
         var v2rayCountryRow: OrbitSettingsRow? = null
         v2rayCountryRow = navRow(Strings.t("Country"), countryLabel()) {
@@ -4369,7 +4380,7 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         fun socksPort(): Int =
-            if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY) {
+            if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY || selectedProtocol == Protocol.MY_CONFIGS) {
                 ShardManager.SOCKS_PORT
             } else {
                 CoreConfig.sharedSocksPort(this)
@@ -4500,7 +4511,7 @@ class MainActivity : Activity() {
         // answers for the Rust core and Psiphon and would print 1819 here — a port
         // nothing is listening on during a SHARD session, so anyone who typed it
         // into another device would get a refused connection and no explanation.
-        val socksPort = if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY) {
+        val socksPort = if (selectedProtocol == Protocol.SHARD || selectedProtocol == Protocol.V2RAY || selectedProtocol == Protocol.MY_CONFIGS) {
             ShardManager.SOCKS_PORT
         } else {
             CoreConfig.sharedSocksPort(this)
@@ -4532,7 +4543,7 @@ class MainActivity : Activity() {
         // xray binds its SOCKS and HTTP inbounds to 0.0.0.0 while tun2socks keeps
         // dialling loopback, so the phone stays fully routed while a Windows machine
         // uses the same tunnel.
-        Protocol.SHARD, Protocol.V2RAY -> !CoreConfig.proxyOnly(this)
+        Protocol.SHARD, Protocol.V2RAY, Protocol.MY_CONFIGS -> !CoreConfig.proxyOnly(this)
         else -> CoreConfig.proxyOnly(this)
     }
 
@@ -5388,6 +5399,249 @@ class MainActivity : Activity() {
                     .forEach { (key, value) -> if (value.isBlank()) remove(key) else putString(key, value) }
             }.apply()
         }
+    }
+
+    // ---------------------------------------------------------------- My configs
+
+    private var myConfigsDialog: android.app.AlertDialog? = null
+    private var myConfigsList: LinearLayout? = null
+
+    private fun openMyConfigs() {
+        myConfigsDialog?.dismiss()
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        val scroll = ScrollView(this).apply { addView(list) }
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("My configs"))
+            .setView(scroll)
+            .setPositiveButton(Strings.t("Add"), null)
+            .setNeutralButton(Strings.t("Ping all"), null)
+            .setNegativeButton(Strings.t("Close"), null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.setOnClickListener { showAddMyConfig() }
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener { pingMyConfigs() }
+        }
+        dialog.setOnDismissListener {
+            if (myConfigsDialog === dialog) {
+                myConfigsDialog = null
+                myConfigsList = null
+            }
+        }
+        myConfigsDialog = dialog
+        myConfigsList = list
+        renderMyConfigs()
+        dialog.show()
+    }
+
+    private fun myConfigsRow(title: String, subtitle: String): TextView = TextView(this).apply {
+        text = if (subtitle.isEmpty()) title else "$title\n$subtitle"
+        textSize = 15f
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+        isClickable = true
+        isFocusable = true
+        val outValue = android.util.TypedValue()
+        context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+        setBackgroundResource(outValue.resourceId)
+    }
+
+    private fun renderMyConfigs() {
+        val list = myConfigsList ?: return
+        list.removeAllViews()
+        val entries = MyConfigs.entries(this)
+        val subs = MyConfigs.subs(this)
+        if (entries.isEmpty() && subs.isEmpty()) {
+            list.addView(myConfigsRow(Strings.t("No configs yet — paste, scan a QR image or add a subscription"), ""))
+            return
+        }
+        val pin = MyConfigs.pinned(this)
+        if (entries.any { it.kind == MyConfigs.KIND_PROXY }) {
+            list.addView(myConfigsRow((if (pin.isEmpty()) "● " else "") + Strings.t("Auto (fastest of my configs)"), "").apply {
+                setOnClickListener {
+                    MyConfigs.pin(this@MainActivity, "")
+                    startMyConfigsConnect(Protocol.MY_CONFIGS)
+                }
+            })
+        }
+        subs.forEach { sub ->
+            val count = entries.count { it.subId == sub.id }
+            list.addView(myConfigsRow("🔗 ${sub.name}", Strings.tf("%s configs", count)).apply {
+                setOnClickListener {
+                    toastShort(Strings.t("Refresh"))
+                    Thread({
+                        MyConfigs.refreshSub(this@MainActivity, sub)
+                        runOnUiThread { renderMyConfigs() }
+                    }, "my-configs-sub").start()
+                }
+                setOnLongClickListener {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle(sub.name)
+                        .setMessage(Strings.t("Remove subscription"))
+                        .setPositiveButton(Strings.t("Delete")) { _, _ ->
+                            MyConfigs.deleteSub(this@MainActivity, sub.id)
+                            renderMyConfigs()
+                        }
+                        .setNegativeButton(Strings.t("Cancel"), null)
+                        .show()
+                    true
+                }
+            })
+        }
+        entries.forEach { entry ->
+            val latency = when {
+                entry.latencyMs > 0 -> "${entry.latencyMs} ms"
+                entry.latencyMs == 0 -> "✕"
+                else -> "–"
+            }
+            val mark = if (entry.id == pin) "● " else ""
+            list.addView(myConfigsRow(mark + entry.name, "${MyConfigs.protocolLabel(entry)} · $latency").apply {
+                setOnClickListener { connectMyConfig(entry) }
+                setOnLongClickListener {
+                    myConfigActions(entry)
+                    true
+                }
+            })
+        }
+    }
+
+    private fun myConfigActions(entry: MyConfigs.Entry) {
+        val items = arrayOf<CharSequence>(Strings.t("Rename"), Strings.t("Delete"))
+        android.app.AlertDialog.Builder(this)
+            .setTitle(entry.name)
+            .setItems(items) { _, which ->
+                if (which == 0) {
+                    val input = EditText(this).apply { setText(entry.name) }
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle(Strings.t("Rename"))
+                        .setView(input)
+                        .setPositiveButton(Strings.t("Save")) { _, _ ->
+                            MyConfigs.rename(this, entry.id, input.text.toString())
+                            renderMyConfigs()
+                        }
+                        .setNegativeButton(Strings.t("Cancel"), null)
+                        .show()
+                } else {
+                    MyConfigs.delete(this, entry.id)
+                    renderMyConfigs()
+                }
+            }
+            .show()
+    }
+
+    private fun connectMyConfig(entry: MyConfigs.Entry) {
+        if (entry.kind == MyConfigs.KIND_WIREGUARD) {
+            val parsed = try {
+                AmneziaConfig.parse(entry.line)
+            } catch (e: AmneziaConfig.Invalid) {
+                toastShort(Strings.tf("Invalid AmneziaWG config: %s", e.message.orEmpty()))
+                return
+            }
+            AmneziaConfig.store(this, parsed)
+            amneziaRow?.setValue(amneziaSummary())
+            startMyConfigsConnect(Protocol.AMNEZIA)
+        } else {
+            MyConfigs.pin(this, entry.id)
+            startMyConfigsConnect(Protocol.MY_CONFIGS)
+        }
+    }
+
+    private fun startMyConfigsConnect(protocol: Protocol) {
+        myConfigsDialog?.dismiss()
+        updateConnectionMode(protocol)
+        if (isTunnelActive() || visualState == OrbitDialView.State.CONNECTING) {
+            toastShort(Strings.t("Selected — reconnect to use it"))
+            return
+        }
+        toggleTunnel()
+    }
+
+    private fun showAddMyConfig() {
+        val items = arrayOf<CharSequence>(
+            Strings.t("Paste from clipboard"),
+            Strings.t("QR code from an image"),
+            Strings.t("Subscription URL"),
+            Strings.t("Type or paste text"),
+        )
+        android.app.AlertDialog.Builder(this)
+            .setTitle(Strings.t("Add"))
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        val text = getSystemService(ClipboardManager::class.java)?.primaryClip
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+                        if (text.isBlank()) toastShort(Strings.t("Clipboard is empty")) else addMyConfigText(text)
+                    }
+                    1 -> runCatching {
+                        startActivityForResult(
+                            Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE),
+                            MY_CONFIGS_QR_REQUEST,
+                        )
+                    }
+                    else -> {
+                        val input = EditText(this).apply {
+                            textDirection = View.TEXT_DIRECTION_LTR
+                            if (which == 2) {
+                                hint = "https://…"
+                                maxLines = 2
+                            } else {
+                                minLines = 4
+                                maxLines = 10
+                            }
+                        }
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle(items[which])
+                            .setView(input)
+                            .setPositiveButton(Strings.t("Add")) { _, _ -> addMyConfigText(input.text.toString()) }
+                            .setNegativeButton(Strings.t("Cancel"), null)
+                            .show()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun addMyConfigText(text: String) {
+        Thread({
+            val result = runCatching { MyConfigs.addText(this, text) }.getOrNull()
+            runOnUiThread {
+                toastShort(Strings.tf("Added %s · skipped %s", result?.added ?: 0, result?.skipped ?: 0))
+                renderMyConfigs()
+            }
+        }, "my-configs-add").start()
+    }
+
+    private fun readQrImage(uri: Uri) {
+        Thread({
+            val text = runCatching {
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+                val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, options) }
+                    ?.let { MyConfigs.decodeQr(it) }
+            }.getOrNull()
+            runOnUiThread {
+                if (text.isNullOrBlank()) toastShort(Strings.t("No QR code found in the image")) else addMyConfigText(text)
+            }
+        }, "my-configs-qr").start()
+    }
+
+    private fun pingMyConfigs() {
+        if (TunnelStatus.isActive() && !CoreConfig.proxyOnly(this)) {
+            toastShort(Strings.t("Disconnect the VPN first — the test must use your own internet"))
+            return
+        }
+        toastShort(Strings.t("Testing…"))
+        Thread({
+            val byId = MyConfigs.entries(this).mapNotNull { entry -> MyConfigs.node(entry)?.let { entry.id to it } }
+            val results = runCatching { NodeTest.probe(this, byId.map { it.second }) }.getOrDefault(emptyMap())
+            MyConfigs.setLatency(this, byId.associate { (id, node) -> id to (results[node.key] ?: 0) })
+            runOnUiThread { renderMyConfigs() }
+        }, "my-configs-ping").start()
     }
 
     // ---------------------------------------------------------------- Country filter
@@ -6392,6 +6646,11 @@ class MainActivity : Activity() {
         // selection and the user is about to be able to change nothing else.
         // AmneziaWG without an import connects with the built-in config
         // (AmneziaConfig.builtinCoreJson); the import is an optional override.
+        // My configs with nothing added: the My configs page IS the next step.
+        if (selectedProtocol == Protocol.MY_CONFIGS && !MyConfigs.hasProxyNodes(this)) {
+            openMyConfigs()
+            return
+        }
         if (shouldAutoScan()) beginAutoScan()
         val config = configJson()
         // Proxy mode needs no VPN consent at all — no TUN is created, so asking for
@@ -7751,7 +8010,10 @@ class MainActivity : Activity() {
          * Public V2Ray servers (vless/vmess/trojan/ss). Runs the SHARD machinery
          * on its own pool; the service maps "v2ray" onto the SHARD path.
          */
-        V2RAY("V2Ray servers", "v2ray", "Public V2Ray servers, auto-selected");
+        V2RAY("V2Ray servers", "v2ray", "Public V2Ray servers, auto-selected"),
+
+        /** The user's own configs and subscriptions ([MyConfigs]); SHARD path too. */
+        MY_CONFIGS("My configs", MyConfigs.PROTOCOL, "Your own configs and subscriptions");
 
         val label: String get() = Strings.t(enLabel)
         val description: String get() = Strings.t(enDescription)
@@ -7907,6 +8169,7 @@ class MainActivity : Activity() {
         const val BACKUP_EXPORT_REQUEST = 102
         const val BACKUP_IMPORT_REQUEST = 103
         const val AMNEZIA_IMPORT_REQUEST = 104
+        const val MY_CONFIGS_QR_REQUEST = 1105
         const val LOG_REFRESH_MS = 750L
         const val STATUS_POLL_MS = 2_000L
         const val PAGE_ANIMATION_MS = 220L

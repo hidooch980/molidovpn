@@ -859,6 +859,9 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
 
         /** currentProtocol for coreName "v2ray": contains "SHARD" so it takes the SHARD path. */
         const val V2RAY_PROTOCOL_MARKER = "SHARD-V2RAY"
+
+        /** currentProtocol for coreName "myconfigs": the V2Ray path on the user's own pool. */
+        const val MY_CONFIGS_PROTOCOL_MARKER = "SHARD-V2RAY-MINE"
         const val AMNEZIA_PROTOCOL_MARKER = "AMNEZIA-WIREGUARD"
 
         /** currentProtocol for coreName "dns" (DNS-only gaming mode). */
@@ -2630,8 +2633,12 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
                 sendStatus(STATUS_CONNECTING, Strings.t("Finding a fast node…"), 15)
                 ConnectionLog.record("SHARD: TUN ready — racing the pool")
 
-                if (isV2raySession()) V2raySubscription.refreshIfDue(this)
-                if (!ShardManager.start(this, verboseShardLog(), v2ray = isV2raySession())) {
+                if (isMyConfigsSession()) {
+                    MyConfigs.refreshIfDue(this)
+                } else if (isV2raySession()) {
+                    V2raySubscription.refreshIfDue(this)
+                }
+                if (!ShardManager.start(this, verboseShardLog(), v2ray = isV2raySession(), mine = isMyConfigsSession())) {
                     error(
                         ShardManager.lastError.ifBlank { "No public node could be reached" }
                     )
@@ -2754,6 +2761,8 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
 
     /** True when this SHARD-shaped session is the "V2Ray servers" mode. */
     private fun isV2raySession(): Boolean = currentProtocol.contains("V2RAY")
+
+    private fun isMyConfigsSession(): Boolean = currentProtocol.contains("MINE")
 
     private fun shardConnectedText(node: String): String =
         if (isV2raySession()) Strings.tf("V2Ray connected via %s", node)
@@ -3938,7 +3947,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
      */
     private fun autoExitCountry(candidate: AutoCandidate): String {
         return try {
-            val code = if (candidate.coreName == "shard" || candidate.coreName == "v2ray") {
+            val code = if (candidate.coreName == "shard" || candidate.coreName == "v2ray" || candidate.coreName == MyConfigs.PROTOCOL) {
                 autoTraceCountry(java.net.Proxy(java.net.Proxy.Type.SOCKS,
                     java.net.InetSocketAddress("127.0.0.1", ShardManager.listenPort)))
             } else if (proxyMode) {
@@ -4035,6 +4044,8 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             if (proxy) null else AutoCandidate("shard", "SHARD", 16_000L),
             // V2Ray servers: same SHARD path, same proxy-mode refusal.
             if (proxy) null else AutoCandidate("v2ray", "V2Ray", 16_000L),
+            // The user's own configs, same path; only when there are any.
+            if (proxy || !MyConfigs.hasProxyNodes(this)) null else AutoCandidate(MyConfigs.PROTOCOL, "My configs", 16_000L),
         )
     }
 
@@ -4184,7 +4195,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
 
     private fun measureAutoLatency(candidate: AutoCandidate, token: Int): Long? {
         val connectedAt = autoTrialConnectedAt
-        if (candidate.coreName == "shard" || candidate.coreName == "v2ray") {
+        if (candidate.coreName == "shard" || candidate.coreName == "v2ray" || candidate.coreName == MyConfigs.PROTOCOL) {
             val t0 = SystemClock.elapsedRealtime()
             return if (ShardManager.isHealthy()) SystemClock.elapsedRealtime() - t0 else null
         }
@@ -4230,7 +4241,7 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
             // Iranian user: WARP exits in IR, so test the transports that exit abroad first.
             val homeIran = autoHomeIsIran(prefs)
             val phaseA = if (homeIran) {
-                phaseAAll.sortedBy { if (it.coreName == "shard" || it.coreName == "v2ray") 0 else 1 }
+                phaseAAll.sortedBy { if (it.coreName == "shard" || it.coreName == "v2ray" || it.coreName == MyConfigs.PROTOCOL) 0 else 1 }
             } else {
                 phaseAAll
             }
@@ -4437,7 +4448,13 @@ class MolidoVpnService : VpnService(), NativeCore.CoreCallback, PsiphonTunnel.Ho
         currentProtocol = config.substringAfter("\"protocol\":\"").substringBefore('"').uppercase()
             // V2Ray servers ride every SHARD code path (TUN, front-end, watchdog,
             // rotation, proxy-mode refusal); the marker keeps "SHARD" in the name.
-            .let { if (it == "V2RAY") V2RAY_PROTOCOL_MARKER else it }
+            .let {
+                when (it) {
+                    "V2RAY" -> V2RAY_PROTOCOL_MARKER
+                    MyConfigs.PROTOCOL.uppercase() -> MY_CONFIGS_PROTOCOL_MARKER
+                    else -> it
+                }
+            }
             // Imported AmneziaWG rides every WireGuard code path; the marker keeps
             // "WIREGUARD" in the name and is recognised by its identity file.
             .let {

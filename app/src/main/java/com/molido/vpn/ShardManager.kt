@@ -417,8 +417,10 @@ object ShardManager {
         verboseLog: Boolean = false,
         port: Int = SOCKS_PORT,
         v2ray: Boolean = false,
+        mine: Boolean = false,
     ): Boolean {
         sessionV2ray = v2ray
+        sessionMine = mine
         // A stop may have latched while this start waited for the lock. That stop
         // was aimed at the PREVIOUS session, not at this fresh connect — and
         // startTunnel() has already verified the user asked to connect again.
@@ -433,7 +435,11 @@ object ShardManager {
         // it: see [ShardEdges]. The subscription's own address is kept, so this can
         // only add paths, never remove one that was working.
         // V2Ray servers mode races its own pool through the identical machinery.
-        val source = if (v2ray) V2raySubscription.shardNodes(context) else ShardSubscription.nodes(context)
+        val source = when {
+            mine -> MyConfigs.shardNodes(context)
+            v2ray -> V2raySubscription.shardNodes(context)
+            else -> ShardSubscription.nodes(context)
+        }
         // Remembered working REALITY SNIs (see [RealitySni]); a no-op for SHARD.
         val pool = ShardEdges.expand(context, source).let { if (v2ray) RealitySni.applyRemembered(context, it) else it }
             // hysteria2/tuic/anytls: bring up the sing-box sidecar, or drop them.
@@ -720,7 +726,7 @@ object ShardManager {
         // down, so the same node is not chosen again immediately. The port is
         // carried over explicitly: it must not silently revert to the default
         // under a proxy-mode session whose clients are pointed at another one.
-        return start(context, verboseLog, port, sessionV2ray)
+        return start(context, verboseLog, port, sessionV2ray, sessionMine)
     }
 
     /**
@@ -771,7 +777,11 @@ object ShardManager {
             try {
                 val active = activeNode
                 val source = if (sessionV2ray) {
-                    CountryFilter.apply(app, V2raySubscription.shardNodes(app), log = false)
+                    CountryFilter.apply(
+                        app,
+                        if (sessionMine) MyConfigs.shardNodes(app) else V2raySubscription.shardNodes(app),
+                        log = false,
+                    )
                 } else {
                     ShardSubscription.nodes(app)
                 }
@@ -799,6 +809,11 @@ object ShardManager {
     /** Whether the current/last session raced the V2Ray servers pool; kept for [rotate]. */
     @Volatile
     var sessionV2ray: Boolean = false
+        private set
+
+    /** Whether the current/last session raced the user's own configs ([MyConfigs]). */
+    @Volatile
+    var sessionMine: Boolean = false
         private set
 
     @Volatile

@@ -136,6 +136,68 @@ object NodeTest {
         return tallies
     }
 
+    /**
+     * Blocking real probe of [nodes] (same request as the race), for the My configs
+     * ping button. Returns node key → latency in ms; failed nodes are absent.
+     */
+    fun probe(context: Context, nodes: List<ShardNode>): Map<String, Int> {
+        cancelled = false
+        val app = context.applicationContext
+        val results = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        val ready = SingBox.prepare(app, nodes)
+        val binary = File(app.applicationInfo.nativeLibraryDir, "libxray.so")
+        if (ready.isEmpty() || !binary.exists()) return results
+        for (batch in ready.chunked(BATCH)) {
+            if (cancelled) break
+            val file = ShardConfigs.writeConfig(app, "node-ping.json", ShardConfigs.probeConfig(app, batch, BASE_PORT))
+            val proc = runCatching {
+                ProcessBuilder(binary.absolutePath, "run", "-c", file.absolutePath)
+                    .directory(file.parentFile)
+                    .redirectErrorStream(true)
+                    .apply {
+                        environment()["HOME"] = app.filesDir.absolutePath
+                        environment()["XRAY_LOCATION_ASSET"] = file.parent
+                    }
+                    .start()
+            }.getOrNull() ?: continue
+            Thread({
+                runCatching {
+                    val buf = ByteArray(4096)
+                    while (proc.inputStream.read(buf) >= 0) { /* drain */ }
+                }
+            }, "node-ping-log").apply { isDaemon = true }.start()
+            try {
+                val deadline = System.currentTimeMillis() + 12_000
+                var up = false
+                while (System.currentTimeMillis() < deadline && !cancelled && proc.isAlive) {
+                    if (portAccepts(BASE_PORT)) { up = true; break }
+                    Thread.sleep(100)
+                }
+                if (up) {
+                    val exec = Executors.newFixedThreadPool(batch.size)
+                    batch.forEachIndexed { i, node ->
+                        exec.execute {
+                            if (cancelled) return@execute
+                            val started = System.currentTimeMillis()
+                            if (ShardProbe.check(BASE_PORT + i, PROBE_TIMEOUT_MS)) {
+                                results[node.key] = (System.currentTimeMillis() - started).toInt()
+                            }
+                        }
+                    }
+                    exec.shutdown()
+                    exec.awaitTermination(PROBE_TIMEOUT_MS + 3_000L, TimeUnit.MILLISECONDS)
+                    exec.shutdownNow()
+                }
+            } finally {
+                runCatching {
+                    proc.destroy()
+                    if (!proc.waitFor(3, TimeUnit.SECONDS)) proc.destroyForcibly()
+                }
+            }
+        }
+        return results
+    }
+
     private fun report(context: Context, enabled: Boolean, node: ShardNode, ok: Boolean, ms: Int?) {
         if (!enabled) return
         // Same node identity as the service's connect report; ConnectionReports adds op.

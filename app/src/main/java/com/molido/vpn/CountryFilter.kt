@@ -35,7 +35,7 @@ object CountryFilter {
 
     /** Every pool the filter applies to; worker threads only (may fetch). */
     fun pool(context: Context): List<ShardNode> =
-        runCatching { V2raySubscription.shardNodes(context) }.getOrDefault(emptyList())
+        runCatching { V2raySubscription.shardNodes(context) + MyConfigs.shardNodes(context) }.getOrDefault(emptyList())
 
     fun counts(pool: List<ShardNode>): Map<String, Int> =
         pool.map { it.countryCode }.filter { it.isNotEmpty() }.groupingBy { it }.eachCount()
