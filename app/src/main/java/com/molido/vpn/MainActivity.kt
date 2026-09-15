@@ -1497,6 +1497,40 @@ class MainActivity : Activity() {
         ).apply { topMargin = dp(6) })
         renderNotice()
 
+        // "What's new" card after an update (once). Built empty; filled off the main thread, never blocks connecting.
+        WhatsNew.pendingVersion(this@MainActivity)?.let { ver ->
+            val card = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutDirection = View.LAYOUT_DIRECTION_RTL
+                setPadding(dp(14), dp(10), dp(14), dp(8))
+                visibility = View.GONE
+                background = Sculpt.sculptedBackground(resources.displayMetrics.density,
+                    Sculpt.withAlpha(palette.mint, 0.12f), 14, Sculpt.withAlpha(palette.mint, 0.45f))
+            }
+            addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+            Thread {
+                val items = WhatsNew.items(ver)
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    fun rtl(t: String, size: Float, color: Int, style: TypefaceStyle = TypefaceStyle.REGULAR) =
+                        label(t, size, color, style).apply {
+                            textDirection = View.TEXT_DIRECTION_RTL
+                            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+                        }
+                    card.addView(rtl("✨ به‌روزرسانی نسخهٔ $ver", 15f, INK, TypefaceStyle.MEDIUM))
+                    items.forEach { card.addView(rtl("• $it", 13f, INK).apply { setPadding(0, dp(4), 0, 0) }) }
+                    card.addView(rtl("باشه", 14f, palette.mint, TypefaceStyle.MEDIUM).apply {
+                        setPadding(0, dp(8), 0, dp(4))
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener { card.visibility = View.GONE }
+                    })
+                    card.visibility = View.VISIBLE
+                }
+            }.start()
+        }
+
         addView(orbitDial, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
