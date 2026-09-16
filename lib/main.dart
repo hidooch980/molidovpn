@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'core/account.dart';
 import 'core/native_bridge.dart';
+import 'core/single_instance.dart';
 import 'core/tray.dart';
 import 'core/update_notifier.dart';
 import 'core/vpn_controller.dart';
@@ -20,6 +21,12 @@ final appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // A second launch never gets this far: two copies fighting over the same TUN adapter and sing-box
+  // port is exactly what made connections flaky (silently failing to bind, or disconnecting when the
+  // other instance let go of the adapter). The existing window is focused instead.
+  if (!SingleInstance.acquire()) {
+    exit(0);
+  }
   final controller = VpnController();
   runApp(MobinApp(controller: controller));
   unawaited(initTray(controller, showWindow: () {}));
