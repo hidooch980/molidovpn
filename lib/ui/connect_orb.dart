@@ -102,26 +102,27 @@ class _ConnectOrbState extends State<ConnectOrb> with TickerProviderStateMixin {
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 700),
                     curve: Curves.easeInOutCubic,
-                    width: 164,
-                    height: 164,
+                    width: 158,
+                    height: 158,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                      gradient: RadialGradient(
+                        center: const Alignment(0, -0.24),
+                        radius: 0.9,
                         colors: on
-                            ? [c[0], c[1]]
-                            : Palette.isDark
-                                ? const [Color(0xFF1C1B33), Color(0xFF0B0B18)]
-                                : const [Color(0xFFFFFFFF), Color(0xFFECE9FB)],
+                            ? [c[0].withValues(alpha: 0.30), Palette.surface]
+                            : [Palette.accent.withValues(alpha: 0.16), Palette.surface],
+                        stops: const [0, 0.7],
                       ),
-                      border: Border.all(color: on ? Colors.white.withValues(alpha: 0.35) : Palette.border, width: 1.2),
+                      border: Border.all(color: const Color(0x24FFFFFF), width: 1),
                       boxShadow: [
                         BoxShadow(
-                          color: c[0].withValues(alpha: on ? 0.55 : (Palette.isDark ? 0.25 : 0.18)),
-                          blurRadius: on ? 60 : 32,
-                          spreadRadius: on ? 4 : 0,
+                          color: c[0].withValues(alpha: on ? 0.35 : (Palette.isDark ? 0.22 : 0.16)),
+                          blurRadius: 46,
+                          offset: const Offset(0, 20),
+                          spreadRadius: -14,
                         ),
+                        const BoxShadow(color: Color(0x0FFFFFFF), blurRadius: 0, spreadRadius: 0, offset: Offset(0, 1)),
                       ],
                     ),
                     child: busy

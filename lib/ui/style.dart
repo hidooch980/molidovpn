@@ -11,34 +11,37 @@ class Palette {
   static bool reduceMotion = false;
 
   /// Card corner radius; buttons and pills use [pillRadius].
-  static const double cardRadius = 24;
-  static const double pillRadius = 16;
+  static const double cardRadius = 18;
+  static const double pillRadius = 12;
+  static const double bigRadius = 26;
 
-  static Color bg = const Color(0xFF07110F);
-  static Color surface = const Color(0xFF0E1C19);
-  static Color raised = const Color(0xFF142824);
-  static Color border = const Color(0xFF1C3530);
-  static Color text = const Color(0xFFEAF7F3);
-  static Color muted = const Color(0xFF8FB3AA);
-  static Color accent = const Color(0xFF2DD4BF);
+  static Color bg = const Color(0xFF0B111C);
+  static Color surface = const Color(0x0BFFFFFF);
+  static Color raised = const Color(0xFF121A29);
+  static Color border = const Color(0x14FFFFFF);
+  static Color text = const Color(0xFFEEF2F8);
+  static Color muted = const Color(0xFF8A94A8);
+  static Color accent = const Color(0xFF34D399);
+  static Color accent2 = const Color(0xFF22D3EE);
   static Color connected = const Color(0xFF34D399);
   static Color connecting = const Color(0xFFFBBF24);
   static Color danger = const Color(0xFFF87171);
+  static Color glow = const Color(0x5934D399);
 
   /// Android AppAppearance extras: tertiary text, upload accent, readable accent text, failure headline.
-  static Color faint = const Color(0xFF6F9189);
+  static Color faint = const Color(0xFF5B6478);
   static Color violet = const Color(0xFF9B8CFF);
-  static Color accentText = const Color(0xFF2DD4BF);
+  static Color accentText = const Color(0xFF34D399);
   static Color errorText = const Color(0xFFFCA5A5);
 
   /// Legacy name of the "connected / selected" color.
   static Color amber = const Color(0xFF34D399);
-  static Color mapDot = const Color(0x332DD4BF);
-  static Color fill = const Color(0x0FFFFFFF);
-  static Color fillStrong = const Color(0x1AFFFFFF);
-  static Color sheet = const Color(0xFF0E1C19);
-  static Color cardTop = const Color(0xFF0E1C19);
-  static Color cardBottom = const Color(0xFF0E1C19);
+  static Color mapDot = const Color(0x3334D399);
+  static Color fill = const Color(0x0BFFFFFF);
+  static Color fillStrong = const Color(0x17FFFFFF);
+  static Color sheet = const Color(0xFF121A29);
+  static Color cardTop = const Color(0xFF121A29);
+  static Color cardBottom = const Color(0xFF121A29);
   static Color shadow = const Color(0x00000000);
   static double auroraStrength = 0.0;
 
@@ -46,21 +49,23 @@ class Palette {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
     if (isDark) {
-      bg = const Color(0xFF07110F);
-      surface = const Color(0xFF0E1C19);
-      raised = const Color(0xFF142824);
-      border = const Color(0xFF1C3530);
-      text = const Color(0xFFEAF7F3);
-      muted = const Color(0xFF8FB3AA);
-      accent = const Color(0xFF2DD4BF);
+      bg = const Color(0xFF0B111C);
+      surface = const Color(0x0BFFFFFF);
+      raised = const Color(0xFF121A29);
+      border = const Color(0x14FFFFFF);
+      text = const Color(0xFFEEF2F8);
+      muted = const Color(0xFF8A94A8);
+      accent = const Color(0xFF34D399);
+      accent2 = const Color(0xFF22D3EE);
       connected = const Color(0xFF34D399);
       connecting = const Color(0xFFFBBF24);
       danger = const Color(0xFFF87171);
-      fill = const Color(0x0FFFFFFF);
-      fillStrong = const Color(0x1AFFFFFF);
-      faint = const Color(0xFF6F9189);
+      glow = const Color(0x5934D399);
+      fill = const Color(0x0BFFFFFF);
+      fillStrong = const Color(0x17FFFFFF);
+      faint = const Color(0xFF5B6478);
       violet = const Color(0xFF9B8CFF);
-      accentText = const Color(0xFF2DD4BF);
+      accentText = const Color(0xFF34D399);
       errorText = const Color(0xFFFCA5A5);
     } else {
       bg = const Color(0xFFF3FAF8);
@@ -70,9 +75,11 @@ class Palette {
       text = const Color(0xFF0B1F1B);
       muted = const Color(0xFF4B6B64);
       accent = const Color(0xFF0F9E8A);
+      accent2 = const Color(0xFF0891B2);
       connected = const Color(0xFF059669);
       connecting = const Color(0xFFB45309);
       danger = const Color(0xFFDC2626);
+      glow = const Color(0x330F9E8A);
       fill = const Color(0x0A0B1F1B);
       fillStrong = const Color(0x140B1F1B);
       faint = const Color(0xFF587A72);
@@ -95,6 +102,9 @@ class Palette {
   /// Monospace face for addresses and timers.
   static const String monoFamily = 'Consolas';
   static const List<String> monoFallback = ['Cascadia Mono', 'Courier New', 'monospace'];
+
+  /// Numeric face for stats/ping/speed digits (bundled asset, no network dependency).
+  static const String numericFamily = 'Space Grotesk';
 
   /// Shown only after a reported connection failure.
   static Color get failure => danger;

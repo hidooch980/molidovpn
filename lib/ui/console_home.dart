@@ -1157,6 +1157,7 @@ class _Tiles extends StatelessWidget {
                   textDirection: TextDirection.ltr,
                   style: TextStyle(
                       fontSize: 15,
+                      fontFamily: Palette.numericFamily,
                       fontWeight: FontWeight.w700,
                       color: on ? Palette.text : Palette.muted,
                       fontFeatures: const [FontFeature.tabularFigures()])),
