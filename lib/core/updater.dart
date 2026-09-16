@@ -204,7 +204,12 @@ Stop-Transcript | Out-Null
     // never runs and the app just vanishes. A one-shot Scheduled Task is started by a separate OS
     // service, so it is never a member of this process's job and survives our exit unconditionally.
     final taskName = 'MolidoVPNUpdate_${DateTime.now().millisecondsSinceEpoch}';
-    final command = 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${script.path}"';
+    // schtasks.exe does not tokenize its own command line like every other Win32 program: passed as one
+    // argv element (no shell involved), a `/tr` value containing spaces gets split back into separate
+    // schtasks options ("Invalid argument/option - '-NoProfile'") even though it arrived as a single,
+    // correctly quoted argument. schtasks only keeps it together when the value ALSO carries its own
+    // literal wrapping double-quotes as characters — verified against the real binary.
+    final command = '"powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${script.path}""';
     final create = await Process.run('schtasks', [
       '/create', '/tn', taskName, '/tr', command, '/sc', 'once', '/st', _oneMinuteFromNow(), '/f',
     ]);
