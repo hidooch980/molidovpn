@@ -1,0 +1,138 @@
+name: Update VPN Subscription
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: write # lets a run start the next one (GitHub's */15 cron is often delayed or skipped)
+
+concurrency:
+  group: update-subscription
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # Set repository variable RUNNER to a self-hosted runner label (e.g. one inside Iran) to test from there.
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Install sing-box (latest 1.12.x — same core as the Windows app; needed for AnyTLS)
+        run: |
+          case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+          TAG=$(gh release list -R SagerNet/sing-box --exclude-pre-releases --limit 100 --json tagName \
+                --jq '[.[].tagName | select(startswith("v1.12."))][0]')
+          VER=${TAG#v}
+          gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-linux-${ARCH}.tar.gz" -O sb.tgz
+          tar xzf sb.tgz
+          echo "SINGBOX_BIN=$PWD/sing-box-${VER}-linux-${ARCH}/sing-box" >> "$GITHUB_ENV"
+
+      - name: Install latest sing-box (compatibility check for Hiddify and other new clients)
+        continue-on-error: true
+        run: |
+          case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+          TAG=$(gh release view -R SagerNet/sing-box --json tagName --jq .tagName)
+          VER=${TAG#v}
+          mkdir -p latest && cd latest
+          gh release download "$TAG" -R SagerNet/sing-box -p "sing-box-${VER}-linux-${ARCH}.tar.gz" -O sb.tgz
+          tar xzf sb.tgz
+          echo "SINGBOX_LATEST_BIN=$PWD/sing-box-${VER}-linux-${ARCH}/sing-box" >> "$GITHUB_ENV"
+
+      - name: Download GeoIP database (fallback location lookup)
+        continue-on-error: true
+        run: curl -fsSL -o GeoLite2-Country.mmdb https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb
+
+      # Hourly: the last discovery time lives in health.json on the `sub` branch, so the ~15-min
+      # self-dispatch chain can't skip or double an hour. Uses GITHUB_TOKEN: search API 30 req/min,
+      # core API 1000 req/h per repo; this step makes 2 searches + at most ~60 commit lookups.
+      - name: Discover candidate sources (GitHub search, every hour)
+        continue-on-error: true
+        timeout-minutes: 4
+        run: |
+          LAST=$(curl -fsSL -H 'Cache-Control: no-cache' "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/sub/health.json" \
+                 2>/dev/null | jq -r '._discovered_at // 0' 2>/dev/null || echo 0)
+          [ $(( $(date +%s) - ${LAST:-0} )) -ge 3300 ] || { echo "discovery ran $(( ($(date +%s) - LAST) / 60 )) min ago"; exit 0; }
+          SINCE=$(date -u -d '24 hours ago' +%FT%TZ)
+          KNOWN=$(cat sources.txt discover.txt 2>/dev/null)
+          MAX_NEW=15; LOOKUPS=0
+          for q in 'v2ray configs subscription' 'vless vmess sub collector'; do
+            gh api -X GET search/repositories -f q="$q pushed:>${SINCE%T*}" -f sort=updated -f per_page=30 \
+               --jq '.items[] | .full_name + " " + .default_branch'
+          done | sort -u |
+          while read -r repo branch; do
+            for path in All_Configs_Sub.txt sub/mix sub.txt configs.txt v2ray.txt All_Configs_base64_Sub.txt; do
+              url="https://raw.githubusercontent.com/$repo/$branch/$path"
+              grep -qxF "$url" <<<"$KNOWN" && continue
+              curl -fsI -m 8 "$url" >/dev/null 2>&1 || continue
+              LOOKUPS=$((LOOKUPS + 1)); [ $LOOKUPS -le 60 ] || exit 0
+              # Only files actually updated in the last 24 h.
+              n=$(gh api -X GET "repos/$repo/commits" -f path="$path" -f since="$SINCE" -f per_page=1 --jq length 2>/dev/null)
+              [ "${n:-0}" -gt 0 ] && echo "$url"
+            done
+          done | head -n $MAX_NEW > new_sources.txt || true
+          echo "new sources: $(wc -l < new_sources.txt)"; cat new_sources.txt
+          cat new_sources.txt >> discover.txt
+          sort -u discover.txt -o discover.txt
+          echo "DISCOVERED=1" >> "$GITHUB_ENV"
+
+      - name: Run scanner
+        env:
+          HEALTH_URL: https://raw.githubusercontent.com/${{ github.repository }}/sub/health.json
+          SEEN_URL: https://raw.githubusercontent.com/${{ github.repository }}/sub/seen.json
+        run: python scanner.py
+
+      - name: Publish to 'sub' branch (no history, keeps repo small)
+        run: |
+          cd output
+          git init -q -b sub
+          git config user.name "vpn-bot"
+          git config user.email "vpn-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "subscription update $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sub:sub
+
+      # GitHub disables scheduled workflows after 60 days without a commit on main; `sub` pushes don't count.
+      - name: Keep schedules alive (empty commit on main every ~30 days)
+        continue-on-error: true
+        run: |
+          LAST=$(git log -1 --format=%ct origin/main 2>/dev/null || git log -1 --format=%ct)
+          [ $(( $(date +%s) - LAST )) -ge 2592000 ] || exit 0
+          git config user.name "vpn-bot"; git config user.email "vpn-bot@users.noreply.github.com"
+          git commit -q --allow-empty -m "keepalive [skip ci]"
+          git push -q origin HEAD:main
+
+      # Same files on GitHub Pages (hidooch980.github.io/vpn-sub/...) — a second address when raw.githubusercontent.com is blocked.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: output
+      - uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+  # Self-scheduling loop: wait, then start the next run. The cron above stays as a backup if the chain breaks.
+  schedule-next:
+    needs: update
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start the next update in ~15 minutes
+        run: |
+          sleep 840
+          gh workflow run update.yml -R "$GITHUB_REPOSITORY" --ref main

@@ -1,0 +1,5 @@
+output/
+__pycache__/
+*.mmdb
+sb.tgz
+sing-box-*/
