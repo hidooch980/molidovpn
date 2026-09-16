@@ -1291,7 +1291,8 @@ class VpnController extends ChangeNotifier {
 
   /// AmneziaWG (Windows) with the personal config when one is imported, otherwise a config built from the app's
   /// own WARP identity. [auto]: quick WARP registration only, and a route exiting in Iran is dropped.
-  Future<bool> _amnezia(WindowsEngine eng, EngineOptions options, {required bool auto}) async {
+  Future<bool> _amnezia(WindowsEngine eng, EngineOptions options,
+      {required bool auto, bool allowIranExit = false}) async {
     var config = AmneziaConfig.fromJsonString(settings.amneziaConfig);
     if (config == null) {
       if (WarpAccount.fromJsonString(settings.warpAccount) == null) {
@@ -1313,11 +1314,12 @@ class VpnController extends ChangeNotifier {
         preferred: settings.amneziaEndpoint.isEmpty ? null : settings.amneziaEndpoint);
     if (working == null || _cancel) return false;
     final ir = _checkExit && eng.amneziaExitCountry == 'IR';
-    if (auto && ir) {
+    if (auto && ir && !allowIranExit) {
       AppLog.add('connect: AmneziaWG exits in Iran, skipped in automatic mode');
       await eng.disconnect();
       return false;
     }
+    if (ir && allowIranExit) AppLog.add('connect: every route failed, keeping AmneziaWG (Iranian IP)');
     if (working != settings.amneziaEndpoint) await settings.update((x) => x.amneziaEndpoint = working);
     // WARP exits in the user's own country: warn like other WARP routes.
     exitInIran = ir;
@@ -1332,14 +1334,46 @@ class VpnController extends ChangeNotifier {
   }
 
   /// Automatic mode (Windows): AmneziaWG as a late fallback when it can work here (admin, full tunnel, UDP open).
-  Future<bool> _amneziaAuto(EngineOptions options) async {
+  /// [allowIranExit]: true only for the very last attempt, after every foreign route and the V2Ray Iran-exit
+  /// fallback have failed — an Iranian-IP connection beats no connection at all when nothing foreign works.
+  Future<bool> _amneziaAuto(EngineOptions options, {bool allowIranExit = false}) async {
     final eng = engine;
     if (eng is! WindowsEngine || settings.transport != 'auto' || _cancel) return false;
     if (!WindowsEngine.isAdmin || options.proxyOnly || UdpProbe.blocked) return false;
     try {
-      return await _amnezia(eng, options, auto: true);
+      return await _amnezia(eng, options, auto: true, allowIranExit: allowIranExit);
     } catch (e) {
       AppLog.add('connect: AmneziaWG (auto) failed ($e)');
+      return false;
+    }
+  }
+
+  /// Automatic mode: plain WireGuard (the app's own WARP identity, no chosen config) as the last resort when
+  /// nothing else — foreign or AmneziaWG — worked. Iranian exit IP is accepted here; connecting beats not.
+  Future<bool> _warpDirectAuto(EngineOptions options) async {
+    if (settings.transport != 'auto' || _cancel) return false;
+    try {
+      if (WarpRegistry.account == null && !await ensureWarp(quick: true)) return false;
+      for (final server in warpServers) {
+        _checkCancel();
+        phase = 'اتصال WireGuard…';
+        notifyListeners();
+        if (!await _engineConnect(server, options)) continue;
+        _checkCancel();
+        AppLog.add('connect: every route failed, connecting via WireGuard (Iranian IP)');
+        current = server;
+        currentDelay = null;
+        connectedAt = DateTime.now();
+        exitInIran = true;
+        state = VpnState.connected;
+        phase = null;
+        notifyListeners();
+        _report(server, true);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      AppLog.add('connect: WireGuard (auto) failed ($e)');
       return false;
     }
   }
@@ -1629,6 +1663,10 @@ class VpnController extends ChangeNotifier {
           if (only == null && await _amneziaAuto(options)) return;
           _checkCancel();
           if (await useIrFallback()) return;
+          // Nothing foreign worked: an Iranian-IP connection beats none, in pure automatic mode.
+          if (only == null && await _amneziaAuto(options, allowIranExit: true)) return;
+          _checkCancel();
+          if (only == null && await _warpDirectAuto(options)) return;
           // Psiphon / Tor alone (or last): their own reason instead of the server-list advice.
           final eng = engine;
           final freeError = eng is WindowsEngine && tried.isNotEmpty && FreeRoutes.isFree(tried.last)
@@ -1712,6 +1750,10 @@ class VpnController extends ChangeNotifier {
       if (await _amneziaAuto(options)) return;
       _checkCancel();
       if (await useIrFallback()) return;
+      // Nothing foreign worked: an Iranian-IP connection beats none, in pure automatic mode.
+      if (only == null && await _amneziaAuto(options, allowIranExit: true)) return;
+      _checkCancel();
+      if (only == null && await _warpDirectAuto(options)) return;
       throw const _UserError(
           'اتصال برقرار نشد. «ضد فیلتر» را روشن کنید یا کشور دیگری را امتحان کنید. جزئیات در تنظیمات ← گزارش خطا.');
     } on _Cancelled {
