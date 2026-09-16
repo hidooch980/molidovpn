@@ -721,7 +721,9 @@ class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixi
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Palette.raised, Palette.surface],
+                        // Opaque: a translucent fill let the bright sweep ring behind it show through
+                        // and washed out the caption and timer.
+                        colors: [Palette.raised, Palette.bg],
                       ),
                     ),
                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
