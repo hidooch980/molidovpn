@@ -61,7 +61,11 @@ async function appAsset(name, request, ctx) {
   const headers = {
     'content-type': file.endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/octet-stream',
     'content-disposition': `attachment; filename="${file}"`,
-    'cache-control': 'public, max-age=86400',
+    // Never cached by the user's own browser/download manager: the filename is the same on every
+    // release, so a long client-side max-age (as this used to be) makes the phone silently reuse
+    // yesterday's APK bytes for a brand new download — "no error, but still the old version" after
+    // install. Our own edge cache below is already keyed per release tag, so this costs no speed.
+    'cache-control': 'no-store',
     'accept-ranges': 'bytes',
     'access-control-allow-origin': '*',
   };
@@ -71,7 +75,9 @@ async function appAsset(name, request, ctx) {
   if (key && request.method === 'GET') {
     const hit = await cache.match(new Request(key, { headers: range ? { range } : {} }));
     if (hit) {
-      const h = new Headers(hit.headers); h.set('x-cache', 'HIT');
+      // The edge copy itself is long-cached (immutable, keyed per release tag) — but the user's own
+      // browser must never cache this stable-named URL, so always send it "no-store" to the client.
+      const h = new Headers(hit.headers); h.set('x-cache', 'HIT'); h.set('cache-control', 'no-store');
       return new Response(hit.body, { status: hit.status, headers: h });
     }
   }
