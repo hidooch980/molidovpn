@@ -61,6 +61,7 @@ def main():
         raise SystemExit("old APK already is the new version")
     # Same as the user tapping "Allow" on the one-time "install unknown apps" screen.
     adb("shell", "appops", "set", PKG, "REQUEST_INSTALL_PACKAGES", "allow")
+    adb("shell", "appops", "set", PKG, "ACTIVATE_VPN", "allow")
 
     deadline = time.time() + 15 * 60
     last_launch = 0.0
@@ -76,7 +77,7 @@ def main():
             return
         nodes = ui_nodes()
         packages = {n.get("package", "") for n in nodes}
-        texts = " ".join((n.get("text") or "") for n in nodes)
+        texts = " ".join((n.get("text") or "") for n in nodes).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
         if any("packageinstaller" in p for p in packages):
             if stage != "installer":
                 stage = "installer"
@@ -87,6 +88,12 @@ def main():
                     tap(n)
                     print(f"tapped installer button '{n.get('text')}'")
                     break
+        elif not (packages & {PKG, "com.google.android.apps.nexuslauncher", "com.android.launcher3", "com.android.systemui"}) and packages:
+            # Any other system dialog in the way (VPN consent, permission prompts): accept it.
+            ok = [n for n in nodes if n.get("resource-id") == "android:id/button1"] or                  [n for n in nodes if (n.get("text") or "").strip().upper() in ("OK", "ALLOW", "ALLOW ALL THE TIME")]
+            if ok:
+                tap(ok[0])
+                print(f"accepted system dialog from {sorted(packages)}")
         elif PKG in packages:
             positive = [n for n in nodes if n.get("resource-id") == "android:id/button1"]
             if positive and new_version in texts:

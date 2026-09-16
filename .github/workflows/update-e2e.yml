@@ -1,0 +1,44 @@
+name: Update e2e (Android)
+
+on:
+  workflow_dispatch:
+    inputs:
+      old:
+        description: previous release tag (installed first)
+        required: true
+      new:
+        description: version the app must update itself to (without v)
+        required: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Old APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.old }}" -R "$GITHUB_REPOSITORY" -p 'MolidoVPN-android-universal.apk' -O old.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/android-update-e2e.py old.apk ${{ inputs.new }}
+      - name: Publish screenshots (branch previews-update)
+        if: always()
+        run: |
+          [ -d shots ] || exit 0
+          cd shots
+          git init -q -b previews-update
+          git config user.name molido-bot && git config user.email molido-bot@users.noreply.github.com
+          git add . && git commit -qm "Update e2e screenshots"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews-update
