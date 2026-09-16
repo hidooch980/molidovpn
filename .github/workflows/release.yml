@@ -426,3 +426,43 @@ jobs:
           for f in MolidoVPN-android-arm64.apk MolidoVPN-android-armv7.apk MolidoVPN-android-universal.apk MolidoVPN-windows-setup.exe MolidoVPN-windows-x64.zip; do
             curl -sS -o /dev/null --max-time 600 -w "$f %{http_code} %{size_download}\n" "https://molido-sub.hidooch980.workers.dev/app/$f" || true
           done
+
+  android-update-e2e:
+    # After publishing: install the PREVIOUS release on an emulator and let its in-app updater
+    # download and install the release that was just published, exactly like a user would.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Previous release APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(gh release list -R "$GITHUB_REPOSITORY" -L 2 --json tagName -q '.[1].tagName')
+          echo "previous release: $PREV"
+          gh release download "$PREV" -R "$GITHUB_REPOSITORY" -p 'MolidoVPN-android-universal.apk' -O old.apk             || gh release download "$PREV" -R "$GITHUB_REPOSITORY" -p 'MobinVPN-android-universal.apk' -O old.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: In-app update on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/android-update-e2e.py old.apk ${{ env.VERSION }}
+      - name: Publish screenshots (branch previews-update)
+        if: always()
+        run: |
+          [ -d shots ] || exit 0
+          cd shots
+          git init -q -b previews-update
+          git config user.name molido-bot && git config user.email molido-bot@users.noreply.github.com
+          git add . && git commit -qm "Update e2e screenshots ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews-update
