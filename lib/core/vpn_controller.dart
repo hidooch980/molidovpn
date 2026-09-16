@@ -245,6 +245,8 @@ class VpnController extends ChangeNotifier {
     Timer.periodic(const Duration(minutes: 5), (_) => _cleanIpTick());
     Timer.periodic(const Duration(seconds: 30), (_) => _scheduleTick());
     if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
+    // Opt-in anonymous "still connected" ping for the admin panel's live count; no IPs, same opt-in as reports.
+    Timer.periodic(const Duration(seconds: 50), (_) => _heartbeatTick());
   }
 
   /// Shared quality score (0..1) per server uri from the optional /scores endpoint; empty when unavailable.
@@ -272,6 +274,12 @@ class VpnController extends ChangeNotifier {
     } catch (_) {
       // Optional: never affects connecting.
     }
+  }
+
+  void _heartbeatTick() {
+    if (!settings.anonymousReports || state != VpnState.connected) return;
+    final server = current;
+    unawaited(ServerReports.heartbeat(proxy: engine.httpProxy, mode: server != null ? _routeOf(server) : null));
   }
 
   /// Opt-in anonymous report of one connection attempt; fire-and-forget.
@@ -1742,6 +1750,7 @@ class VpnController extends ChangeNotifier {
   }
 
   void _markDisconnected() {
+    ServerReports.endSession();
     unawaited(usage.save());
     state = VpnState.disconnected;
     current = null;

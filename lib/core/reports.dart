@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -69,6 +70,39 @@ class ServerReports {
       await res.drain<void>().timeout(const Duration(seconds: 10));
     } catch (e) {
       AppLog.add('report: not sent ($e)');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static String? _sessionId;
+
+  /// Random per-connection-session id, generated once and kept until [endSession]; only ever sent to
+  /// /heartbeat (never any personal data), so the admin panel can count distinct connected sessions.
+  static String _sessionIdFor() {
+    final rnd = Random.secure();
+    return _sessionId ??= List.generate(24, (_) => rnd.nextInt(16).toRadixString(16)).join();
+  }
+
+  static void endSession() => _sessionId = null;
+
+  /// Opt-in "still connected" ping; fire-and-forget, never throws. Call every ~45-60s while connected.
+  static Future<void> heartbeat({String? proxy, String? mode}) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
+    try {
+      final body = jsonEncode({
+        'session_id': _sessionIdFor(),
+        'op': ?NetworkInfo.operatorBucket,
+        'mode': ?mode,
+      });
+      final req = await client.postUrl(Uri.parse('$_base/heartbeat')).timeout(const Duration(seconds: 8));
+      req.headers.contentType = ContentType.json;
+      req.write(body);
+      final res = await req.close().timeout(const Duration(seconds: 8));
+      await res.drain<void>().timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Silent: offline / opted-out callers never reach here anyway.
     } finally {
       client.close(force: true);
     }
