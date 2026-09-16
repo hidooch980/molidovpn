@@ -20,7 +20,7 @@ class UpdateInfo {
 
 /// In-app updates from this repo's latest GitHub Release.
 class Updater {
-  static const _repo = 'hidooch980/mobin-vpn';
+  static const _repo = 'hidooch980/molidovpn';
   static const releasesPage = 'https://github.com/$_repo/releases/latest';
 
   /// Per-ABI APK (~50 MB) matching the running build; universal (~140 MB) only for other CPUs.

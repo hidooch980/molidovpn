@@ -10,7 +10,7 @@ import '../core/app_log.dart';
 import 'strings.dart';
 import 'widgets.dart';
 
-const siteUrl = 'https://hidooch980.github.io/mobin-vpn/';
+const siteUrl = 'https://hidooch980.github.io/molidovpn/';
 
 /// "معرفی به دوستان": QR code of the website plus copy link.
 Future<void> showShareDialog(BuildContext context) => showDialog<void>(

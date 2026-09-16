@@ -5,7 +5,7 @@ const FULL = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub_base6
 const LITE = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/lite_base64.txt';
 const MIRROR = (file) => `https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/${file}`;
 
-const REPO = 'hidooch980/mobin-vpn';
+const REPO = 'hidooch980/molidovpn';
 
 // App updates through this worker, for networks where github.com / api.github.com are slow or filtered.
 // /app/latest.json — same shape as the GitHub "latest release" API, with download URLs pointing back here.
@@ -600,7 +600,7 @@ function listResponse(lines, title) {
       'content-type': 'text/plain; charset=utf-8',
       'profile-title': 'base64:' + btoa(title),
       'profile-update-interval': '1',
-      'profile-web-page-url': 'https://hidooch980.github.io/mobin-vpn/',
+      'profile-web-page-url': 'https://hidooch980.github.io/molidovpn/',
       'cache-control': 'public, max-age=300',
       'access-control-allow-origin': '*',
     },
@@ -652,7 +652,7 @@ async function iosRoute(url, env, ctx) {
       'content-type': 'text/plain; charset=utf-8',
       'profile-title': 'base64:' + btoa('MolidoVPN'),
       'profile-update-interval': '1',
-      'profile-web-page-url': 'https://hidooch980.github.io/mobin-vpn/',
+      'profile-web-page-url': 'https://hidooch980.github.io/molidovpn/',
       'cache-control': 'public, max-age=300',
       'access-control-allow-origin': '*',
     },
@@ -1457,7 +1457,7 @@ export default {
           'content-type': 'text/plain; charset=utf-8',
           'profile-title': 'base64:' + btoa('MolidoVPN'),
           'profile-update-interval': '1',
-          'profile-web-page-url': 'https://hidooch980.github.io/mobin-vpn/',
+          'profile-web-page-url': 'https://hidooch980.github.io/molidovpn/',
           'cache-control': 'public, max-age=300',
           'access-control-allow-origin': '*',
         },

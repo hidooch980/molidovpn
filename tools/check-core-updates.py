@@ -37,7 +37,7 @@ import sys
 import urllib.error
 import urllib.request
 
-MOBIN_REPO = "hidooch980/mobin-vpn"
+MOBIN_REPO = "hidooch980/molidovpn"
 RETRY_WINDOW = dt.timedelta(hours=24)
 ISSUE_TITLE_REPORT = "Core updates: manual follow-up"
 

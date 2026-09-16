@@ -38,7 +38,7 @@ class SettingsScreen extends StatelessWidget {
     change();
   }
 
-  static const _androidNotice = 'The Android app is based on an open-source project (AGPL-3.0). '
+  static const _androidNotice = 'The Android app is based on the open-source MSN-GUARD project (AGPL-3.0). '
       'Source: https://github.com/hidooch980/molidovpn-android';
 
   void _toast(BuildContext context, String text) {
@@ -600,9 +600,9 @@ class SettingsScreen extends StatelessWidget {
               NavSettingRow(
                 icon: Icons.code_rounded,
                 title: tr('کد برنامه در گیت‌هاب', 'Source code on GitHub'),
-                subtitle: 'github.com/hidooch980/mobin-vpn',
+                subtitle: 'github.com/hidooch980/molidovpn',
                 onTap: () {
-                  Clipboard.setData(const ClipboardData(text: 'https://github.com/hidooch980/mobin-vpn'));
+                  Clipboard.setData(const ClipboardData(text: 'https://github.com/hidooch980/molidovpn'));
                   _toast(context, tr('لینک کپی شد', 'Link copied'));
                 },
               ),

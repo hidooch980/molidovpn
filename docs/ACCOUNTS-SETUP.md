@@ -27,7 +27,7 @@ insert into public.admins (user_id) select id from auth.users where email = 'ا�
 ```
 
 ## پنل
-آدرس پنل: https://hidooch980.github.io/mobin-vpn/
+آدرس پنل: https://hidooch980.github.io/molidovpn/
 
 - لیست کاربران: نام، ایمیل، مصرف کل، دانلود/آپلود، دستگاه، آخرین فعالیت
 - **قطع کاربر / وصل کاربر**: کاربر قطع‌شده حداکثر تا ۱ دقیقه از VPN جدا می‌شود و دیگر نمی‌تواند وصل شود

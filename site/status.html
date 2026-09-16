@@ -82,7 +82,7 @@ const checks = [
     return [age < 7 * H ? 'ok' : age < 24 * H ? 'warn' : 'bad', ago(r.updated_at)];
   }],
   ['آخرین نسخهٔ برنامه', async () => {
-    const r = await json('https://api.github.com/repos/hidooch980/mobin-vpn/releases/latest');
+    const r = await json('https://api.github.com/repos/hidooch980/molidovpn/releases/latest');
     return [r.assets.length >= 5 ? 'ok' : 'warn', `${r.tag_name} · ${ago(r.published_at)}`];
   }],
 ];

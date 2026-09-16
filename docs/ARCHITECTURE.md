@@ -6,7 +6,7 @@
 
 | Repo | Local clone | Contents |
 |---|---|---|
-| [hidooch980/mobin-vpn](https://github.com/hidooch980/mobin-vpn) | `D:\molido\mobin-vpn` | Flutter app (`lib/`, Windows build), Cloudflare worker (`cloudflare/`), website (`site/`), account panel (`panel/`, `supabase/`), release + core-update workflows, `tools/` |
+| [hidooch980/molidovpn](https://github.com/hidooch980/molidovpn) | `D:\molido\mobin-vpn` | Flutter app (`lib/`, Windows build), Cloudflare worker (`cloudflare/`), website (`site/`), account panel (`panel/`, `supabase/`), release + core-update workflows, `tools/` |
 | [hidooch980/molidovpn-android](https://github.com/hidooch980/molidovpn-android) | `D:\molido\molidovpn-android` | Native Android app (Kotlin + Rust core, AGPL-3.0), `remote/` lists (policy, SHARD nodes, Smart Split, Reality SNI, donate) |
 | [hidooch980/vpn-sub](https://github.com/hidooch980/vpn-sub) | `D:\molido\vpn-aggregator` | Python scanner; publishes tested lists to its `sub` branch |
 | (local only) | `D:\molido\localtest` | Iran local tester (`iran_node_test.py`, `upload_results.py`, `run_*.cmd`) |
