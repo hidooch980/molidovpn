@@ -251,6 +251,65 @@ async function reportRoute(request, env, ctx) {
   return new Response(null, { status: 204, headers: CORS });
 }
 
+// Anonymous opt-in "currently connected" heartbeats. No IPs stored, same session id the app already
+// generates for /report. Upserts last_seen; a session with no heartbeat for a while just ages out.
+let activeSchemaReady = false;
+async function ensureActiveSchema(env) {
+  if (activeSchemaReady) return;
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS active_sessions (session_id TEXT PRIMARY KEY, op TEXT, mode TEXT, last_seen INTEGER NOT NULL)'
+  ).run();
+  activeSchemaReady = true;
+}
+const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const ONLINE_WINDOW_S = 90;
+const ACTIVE_PRUNE_S = 600;
+
+async function heartbeatRoute(request, env, ctx) {
+  if (request.method !== 'POST') return new Response('method not allowed', { status: 405, headers: CORS });
+  const len = Number(request.headers.get('content-length') || 0);
+  if (len > 512) return bad();
+  const text = await request.text();
+  if (text.length > 512) return bad();
+  let r;
+  try {
+    r = JSON.parse(text);
+  } catch {
+    return bad();
+  }
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return bad();
+  if (typeof r.session_id !== 'string' || !SESSION_RE.test(r.session_id)) return bad();
+  if (r.op !== undefined && r.op !== null && !OPS.has(r.op)) return bad();
+  if (r.mode !== undefined && r.mode !== null && (typeof r.mode !== 'string' || !MODE_RE.test(r.mode))) return bad();
+
+  if (limited(request.headers.get('cf-connecting-ip') || 'unknown')) return new Response(null, { status: 204, headers: CORS });
+
+  await ensureActiveSchema(env);
+  await env.DB.prepare(
+    `INSERT INTO active_sessions (session_id, op, mode, last_seen) VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT(session_id) DO UPDATE SET op = excluded.op, mode = excluded.mode, last_seen = excluded.last_seen`
+  )
+    .bind(r.session_id, r.op || null, r.mode || null, Math.floor(Date.now() / 1000))
+    .run();
+  return new Response(null, { status: 204, headers: CORS });
+}
+
+// GET /admin/api/online — admin-only, no caching (must be fresh).
+async function onlineRoute(env) {
+  await ensureActiveSchema(env);
+  const since = Math.floor(Date.now() / 1000) - ONLINE_WINDOW_S;
+  const { results } = await env.DB.prepare('SELECT op, mode FROM active_sessions WHERE last_seen > ?1').bind(since).all();
+  const byOperator = { mci: 0, irancell: 0, tci: 0, other: 0 };
+  const byMode = {};
+  for (const row of results) {
+    const op = STAT_OPS.includes(row.op) ? row.op : 'other';
+    byOperator[op]++;
+    const mode = row.mode || 'unknown';
+    byMode[mode] = (byMode[mode] || 0) + 1;
+  }
+  return adminJson({ count: results.length, byOperator, byMode });
+}
+
 // Cloudflare IPv4 ranges (https://www.cloudflare.com/ips-v4); none overlap private space.
 const CF_V4 = [
   '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
@@ -920,6 +979,7 @@ async function adminApi(request, env, url, ctx) {
   };
 
   if (path === '/admin/api/stats' && request.method === 'GET') return adminJson(await adminStats(env));
+  if (path === '/admin/api/online' && request.method === 'GET') return onlineRoute(env);
 
   if (path === '/admin/api/notice' && request.method === 'GET') return adminJson({ notice: (await kvGet(env, 'notice')) || null });
   if (path === '/admin/api/notice' && request.method === 'PUT') {
@@ -1178,6 +1238,7 @@ ${
 <h2>ورود</h2><label>کلید مدیریت<input id="key" type="password" autocomplete="current-password"></label>
 <button id="loginBtn">ورود</button></div>
 <div id="panel" hidden>
+<div class="card"><h2>کاربران متصل الان</h2><div id="online" class="row"><span class="mute">در حال بارگذاری…</span></div></div>
 <div class="card"><h2>اطلاعیه همگانی</h2>
 <p class="mute">پیامی که بالای صفحه اصلی هر دو برنامه (اندروید و ویندوز) نشان داده می‌شود. کاربر می‌تواند آن را ببندد؛ با تغییر متن دوباره نمایش داده می‌شود.</p>
 <label>متن (فارسی)<textarea id="nText" maxlength="500" style="direction:rtl;text-align:right;font-family:inherit;min-height:80px"></textarea></label>
@@ -1220,7 +1281,7 @@ function err(j){
   if(j._s===503)return 'کلید مدیریت روی سرور تنظیم نشده است';
   return j.error||('خطا '+j._s);
 }
-function logout(){key='';extrasLoaded=false;try{sessionStorage.removeItem('mk')}catch(e){}$('panel').hidden=true;$('login').hidden=false}
+function logout(){key='';extrasLoaded=false;if(onlineTimer){clearInterval(onlineTimer);onlineTimer=null}try{sessionStorage.removeItem('mk')}catch(e){}$('panel').hidden=true;$('login').hidden=false}
 function load(){
   return api('GET','/items').then(function(j){
     if(j._s!==200){msg(err(j));return}
@@ -1296,8 +1357,15 @@ function loadStats(){var box=$('stats');box.textContent='در حال بارگذ�
   box.append(el('p','«بهترین حالت» فقط از گزارش‌هایی که نوع اتصال را دارند (نسخه‌های جدید) محاسبه می‌شود؛ حالت‌هایی با کمتر از ۵ گزارش در اولویت نیستند.','mute'));
 }).catch(function(){box.textContent='خطای شبکه'})}
 $('sLoad').onclick=loadStats;
+var onlineTimer=null;
+function loadOnline(){api('GET','/online').then(function(j){var box=$('online');if(j._s!==200){box.textContent=err(j);return}
+  box.textContent='';box.append(el('strong','کاربران متصل الان: '+j.count.toLocaleString('fa-IR')));
+  var parts=[];Object.keys(OPN).forEach(function(o){var n=(j.byOperator||{})[o]||0;if(n)parts.push(OPN[o]+': '+n.toLocaleString('fa-IR'))});
+  if(parts.length)box.append(el('span',' · '+parts.join(' · '),'mute'));
+}).catch(function(){})}
+function startOnline(){loadOnline();if(onlineTimer)clearInterval(onlineTimer);onlineTimer=setInterval(loadOnline,17000)}
 var extrasLoaded=false;
-function loadExtras(){if(extrasLoaded)return;extrasLoaded=true;loadNotice();loadFlags();loadStats()}
+function loadExtras(){if(extrasLoaded)return;extrasLoaded=true;loadNotice();loadFlags();loadStats();startOnline()}
 $('loginBtn').onclick=function(){key=$('key').value.trim();if(!key)return;try{sessionStorage.setItem('mk',key)}catch(e){}$('key').value='';msg('');load()};
 $('key').onkeydown=function(e){if(e.key==='Enter')$('loginBtn').click()};
 $('logoutBtn').onclick=function(){logout();msg('')};
@@ -1341,13 +1409,19 @@ export default {
         .then(() => env.DB.prepare('DELETE FROM cf_ips WHERE updated < ?1').bind(Date.now() - 3 * 86400000).run())
         .catch(() => {})
     );
+    ctx.waitUntil(
+      ensureActiveSchema(env)
+        .then(() => env.DB.prepare('DELETE FROM active_sessions WHERE last_seen < ?1').bind(Math.floor(Date.now() / 1000) - ACTIVE_PRUNE_S).run())
+        .catch(() => {})
+    );
   },
 
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (request.method === 'OPTIONS' && (url.pathname === '/report' || url.pathname === '/scores'))
+    if (request.method === 'OPTIONS' && (url.pathname === '/report' || url.pathname === '/scores' || url.pathname === '/heartbeat'))
       return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === '/report') return reportRoute(request, env, ctx);
+    if (url.pathname === '/heartbeat') return heartbeatRoute(request, env, ctx);
     if (url.pathname === '/owner/configs') return ownerConfigsRoute(env, ctx);
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname === '/cfip') return cfipRoute(request, env, ctx);
