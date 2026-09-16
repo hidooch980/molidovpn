@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -144,7 +145,14 @@ class _ConsoleHomeState extends State<ConsoleHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Palette.bg,
-      body: ListenableBuilder(
+      body: Stack(children: [
+        // Two soft, static ambient glows behind the whole page — the cinematic-dark mood from the
+        // approved design. Static (no per-frame work), so they cost nothing.
+        if (Palette.isDark) ...[
+          Positioned(top: -70, left: -60, child: _AmbientGlow(color: Palette.accent)),
+          Positioned(bottom: 30, right: -70, child: _AmbientGlow(color: Palette.accent2, size: 190)),
+        ],
+        ListenableBuilder(
         listenable: Listenable.merge([c, network, c.settings]),
         builder: (context, _) {
           final lastMs = _latency.isEmpty ? null : _latency.last;
@@ -199,9 +207,29 @@ class _ConsoleHomeState extends State<ConsoleHome> {
             ),
           );
         },
-      ),
+        ),
+      ]),
     );
   }
+}
+
+/// A blurred, low-opacity color blob used purely as page-background atmosphere.
+class _AmbientGlow extends StatelessWidget {
+  const _AmbientGlow({required this.color, this.size = 230});
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.16)),
+          ),
+        ),
+      );
 }
 
 /// "What's new" after an update, once; right-to-left Persian card.

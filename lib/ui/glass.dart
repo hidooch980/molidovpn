@@ -33,15 +33,19 @@ class Glass extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: shape,
-            gradient: LinearGradient(
+            // Frosted glass without a real BackdropFilter (see the class comment for why): a faint
+            // translucent white fill plus a hairline translucent border does almost all of the work
+            // that a blur would, at zero per-frame cost.
+            color: Palette.isDark ? Palette.surface : null,
+            gradient: Palette.isDark ? null : LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [Palette.cardTop, Palette.cardBottom],
             ),
-            border: borderColor != null
-                ? Border.all(color: borderColor!, width: 1.5)
-                : (Palette.isDark ? null : Border.all(color: Palette.border)),
-            boxShadow: Palette.isDark ? null : [BoxShadow(color: Palette.shadow, blurRadius: 22, offset: const Offset(0, 8))],
+            border: Border.all(color: borderColor ?? Palette.border, width: borderColor != null ? 1.5 : 1),
+            boxShadow: Palette.isDark
+                ? [const BoxShadow(color: Color(0x59000000), blurRadius: 28, offset: Offset(0, 14))]
+                : [BoxShadow(color: Palette.shadow, blurRadius: 22, offset: const Offset(0, 8))],
           ),
           child: Padding(padding: padding, child: child),
         ),
