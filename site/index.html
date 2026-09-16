@@ -181,96 +181,113 @@ footer a{color:var(--muted)}
   <!-- 4. Advanced -->
   <section id="pro" aria-labelledby="pro-title">
     <h2 id="pro-title">برای کاربران حرفه‌ای</h2>
+    <p class="small" style="margin:-8px 0 20px">این بخش برای کسانی است که برنامه‌ی اندروید/ویندوز MolidoVPN یا اپ Hiddify روی آیفون برایشان کافی نیست و می‌خواهند از برنامه‌های دیگر، DNS مخصوص بازی یا راه‌های جایگزین استفاده کنند. اگر همه‌چیز خوب کار می‌کند، نیازی به باز کردن این بخش نیست.</p>
 
     <details id="subs">
-      <summary>لینک‌های اشتراک (Hiddify، Streisand، Karing، v2rayNG)</summary>
+      <summary>لینک‌های اشتراک — برای اتصال دستی در Hiddify، Streisand، Karing یا v2rayNG</summary>
       <div class="dbody">
-        <p>برنامه‌ی اندروید و ویندوز MolidoVPN به این لینک‌ها نیازی ندارد. هر لینک ۵۰ تا ۱۰۰ سرور متفاوت دارد؛ ۲ یا ۳ تا اضافه کنید.</p>
+        <p>فقط اگر می‌خواهید خودتان سرور را در یکی از این برنامه‌ها اضافه کنید به این لینک‌ها نیاز دارید؛ برنامه‌ی اندروید و ویندوز MolidoVPN نیازی به آن‌ها ندارد. هر لینک ۵۰ تا ۱۰۰ سرور متفاوت دارد؛ ۲ یا ۳ تا اضافه کنید.</p>
         <div id="sub-list" style="display:flex;flex-direction:column;gap:12px"></div>
         <p>فهرست کامل (خیلی بزرگ، مناسب آیفون نیست): <code class="block" id="full-url"></code></p>
       </div>
     </details>
 
     <details>
-      <summary>برنامه‌های دیگر آیفون (Streisand، Karing، V2Box)</summary>
+      <summary>iPhone appهای دیگر — اگر Hiddify کار نکرد یا هات‌اسپات اندروید می‌خواهید</summary>
       <div class="dbody">
-        <p>اگر Hiddify کار نکرد، یکی از این‌ها را نصب کنید و دکمه‌ی افزودن همان را بزنید.</p>
-        <div class="row">
-          <a class="btn outline sm" href="https://apps.apple.com/search?term=Streisand" rel="noopener">نصب Streisand</a>
-          <a class="btn outline sm" id="add-streisand" href="#">افزودن به Streisand</a>
-        </div>
-        <div class="row">
-          <a class="btn outline sm" href="https://apps.apple.com/search?term=Karing" rel="noopener">نصب Karing</a>
-          <a class="btn outline sm" id="add-karing" href="#">افزودن به Karing</a>
-        </div>
-        <div class="row">
-          <a class="btn outline sm" href="https://apps.apple.com/search?term=V2Box" rel="noopener">نصب V2Box</a>
-          <button class="btn outline sm" type="button" id="copy-v2box">کپی لینک برای V2Box</button>
-        </div>
-        <p>V2Box: لینک را کپی کنید ← «+» ← <b>Import from clipboard</b>. در Hiddify حالت «Auto» را بگذارید تا خودش سرور سالم را انتخاب کند.</p>
+        <p>این گزینه‌ها برای وقتی است که اپ Hiddify (در قدم‌های بالا) روی آیفون‌تان کار نکرد یا فیلتر شده بود.</p>
+
+        <details>
+          <summary>Streisand، Karing یا V2Box به‌جای Hiddify</summary>
+          <div class="dbody">
+            <p>یکی از این‌ها را نصب کنید و دکمه‌ی افزودن همان را بزنید.</p>
+            <div class="row">
+              <a class="btn outline sm" href="https://apps.apple.com/search?term=Streisand" rel="noopener">نصب Streisand</a>
+              <a class="btn outline sm" id="add-streisand" href="#">افزودن به Streisand</a>
+            </div>
+            <div class="row">
+              <a class="btn outline sm" href="https://apps.apple.com/search?term=Karing" rel="noopener">نصب Karing</a>
+              <a class="btn outline sm" id="add-karing" href="#">افزودن به Karing</a>
+            </div>
+            <div class="row">
+              <a class="btn outline sm" href="https://apps.apple.com/search?term=V2Box" rel="noopener">نصب V2Box</a>
+              <button class="btn outline sm" type="button" id="copy-v2box">کپی لینک برای V2Box</button>
+            </div>
+            <p>V2Box: لینک را کپی کنید ← «+» ← <b>Import from clipboard</b>. در Hiddify حالت «Auto» را بگذارید تا خودش سرور سالم را انتخاب کند.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>اتصال آیفون از طریق هات‌اسپات گوشی اندروید (بدون نصب هیچ اپی)</summary>
+          <div class="dbody">
+            <p>اگر گوشی اندروید کنارتان است و MolidoVPN رویش وصل است، می‌توانید بدون نصب چیزی روی آیفون، اینترنتش را از طریق هات‌اسپات به اشتراک بگذارید.</p>
+            <ol>
+              <li>روی اندروید: MolidoVPN را وصل کنید ← تنظیمات ← <b>«اشتراک با آیفون و لپ‌تاپ»</b> را روشن کنید.</li>
+              <li>هات‌اسپات اندروید را روشن کنید و آیفون را به آن وصل کنید.</li>
+              <li>آیفون: Settings ← Wi-Fi ← ⓘ ← <b>Configure Proxy</b> ← <b>Manual</b>.</li>
+              <li>Server = آی‌پی نوشته‌شده روی کارت اندروید، Port = <b>8080</b> ← Save.</li>
+            </ol>
+            <p class="small">لپ‌تاپ ویندوز هم به همین شکل: Settings ← Network ← Proxy ← Manual proxy ← همان IP و پورت 8080.</p>
+          </div>
+        </details>
       </div>
     </details>
 
     <details>
-      <summary>آیفون از طریق هات‌اسپات گوشی اندروید</summary>
+      <summary>ابزارهای تکمیلی — پینگ بازی و راه‌های جایگزین وقتی همه‌چیز بسته است</summary>
       <div class="dbody">
-        <ol>
-          <li>روی اندروید: MolidoVPN را وصل کنید ← تنظیمات ← <b>«اشتراک با آیفون و لپ‌تاپ»</b> را روشن کنید.</li>
-          <li>هات‌اسپات اندروید را روشن کنید و آیفون را به آن وصل کنید.</li>
-          <li>آیفون: Settings ← Wi-Fi ← ⓘ ← <b>Configure Proxy</b> ← <b>Manual</b>.</li>
-          <li>Server = آی‌پی نوشته‌شده روی کارت اندروید، Port = <b>8080</b> ← Save.</li>
-        </ol>
-        <p>لپ‌تاپ ویندوز: Settings ← Network ← Proxy ← Manual proxy ← همان IP و پورت 8080.</p>
-      </div>
-    </details>
+        <p>این‌ها برای موقعیت‌های خاص است، نه استفاده‌ی روزمره.</p>
 
-    <details id="gamedns">
-      <summary>🎮 DNS گیمینگ</summary>
-      <div class="dbody">
-        <p>DNSهای ایرانی مخصوص بازی: پینگ را کم می‌کنند و بعضی بازی‌های تحریم‌شده را باز می‌کنند. فقط داخل اینترنت ایران کار می‌کنند.</p>
-        <ul>
-          <li><b>رادار گیم:</b> <code>10.202.10.10</code> و <code>10.202.10.11</code></li>
-          <li><b>الکترو:</b> <code>78.157.42.100</code> و <code>78.157.42.101</code></li>
-          <li><b>شکن:</b> <code>178.22.122.100</code> و <code>185.51.200.2</code></li>
-          <li><b>403:</b> <code>10.202.10.202</code> و <code>10.202.10.102</code></li>
-        </ul>
-        <p>همراه با VPN روشن، در این برنامه‌ها:</p>
-        <div class="tablewrap">
-          <table>
-            <thead><tr><th>برنامه</th><th>تنظیم</th></tr></thead>
-            <tbody>
-              <tr><td>MolidoVPN اندروید/ویندوز</td><td>تنظیمات ← DNS ← DNS گیمینگ (اندروید ۱۳ به بالا کامل)</td></tr>
-              <tr><td>Hiddify (آیفون/اندروید/ویندوز)</td><td>Settings ← DNS ← Direct DNS = <code>10.202.10.10</code> و Region = <b>Iran</b></td></tr>
-              <tr><td>Karing آیفون</td><td>Settings ← DNS ← Direct همان آدرس + قانون ایران</td></tr>
-              <tr><td>v2rayNG اندروید</td><td>Domestic DNS = <code>10.202.10.10</code> و مسیریابی Bypass Iran</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p><b>آیفون بدون VPN (فقط Wi-Fi):</b> Settings ← Wi-Fi ← ⓘ ← Configure DNS ← Manual ← دو آدرس بالا ← Save. برای برگشت «Automatic».</p>
-        <p class="note">نام منوها در نسخه‌های مختلف ممکن است کمی فرق کند. وقتی VPN روشن است، DNS دستی آیفون استفاده نمی‌شود.</p>
-      </div>
-    </details>
+        <details id="gamedns">
+          <summary>🎮 DNS گیمینگ — برای کم‌کردن پینگ و باز کردن بازی‌های تحریم‌شده</summary>
+          <div class="dbody">
+            <p>مخصوص کسانی که بازی آنلاین انجام می‌دهند. این DNSهای ایرانی پینگ را کم می‌کنند و بعضی بازی‌های تحریم‌شده را باز می‌کنند؛ فقط داخل اینترنت ایران کار می‌کنند.</p>
+            <ul>
+              <li><b>رادار گیم:</b> <code>10.202.10.10</code> و <code>10.202.10.11</code></li>
+              <li><b>الکترو:</b> <code>78.157.42.100</code> و <code>78.157.42.101</code></li>
+              <li><b>شکن:</b> <code>178.22.122.100</code> و <code>185.51.200.2</code></li>
+              <li><b>403:</b> <code>10.202.10.202</code> و <code>10.202.10.102</code></li>
+            </ul>
+            <p>همراه با VPN روشن، در این برنامه‌ها:</p>
+            <div class="tablewrap">
+              <table>
+                <thead><tr><th>برنامه</th><th>تنظیم</th></tr></thead>
+                <tbody>
+                  <tr><td>MolidoVPN اندروید/ویندوز</td><td>تنظیمات ← DNS ← DNS گیمینگ (اندروید ۱۳ به بالا کامل)</td></tr>
+                  <tr><td>Hiddify (آیفون/اندروید/ویندوز)</td><td>Settings ← DNS ← Direct DNS = <code>10.202.10.10</code> و Region = <b>Iran</b></td></tr>
+                  <tr><td>Karing آیفون</td><td>Settings ← DNS ← Direct همان آدرس + قانون ایران</td></tr>
+                  <tr><td>v2rayNG اندروید</td><td>Domestic DNS = <code>10.202.10.10</code> و مسیریابی Bypass Iran</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p><b>آیفون بدون VPN (فقط Wi-Fi):</b> Settings ← Wi-Fi ← ⓘ ← Configure DNS ← Manual ← دو آدرس بالا ← Save. برای برگشت «Automatic».</p>
+            <p class="note">نام منوها در نسخه‌های مختلف ممکن است کمی فرق کند. وقتی VPN روشن است، DNS دستی آیفون استفاده نمی‌شود.</p>
+          </div>
+        </details>
 
-    <details>
-      <summary>برنامه‌های پشتیبان (Psiphon، 1.1.1.1، Orbot)</summary>
-      <div class="dbody">
-        <ul>
-          <li><b>Psiphon</b> — وقتی همه‌چیز بسته است؛ خودش راه پیدا می‌کند.</li>
-          <li><b>1.1.1.1</b> — وب‌گردی سریع؛ ولی کشور خروجی ایران است.</li>
-          <li><b>Orbot</b> (Tor) — آخرین راه؛ کند ولی مقاوم (Snowflake را روشن کنید).</li>
-        </ul>
-        <div class="row">
-          <a class="btn outline sm" href="https://apps.apple.com/search?term=Psiphon" rel="noopener">Psiphon</a>
-          <a class="btn outline sm" href="https://apps.apple.com/search?term=1.1.1.1" rel="noopener">1.1.1.1</a>
-          <a class="btn outline sm" href="https://apps.apple.com/search?term=Orbot" rel="noopener">Orbot</a>
-        </div>
-      </div>
-    </details>
+        <details>
+          <summary>برنامه‌های پشتیبان — وقتی MolidoVPN هم فیلتر شد (Psiphon، 1.1.1.1، Orbot)</summary>
+          <div class="dbody">
+            <p>فقط در شرایط سخت فیلترینگ لازم می‌شود، به‌عنوان آخرین راه‌حل.</p>
+            <ul>
+              <li><b>Psiphon</b> — وقتی همه‌چیز بسته است؛ خودش راه پیدا می‌کند.</li>
+              <li><b>1.1.1.1</b> — وب‌گردی سریع؛ ولی کشور خروجی ایران است.</li>
+              <li><b>Orbot</b> (Tor) — آخرین راه؛ کند ولی مقاوم (Snowflake را روشن کنید).</li>
+            </ul>
+            <div class="row">
+              <a class="btn outline sm" href="https://apps.apple.com/search?term=Psiphon" rel="noopener">Psiphon</a>
+              <a class="btn outline sm" href="https://apps.apple.com/search?term=1.1.1.1" rel="noopener">1.1.1.1</a>
+              <a class="btn outline sm" href="https://apps.apple.com/search?term=Orbot" rel="noopener">Orbot</a>
+            </div>
+          </div>
+        </details>
 
-    <details>
-      <summary>Gemini گفت «در کشور شما در دسترس نیست»؟</summary>
-      <div class="dbody">
-        <p>یعنی از طریق <b>WARP یا 1.1.1.1</b> وصل شده‌اید که کشور خروجی‌اش ایران است. یک سرور <b>V2Ray/Reality</b> (نه WARP) انتخاب کنید و مطمئن شوید کشور نشان‌داده‌شده ایران نیست. برنامه‌ی اندروید و ویندوز در حالت خودکار از این تونل‌ها دوری می‌کند.</p>
+        <details>
+          <summary>Gemini گفت «در کشور شما در دسترس نیست»؟</summary>
+          <div class="dbody">
+            <p>یعنی از طریق <b>WARP یا 1.1.1.1</b> وصل شده‌اید که کشور خروجی‌اش ایران است. یک سرور <b>V2Ray/Reality</b> (نه WARP) انتخاب کنید و مطمئن شوید کشور نشان‌داده‌شده ایران نیست. برنامه‌ی اندروید و ویندوز در حالت خودکار از این تونل‌ها دوری می‌کند.</p>
+          </div>
+        </details>
       </div>
     </details>
 
