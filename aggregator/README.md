@@ -2,10 +2,10 @@
 
 Collects free VLESS / VMess / Trojan / Shadowsocks / Hysteria2 / TUIC / AnyTLS configs from public
 sources, **really tests them through sing-box**, names each one by its **real exit country**, and
-publishes the tested lists that feed [MolidoVPN](https://github.com/hidooch980/mobin-vpn).
+publishes the tested lists that feed [MolidoVPN](https://github.com/hidooch980/molidovpn).
 
-- **App & docs:** https://github.com/hidooch980/mobin-vpn
-- **Website:** https://hidooch980.github.io/mobin-vpn/
+- **App & docs:** https://github.com/hidooch980/molidovpn
+- **Website:** https://hidooch980.github.io/molidovpn/
 - **Subscription worker (branded, Iran-ranked):** `https://molido-sub.hidooch980.workers.dev/sub/1` … `/sub/5`, `/ios`, `/hiddify`
 - **Support:** Telegram [@Molido_Vpn](https://t.me/Molido_Vpn)
 
@@ -21,7 +21,7 @@ publishes the tested lists that feed [MolidoVPN](https://github.com/hidooch980/m
 The workflow (`.github/workflows/update.yml`) runs **every 15 minutes** and re-dispatches itself because
 GitHub's cron is often delayed. Servers are additionally tested from inside Iran by the owner's PC; the
 worker drops Iran-failed servers from its lists — see the
-[architecture doc](https://github.com/hidooch980/mobin-vpn/blob/main/docs/ARCHITECTURE.md).
+[architecture doc](https://github.com/hidooch980/molidovpn/blob/main/docs/ARCHITECTURE.md).
 
 ## Output files (`sub` branch)
 

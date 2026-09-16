@@ -6,8 +6,8 @@
 
 **VPN رایگان کل دستگاه برای خانواده‌های ایرانی — هستهٔ Rust، رابط بومی اندروید، حالت‌های اتصال متعدد**
 
-[![Release](https://img.shields.io/github/v/release/hidooch980/mobin-vpn?style=for-the-badge&color=5CE68F)](https://github.com/hidooch980/mobin-vpn/releases/latest)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3A4FB0?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hidooch980/mobin-vpn/releases/latest)
+[![Release](https://img.shields.io/github/v/release/hidooch980/molidovpn?style=for-the-badge&color=5CE68F)](https://github.com/hidooch980/molidovpn/releases/latest)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3A4FB0?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hidooch980/molidovpn/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-6c5ce7?style=for-the-badge)](LICENSE)
 [![Transports](https://img.shields.io/badge/%D9%85%D8%B3%DB%8C%D8%B1%D9%87%D8%A7-MASQUE%20%C2%B7%20WireGuard%20%C2%B7%20WARP%C2%B7WARP%20%C2%B7%20Psiphon%20%C2%B7%20Tor-1f6f4a?style=for-the-badge)](#مسیرهای-ترابری)
 
@@ -212,7 +212,7 @@
 
 ## نصب
 
-آخرین APK را از [بخش Releases](https://github.com/hidooch980/mobin-vpn/releases/latest) بگیرید؛ خود برنامه هم آپدیت را از همان‌جا چک می‌کند. پشتیبانی: تلگرام [@Molido_Vpn](https://t.me/Molido_Vpn).
+آخرین APK را از [بخش Releases](https://github.com/hidooch980/molidovpn/releases/latest) بگیرید؛ خود برنامه هم آپدیت را از همان‌جا چک می‌کند. پشتیبانی: تلگرام [@Molido_Vpn](https://t.me/Molido_Vpn).
 
 | معماری دستگاه | فایل |
 |---|---|
@@ -220,7 +220,7 @@
 | معماری ARM ۳۲ بیتی، دستگاه‌های قدیمی‌تر | `MobinVPN-android-armv7.apk` |
 | مطمئن نیستید | `MobinVPN-android-universal.apk` |
 
-دانلود ویندوز و آیفون، فهرست کامل قابلیت‌ها و مستندات در مخزن اصلی است: [hidooch980/mobin-vpn](https://github.com/hidooch980/mobin-vpn) · [قابلیت‌ها](https://github.com/hidooch980/mobin-vpn/blob/main/docs/FEATURES.md) · [معماری](https://github.com/hidooch980/mobin-vpn/blob/main/docs/ARCHITECTURE.md) · سایت: https://hidooch980.github.io/mobin-vpn/ · حمایت مالی: https://reymit.ir/molido
+دانلود ویندوز و آیفون، فهرست کامل قابلیت‌ها و مستندات در مخزن اصلی است: [hidooch980/molidovpn](https://github.com/hidooch980/molidovpn) · [قابلیت‌ها](https://github.com/hidooch980/molidovpn/blob/main/docs/FEATURES.md) · [معماری](https://github.com/hidooch980/molidovpn/blob/main/docs/ARCHITECTURE.md) · سایت: https://hidooch980.github.io/molidovpn/ · حمایت مالی: https://reymit.ir/molido
 
 حداقل نسخهٔ اندروید ۸.۰ یا همان API 26 است. موقع نصب اجازهٔ نصب از منبع نامشخص را بدهید و در اولین اتصال، درخواست مجوز VPN اندروید را تأیید کنید.
 
@@ -239,7 +239,7 @@ cargo install cargo-ndk
 
 خروجی در `app/build/outputs/apk/debug/` ساخته می‌شود. اسکریپت `core/build-android.sh` هستهٔ Rust را برای هر ABI کامپایل می‌کند و `libaether.so` را سر جایش می‌گذارد؛ خود Gradle این اسکریپت را صدا می‌زند و لازم نیست دستی اجرایش کنید.
 
-هر push روی شاخهٔ `main` گردش‌کار [`release.yml`](.github/workflows/release.yml) را اجرا می‌کند و APKها را به‌عنوان artifact آپلود می‌کند. نسخه‌های منتشرشده از همین مخزن توسط [گردش‌کار انتشار mobin-vpn](https://github.com/hidooch980/mobin-vpn/blob/main/.github/workflows/release.yml) و پس از تست اتصال روی شبیه‌ساز ساخته می‌شوند. گردش‌کار `sync-lists.yml` هر ساعت فهرست‌های `remote/` را تازه می‌کند و `core-updates.yml` هر ۶ ساعت هسته‌ها را به‌روز می‌کند.
+هر push روی شاخهٔ `main` گردش‌کار [`release.yml`](.github/workflows/release.yml) را اجرا می‌کند و APKها را به‌عنوان artifact آپلود می‌کند. نسخه‌های منتشرشده از همین مخزن توسط [گردش‌کار انتشار molidovpn](https://github.com/hidooch980/molidovpn/blob/main/.github/workflows/release.yml) و پس از تست اتصال روی شبیه‌ساز ساخته می‌شوند. گردش‌کار `sync-lists.yml` هر ساعت فهرست‌های `remote/` را تازه می‌کند و `core-updates.yml` هر ۶ ساعت هسته‌ها را به‌روز می‌کند.
 
 ---
 

@@ -8,7 +8,7 @@ runs locally too:
   python tools/check-core-updates.py --apply    # rewrite pins, publish binaries-N+1 (needs GH_TOKEN/gh auth)
 
 Only writes to this repository (hidooch980/molidovpn-android) with the workflow's own GITHUB_TOKEN.
-hidooch980/mobin-vpn's core-updates workflow notices commits starting with "Core update (Android)" and
+hidooch980/molidovpn's core-updates workflow notices commits starting with "Core update (Android)" and
 starts its release.
 
 Safety policy (auto-apply only non-breaking updates, never pre-releases):

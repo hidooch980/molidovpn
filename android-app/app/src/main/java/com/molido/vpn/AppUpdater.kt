@@ -225,8 +225,8 @@ class AppUpdater(private val activity: Activity) {
     private companion object {
         const val RELEASE_HOST = "api.github.com"
         const val MIRROR_RELEASE_URL = "https://molido-sub.hidooch980.workers.dev/app/latest.json"
-        const val RELEASE_URL ="https://$RELEASE_HOST/repos/hidooch980/mobin-vpn/releases/latest"
-        const val RELEASES_PAGE_URL = "https://github.com/hidooch980/mobin-vpn/releases/latest"
+        const val RELEASE_URL ="https://$RELEASE_HOST/repos/hidooch980/molidovpn/releases/latest"
+        const val RELEASES_PAGE_URL = "https://github.com/hidooch980/molidovpn/releases/latest"
 
         fun isNewer(remote: String, local: String): Boolean {
             val remoteParts = remote.split('.', '-', '+').map { it.toIntOrNull() ?: 0 }

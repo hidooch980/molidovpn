@@ -3,7 +3,7 @@ name: Core updates (Android)
 # Every 6 h: sing-box 1.12.x patch pins and newer stable Xray-core for the Android app.
 # Xray -> new mirror release binaries-N+1 in this repo (libxray.so for arm64-v8a and armeabi-v7a).
 # Commits "Core update (Android): ..." to main using only this repo's GITHUB_TOKEN (no personal tokens).
-# That push builds this repo; hidooch980/mobin-vpn's core-updates workflow notices the commit and starts
+# That push builds this repo; hidooch980/molidovpn's core-updates workflow notices the commit and starts
 # its gated "Build & Release". Policy: tools/check-core-updates.py; state: .github/core-versions.json.
 
 on:

@@ -8736,7 +8736,7 @@ class MainActivity : Activity() {
         const val ONBOARDING_PREF = "onboarding_done"
         /** Set when the user picks a connection mode themselves; until then the owner's default applies. */
         const val MODE_CHOSEN_PREF = "mode_user_chosen"
-        const val SITE_URL = "https://hidooch980.github.io/mobin-vpn/"
+        const val SITE_URL = "https://hidooch980.github.io/molidovpn/"
         const val LOG_REFRESH_MS = 750L
         const val STATUS_POLL_MS = 2_000L
         const val PAGE_ANIMATION_MS = 220L
