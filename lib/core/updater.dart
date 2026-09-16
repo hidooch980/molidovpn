@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:ffi' show Abi;
 import 'dart:io';
@@ -197,11 +198,36 @@ Stop-Transcript | Out-Null
     // UTF-8 with BOM so Windows PowerShell 5.1 reads non-English paths correctly.
     await script.writeAsBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(content)]);
     AppLog.add('update: starting installer script ${script.path} (log: $log)');
-    await Process.start(
-      'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script.path],
-      mode: ProcessStartMode.detached,
-    );
+    // `Process.start(mode: detached)` is not enough on Windows: when this app runs inside a job
+    // object (Windows Terminal, some launchers, MSIX) with "kill on close", the detached child dies
+    // the instant this process exits, even though DETACHED_PROCESS was requested — the update script
+    // never runs and the app just vanishes. A one-shot Scheduled Task is started by a separate OS
+    // service, so it is never a member of this process's job and survives our exit unconditionally.
+    final taskName = 'MolidoVPNUpdate_${DateTime.now().millisecondsSinceEpoch}';
+    final command = 'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${script.path}"';
+    final create = await Process.run('schtasks', [
+      '/create', '/tn', taskName, '/tr', command, '/sc', 'once', '/st', _oneMinuteFromNow(), '/f',
+    ]);
+    if (create.exitCode == 0) {
+      await Process.run('schtasks', ['/run', '/tn', taskName]);
+      // Best-effort cleanup a bit later; the task has already fired by then.
+      unawaited(Future.delayed(const Duration(minutes: 2), () => Process.run('schtasks', ['/delete', '/tn', taskName, '/f'])));
+    } else {
+      // Scheduled Tasks unavailable (locked-down policy): fall back to the direct detached spawn.
+      AppLog.add('update: schtasks failed (${create.stderr}), falling back to Process.start');
+      await Process.start(
+        'powershell',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script.path],
+        mode: ProcessStartMode.detached,
+      );
+    }
+  }
+
+  /// "HH:mm" a minute from now, for `schtasks /st` — the task fires almost immediately in practice.
+  static String _oneMinuteFromNow() {
+    final t = DateTime.now().add(const Duration(minutes: 1));
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}';
   }
 
   /// Fallback when in-app update fails: open the download page in the browser.
