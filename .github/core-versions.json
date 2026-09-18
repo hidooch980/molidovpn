@@ -6,6 +6,12 @@
     "android-upstream": {
       "seen": "v1.9.0"
     },
+    "psiphon": {
+      "applied": "e195abae8d95f035daac977e85e3518801617529",
+      "attempts": {
+        "e195abae8d95f035daac977e85e3518801617529": "2026-09-18T20:55:50+00:00"
+      }
+    },
     "psiphon-android-upstream": {
       "seen": "806546b09cd0a72390a6ff5433b209323cd87995"
     },
