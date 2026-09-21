@@ -4,7 +4,7 @@
   },
   "components": {
     "android-upstream": {
-      "seen": "v1.9.0"
+      "seen": "v2.0.1"
     },
     "psiphon": {
       "applied": "e195abae8d95f035daac977e85e3518801617529",
