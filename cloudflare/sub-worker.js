@@ -451,7 +451,12 @@ const SUB_MAX = 100;
 const strongTransport = (line) => iosFriendly(line.split('#')[0]);
 
 // Iran-measured quality from the anonymous reports (apps + local Iran tests), last 7 days.
+// Cached per isolate for 2 minutes: this runs on every hit to the main lists (/, /ios, /sub/N), which is
+// by far the busiest traffic on the worker, and the score shape barely moves minute to minute — reading
+// it fresh every time was most of this worker's D1 row-read quota for no real benefit.
+let _reportScoresCache = { at: 0, map: new Map() };
 async function reportScores(env) {
+  if (Date.now() - _reportScoresCache.at < 120000) return _reportScoresCache.map;
   try {
     const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
     const { results } = await env.DB.prepare(
@@ -459,10 +464,12 @@ async function reportScores(env) {
     )
       .bind(since)
       .all();
-    return new Map(results.map((r) => [r.node, r]));
+    _reportScoresCache = { at: Date.now(), map: new Map(results.map((r) => [r.node, r])) };
   } catch {
-    return new Map();
+    // A DB hiccup (including a quota error) keeps serving the last good scores instead of ranking blind.
+    if (_reportScoresCache.map.size) _reportScoresCache = { ..._reportScoresCache, at: Date.now() };
   }
+  return _reportScoresCache.map;
 }
 
 async function nodeFingerprint(line) {
@@ -769,8 +776,22 @@ async function fetchOwnerSub(link, ctx) {
 }
 
 // All enabled owner configs (single configs first, then sub-link configs), deduped, as
-// { line, fp, item }. Throws on DB errors.
+// { line, fp, item }. Cached per isolate for 90s — the same D1-quota reasoning as [reportScores]; owner
+// items still reach users within the few minutes already documented, well inside that budget.
+let _ownerEntriesCache = { at: 0, list: null };
 async function ownerEntries(env, ctx) {
+  if (_ownerEntriesCache.list && Date.now() - _ownerEntriesCache.at < 90000) return _ownerEntriesCache.list;
+  try {
+    const list = await ownerEntriesUncached(env, ctx);
+    _ownerEntriesCache = { at: Date.now(), list };
+    return list;
+  } catch (e) {
+    if (_ownerEntriesCache.list) return _ownerEntriesCache.list; // stale beats none on a DB hiccup
+    throw e;
+  }
+}
+
+async function ownerEntriesUncached(env, ctx) {
   await ensureOwnerSchema(env);
   const { results } = await env.DB.prepare(
     'SELECT id, kind, value, always_show, due_at FROM owner_items WHERE enabled = 1 ORDER BY id'
