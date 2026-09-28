@@ -7,8 +7,9 @@
       "seen": "v2.1.0"
     },
     "psiphon": {
-      "applied": "e195abae8d95f035daac977e85e3518801617529",
+      "applied": "4c0ebb8c2aab2e6bd46cfbe0d75829b9fca3c69a",
       "attempts": {
+        "4c0ebb8c2aab2e6bd46cfbe0d75829b9fca3c69a": "2026-09-28T23:18:01+00:00",
         "e195abae8d95f035daac977e85e3518801617529": "2026-09-18T20:55:50+00:00"
       }
     },
