@@ -7,9 +7,10 @@
       "seen": "v2.1.0"
     },
     "psiphon": {
-      "applied": "4c0ebb8c2aab2e6bd46cfbe0d75829b9fca3c69a",
+      "applied": "d95d7f964c043a5a0ebd25cca801bc2753e14f74",
       "attempts": {
         "4c0ebb8c2aab2e6bd46cfbe0d75829b9fca3c69a": "2026-09-28T23:18:01+00:00",
+        "d95d7f964c043a5a0ebd25cca801bc2753e14f74": "2026-10-06T00:04:51+00:00",
         "e195abae8d95f035daac977e85e3518801617529": "2026-09-18T20:55:50+00:00"
       }
     },
