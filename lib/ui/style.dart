@@ -3,45 +3,46 @@ import 'package:flutter/material.dart';
 import '../core/engine.dart';
 import 'strings.dart';
 
-/// MolidoVPN design system: deep teal-black canvas / mint-white in light, teal accent,
-/// emerald when connected, amber while connecting, red for failures.
+/// MolidoVPN design system «فیروزه و شب»: night-navy canvas / cool-white in light, Persian turquoise
+/// (firoozeh) accent and connected state, saffron while connecting, pomegranate (anar) for failures,
+/// lapis (lajvard) for notices.
 /// [apply] is called whenever the theme changes and the app rebuilds.
 class Palette {
   static bool isDark = true;
   static bool reduceMotion = false;
 
   /// Card corner radius; buttons and pills use [pillRadius].
-  static const double cardRadius = 18;
-  static const double pillRadius = 12;
-  static const double bigRadius = 26;
+  static const double cardRadius = 20;
+  static const double pillRadius = 14;
+  static const double bigRadius = 28;
 
-  static Color bg = const Color(0xFF0B111C);
-  static Color surface = const Color(0x0BFFFFFF);
-  static Color raised = const Color(0xFF121A29);
-  static Color border = const Color(0x14FFFFFF);
-  static Color text = const Color(0xFFEEF2F8);
-  static Color muted = const Color(0xFF8A94A8);
-  static Color accent = const Color(0xFF34D399);
-  static Color accent2 = const Color(0xFF22D3EE);
-  static Color connected = const Color(0xFF34D399);
-  static Color connecting = const Color(0xFFFBBF24);
-  static Color danger = const Color(0xFFF87171);
-  static Color glow = const Color(0x5934D399);
+  static Color bg = const Color(0xFF0C1222);
+  static Color surface = const Color(0xFF141C30);
+  static Color raised = const Color(0xFF1C2640);
+  static Color border = const Color(0xFF26314F);
+  static Color text = const Color(0xFFEEF2FA);
+  static Color muted = const Color(0xFF9AA6C0);
+  static Color accent = const Color(0xFF2DD4BF);
+  static Color accent2 = const Color(0xFF5EE0CC);
+  static Color connected = const Color(0xFF2DD4BF);
+  static Color connecting = const Color(0xFFF4A93B);
+  static Color danger = const Color(0xFFE5484D);
+  static Color glow = const Color(0x592DD4BF);
 
   /// Android AppAppearance extras: tertiary text, upload accent, readable accent text, failure headline.
-  static Color faint = const Color(0xFF5B6478);
-  static Color violet = const Color(0xFF9B8CFF);
-  static Color accentText = const Color(0xFF34D399);
-  static Color errorText = const Color(0xFFFCA5A5);
+  static Color faint = const Color(0xFF66728F);
+  static Color violet = const Color(0xFF7088F2);
+  static Color accentText = const Color(0xFF5EE0CC);
+  static Color errorText = const Color(0xFFF2878A);
 
   /// Legacy name of the "connected / selected" color.
-  static Color amber = const Color(0xFF34D399);
-  static Color mapDot = const Color(0x3334D399);
+  static Color amber = const Color(0xFF2DD4BF);
+  static Color mapDot = const Color(0x332DD4BF);
   static Color fill = const Color(0x0BFFFFFF);
   static Color fillStrong = const Color(0x17FFFFFF);
-  static Color sheet = const Color(0xFF121A29);
-  static Color cardTop = const Color(0xFF121A29);
-  static Color cardBottom = const Color(0xFF121A29);
+  static Color sheet = const Color(0xFF141C30);
+  static Color cardTop = const Color(0xFF141C30);
+  static Color cardBottom = const Color(0xFF141C30);
   static Color shadow = const Color(0x00000000);
   static double auroraStrength = 0.0;
 
@@ -49,50 +50,51 @@ class Palette {
     Palette.reduceMotion = reduceMotion;
     isDark = brightness == Brightness.dark;
     if (isDark) {
-      bg = const Color(0xFF0B111C);
-      surface = const Color(0x0BFFFFFF);
-      raised = const Color(0xFF121A29);
-      border = const Color(0x14FFFFFF);
-      text = const Color(0xFFEEF2F8);
-      muted = const Color(0xFF8A94A8);
-      accent = const Color(0xFF34D399);
-      accent2 = const Color(0xFF22D3EE);
-      connected = const Color(0xFF34D399);
-      connecting = const Color(0xFFFBBF24);
-      danger = const Color(0xFFF87171);
-      glow = const Color(0x5934D399);
+      bg = const Color(0xFF0C1222);
+      surface = const Color(0xFF141C30);
+      raised = const Color(0xFF1C2640);
+      border = const Color(0xFF26314F);
+      text = const Color(0xFFEEF2FA);
+      muted = const Color(0xFF9AA6C0);
+      accent = const Color(0xFF2DD4BF);
+      accent2 = const Color(0xFF5EE0CC);
+      connected = const Color(0xFF2DD4BF);
+      connecting = const Color(0xFFF4A93B);
+      danger = const Color(0xFFE5484D);
+      glow = const Color(0x592DD4BF);
       fill = const Color(0x0BFFFFFF);
       fillStrong = const Color(0x17FFFFFF);
-      faint = const Color(0xFF5B6478);
-      violet = const Color(0xFF9B8CFF);
-      accentText = const Color(0xFF34D399);
-      errorText = const Color(0xFFFCA5A5);
+      faint = const Color(0xFF66728F);
+      violet = const Color(0xFF7088F2);
+      accentText = const Color(0xFF5EE0CC);
+      errorText = const Color(0xFFF2878A);
     } else {
-      bg = const Color(0xFFF3FAF8);
+      bg = const Color(0xFFF6F8FB);
       surface = const Color(0xFFFFFFFF);
-      raised = const Color(0xFFE6F4F0);
-      border = const Color(0xFFD3E7E1);
-      text = const Color(0xFF0B1F1B);
-      muted = const Color(0xFF4B6B64);
-      accent = const Color(0xFF0F9E8A);
-      accent2 = const Color(0xFF0891B2);
-      connected = const Color(0xFF059669);
-      connecting = const Color(0xFFB45309);
-      danger = const Color(0xFFDC2626);
-      glow = const Color(0x330F9E8A);
-      fill = const Color(0x0A0B1F1B);
-      fillStrong = const Color(0x140B1F1B);
-      faint = const Color(0xFF587A72);
-      violet = const Color(0xFF6B5BD6);
-      accentText = const Color(0xFF0B7A6B);
-      errorText = const Color(0xFFB91C1C);
+      raised = const Color(0xFFEEF2F7);
+      border = const Color(0xFFE2E8F0);
+      text = const Color(0xFF0F172A);
+      muted = const Color(0xFF5B6478);
+      accent = const Color(0xFF12A594);
+      accent2 = const Color(0xFF0B6E7A);
+      connected = const Color(0xFF0B8577);
+      connecting = const Color(0xFFD98B1E);
+      danger = const Color(0xFFE5484D);
+      glow = const Color(0x3312A594);
+      fill = const Color(0x0A0F172A);
+      fillStrong = const Color(0x140F172A);
+      faint = const Color(0xFF94A0B8);
+      violet = const Color(0xFF4F6BED);
+      accentText = const Color(0xFF0B8577);
+      errorText = const Color(0xFFC9363B);
     }
     amber = connected;
     mapDot = accent.withValues(alpha: 0.2);
     sheet = surface;
     cardTop = surface;
     cardBottom = surface;
-    shadow = const Color(0x00000000);
+    // Soft shadow only in light; dark relies on the #26314F hairline instead.
+    shadow = isDark ? const Color(0x00000000) : const Color(0x140F172A);
     auroraStrength = 0.0;
   }
 
@@ -105,6 +107,9 @@ class Palette {
 
   /// Numeric face for stats/ping/speed digits (bundled asset, no network dependency).
   static const String numericFamily = 'Space Grotesk';
+
+  /// Brand gradient (firoozeh 400 → 700), used by the connected button and brand marks.
+  static const List<Color> brandGradient = [Color(0xFF2DD4BF), Color(0xFF0B6E7A)];
 
   /// Shown only after a reported connection failure.
   static Color get failure => danger;

@@ -87,7 +87,8 @@ class _AuroraPainter extends CustomPainter {
       );
     }
 
-    if (dark) {
+    // «فیروزه و شب» uses a calm solid canvas: particles only when an aurora strength is set.
+    if (dark && strength > 0) {
       final paint = Paint();
       for (final p in _particles) {
         final y = (p.y - t * (0.35 + p.phase * 0.5)) % 1.0;

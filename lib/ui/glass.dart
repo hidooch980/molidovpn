@@ -43,9 +43,8 @@ class Glass extends StatelessWidget {
               colors: [Palette.cardTop, Palette.cardBottom],
             ),
             border: Border.all(color: borderColor ?? Palette.border, width: borderColor != null ? 1.5 : 1),
-            boxShadow: Palette.isDark
-                ? [const BoxShadow(color: Color(0x59000000), blurRadius: 28, offset: Offset(0, 14))]
-                : [BoxShadow(color: Palette.shadow, blurRadius: 22, offset: const Offset(0, 8))],
+            // Soft shadow in light only; in dark the hairline border separates the card.
+            boxShadow: Palette.isDark ? null : [BoxShadow(color: Palette.shadow, blurRadius: 22, offset: const Offset(0, 8))],
           ),
           child: Padding(padding: padding, child: child),
         ),

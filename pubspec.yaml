@@ -67,7 +67,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#121212"
+  adaptive_icon_background: "#12A594"
   adaptive_icon_foreground: "assets/icon/foreground.png"
   windows:
     generate: true
@@ -105,6 +105,17 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
   fonts:
+    - family: Vazirmatn
+      fonts:
+        - asset: fonts/Vazirmatn-Regular.ttf
+        - asset: fonts/Vazirmatn-Medium.ttf
+          weight: 500
+        - asset: fonts/Vazirmatn-Bold.ttf
+          weight: 700
+        - asset: fonts/Vazirmatn-ExtraBold.ttf
+          weight: 800
+        - asset: fonts/Vazirmatn-Black.ttf
+          weight: 900
     - family: Space Grotesk
       fonts:
         - asset: fonts/SpaceGrotesk-Regular.ttf

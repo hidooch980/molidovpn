@@ -106,23 +106,23 @@ class _ConnectOrbState extends State<ConnectOrb> with TickerProviderStateMixin {
                     height: 158,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        center: const Alignment(0, -0.24),
-                        radius: 0.9,
-                        colors: on
-                            ? [c[0].withValues(alpha: 0.30), Palette.surface]
-                            : [Palette.accent.withValues(alpha: 0.16), Palette.surface],
-                        stops: const [0, 0.7],
-                      ),
-                      border: Border.all(color: const Color(0x24FFFFFF), width: 1),
+                      // «فیروزه و شب»: plain surface when idle, brand gradient (turquoise 400 → 700) when connected.
+                      color: on ? null : Palette.surface,
+                      gradient: on
+                          ? const LinearGradient(
+                              begin: Alignment.topRight,
+                              end: Alignment.bottomLeft,
+                              colors: Palette.brandGradient,
+                            )
+                          : null,
+                      border: Border.all(color: on ? Colors.transparent : Palette.border, width: 1.5),
                       boxShadow: [
                         BoxShadow(
-                          color: c[0].withValues(alpha: on ? 0.35 : (Palette.isDark ? 0.22 : 0.16)),
-                          blurRadius: 46,
-                          offset: const Offset(0, 20),
-                          spreadRadius: -14,
+                          color: c[0].withValues(alpha: on ? 0.40 : (Palette.isDark ? 0.0 : 0.10)),
+                          blurRadius: on ? 52 : 30,
+                          offset: Offset(0, on ? 18 : 10),
+                          spreadRadius: -12,
                         ),
-                        const BoxShadow(color: Color(0x0FFFFFFF), blurRadius: 0, spreadRadius: 0, offset: Offset(0, 1)),
                       ],
                     ),
                     child: busy
@@ -133,7 +133,7 @@ class _ConnectOrbState extends State<ConnectOrb> with TickerProviderStateMixin {
                         : Icon(
                             Icons.power_settings_new_rounded,
                             size: 76,
-                            color: on ? Colors.white : Color.lerp(Palette.text, c[0], 0.2),
+                            color: on ? Colors.white : Palette.accent,
                           ),
                   ),
                 ],

@@ -281,7 +281,8 @@ class _NoticeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = notice.warning ? Colors.amber : Palette.accent;
+    // Saffron for warnings, lapis (lajvard) for info notices.
+    final accent = notice.warning ? Palette.connecting : Palette.violet;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Directionality(
@@ -289,9 +290,9 @@ class _NoticeBanner extends StatelessWidget {
         child: Container(
           padding: const EdgeInsetsDirectional.fromSTEB(14, 8, 4, 8),
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: accent.withValues(alpha: 0.45)),
+            color: accent.withValues(alpha: Palette.isDark ? 0.16 : 0.10),
+            borderRadius: BorderRadius.circular(Palette.cardRadius),
+            border: Border.all(color: accent.withValues(alpha: 0.40)),
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Padding(
