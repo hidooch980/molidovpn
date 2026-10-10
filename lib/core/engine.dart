@@ -145,6 +145,18 @@ abstract class VpnEngine {
 }
 
 /// Runs [task] for 0..count-1 with at most [concurrency] in flight.
+/// Order after a quick parallel probe: servers that answered (fastest first), then the unknown ones
+/// (not probed, or probe stopped early = 0) in their original order, then the failed ones (-1).
+/// Nothing is dropped: a failed quick probe only moves a server to the back.
+List<T> quickProbeOrder<T>(List<T> items, Map<T, int> times) {
+  final good = [for (final i in items) if ((times[i] ?? 0) > 0) i]..sort((a, b) => times[a]!.compareTo(times[b]!));
+  return [
+    ...good,
+    for (final i in items) if ((times[i] ?? 0) == 0) i,
+    for (final i in items) if ((times[i] ?? 0) < 0) i,
+  ];
+}
+
 Future<List<int>> runPool(int count, int concurrency, Future<int> Function(int index) task,
     {void Function(int done)? onProgress}) async {
   final results = List<int>.filled(count, -1);

@@ -168,14 +168,65 @@ Json _ss(String uri) {
   return {'type': 'shadowsocks', 'server': p.host, 'server_port': port, 'method': method, 'password': password};
 }
 
+/// Port-hopping spec ("443", "20000-30000", "443,20000-30000") -> sing-box `server_ports` ("a:b"), or null
+/// when [spec] is not a valid list. A single port becomes "p:p" (sing-box rejects a bare "443").
+List<String>? hy2PortRanges(String spec) {
+  final out = <String>[];
+  for (final part in spec.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty)) {
+    final m = RegExp(r'^(\d{1,5})(?:[-:](\d{1,5}))?$').firstMatch(part);
+    if (m == null) return null;
+    final a = int.parse(m[1]!), b = int.parse(m[2] ?? m[1]!);
+    if (a < 1 || b > 65535 || a > b) return null;
+    if (!out.contains('$a:$b')) out.add('$a:$b');
+  }
+  return out.isEmpty ? null : out;
+}
+
+/// Default sing-box hop interval for Hysteria2 links that carry a port range.
+const hy2HopInterval = '30s';
+
 Json _hysteria2(String uri) {
-  final u = Uri.parse(uri.replaceFirst('hy2://', 'hysteria2://'));
+  var link = uri.replaceFirst('hy2://', 'hysteria2://');
+  // Multi-port authority (official Hysteria2 links: host:20000-30000 or host:443,20000-30000): Uri.parse
+  // rejects it, so keep the first port for parsing and remember the whole list for port hopping.
+  final ranges = <String>[];
+  final auth = RegExp(r'^(hysteria2://[^/?#]*@(?:\[[^\]]*\]|[^:/?#@]+)):([0-9][0-9,\-]*[0-9])(?=[/?#]|$)').firstMatch(link);
+  if (auth != null && RegExp(r'[,\-]').hasMatch(auth[2]!)) {
+    final r = hy2PortRanges(auth[2]!);
+    if (r == null) throw const FormatException('bad hysteria2 ports');
+    ranges.addAll(r);
+    link = '${auth[1]}:${r.first.split(':').first}${link.substring(auth.end)}';
+  }
+  final u = Uri.parse(link);
   final port = u.hasPort ? u.port : null;
   final user = Uri.decodeComponent(u.userInfo);
   if (!_validEndpoint(u.host, port) || user.isEmpty) throw const FormatException('bad hysteria2');
   final q = u.queryParameters;
+  // v2rayN / Hiddify style hopping range in the query (mport=20000-30000); only when the link has one.
+  for (final key in const ['mport', 'server_ports']) {
+    final spec = q[key];
+    if (spec == null || spec.trim().isEmpty) continue;
+    final r = hy2PortRanges(spec);
+    if (r != null) ranges.addAll(r.where((x) => !ranges.contains(x)));
+  }
+  bool covers(String r) {
+    final ab = r.split(':').map(int.parse).toList();
+    return ab[0] <= port! && port <= ab[1];
+  }
+
+  if (ranges.isNotEmpty && !ranges.any(covers)) {
+    ranges.insert(0, '$port:$port'); // the link's own port keeps working when the server only listens there
+  }
+  final hop = q['hop_interval'] ?? q['hopInterval'];
+  final hopSeconds = hop == null ? null : int.tryParse(hop.replaceAll(RegExp(r's$'), ''));
   return {
-    'type': 'hysteria2', 'server': u.host, 'server_port': port, 'password': user,
+    'type': 'hysteria2', 'server': u.host,
+    // sing-box: server_ports conflicts with server_port.
+    if (ranges.isEmpty) 'server_port': port else ...{
+      'server_ports': ranges,
+      'hop_interval': hopSeconds != null && hopSeconds >= 5 && hopSeconds <= 600 ? '${hopSeconds}s' : hy2HopInterval,
+    },
+    'password': user,
     'tls': {'enabled': true, 'server_name': q['sni'] ?? u.host, 'insecure': _truthy(q['insecure'])},
     if (q['obfs'] == 'salamander') 'obfs': {'type': 'salamander', 'password': q['obfs-password'] ?? ''},
   };

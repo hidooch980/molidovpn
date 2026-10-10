@@ -280,10 +280,13 @@ class WindowsEngine implements VpnEngine {
 
   /// "Test servers from my internet": real HTTP 204 probes, 12 at a time (no WARP hop).
   Future<List<int>> probeAll(List<Server> servers, EngineOptions options,
-          {void Function(int done)? onProgress, bool Function()? isCancelled, int concurrency = 12}) async {
+          {void Function(int done)? onProgress,
+          bool Function()? isCancelled,
+          int concurrency = 12,
+          bool stopOnFirstGood = false}) async {
     await _xrayFor(servers);
     return _core.probeAll(servers, options.forPing,
-        onProgress: onProgress, isCancelled: isCancelled, concurrency: concurrency);
+        onProgress: onProgress, isCancelled: isCancelled, concurrency: concurrency, stopOnFirstGood: stopOnFirstGood);
   }
 
   /// Background re-ping while idle: few parallel tests so the PC and UI stay responsive.
