@@ -9,4 +9,4 @@ database_name = "molido-reports"
 database_id = "07132224-99e6-4446-b48d-743258b426e8"
 
 [triggers]
-crons = ["17 3 * * *"]
+crons = ["*/15 * * * *"]

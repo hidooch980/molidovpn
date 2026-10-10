@@ -56,3 +56,11 @@ CREATE TABLE IF NOT EXISTS cf_ips (
   updated INTEGER NOT NULL,
   PRIMARY KEY (op, ip)
 );
+
+-- Anonymous "currently connected" heartbeats (no IPs); rows older than 10 minutes pruned every 15 minutes.
+CREATE TABLE IF NOT EXISTS active_sessions (
+  session_id TEXT PRIMARY KEY,
+  op TEXT,
+  mode TEXT,
+  last_seen INTEGER NOT NULL
+);
