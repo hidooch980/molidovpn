@@ -4,22 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>وضعیت MolidoVPN</title>
-<meta name="theme-color" content="#0A0F0C">
-<link rel="icon" href="logo.png">
+<meta name="theme-color" content="#0C1222">
+<link rel="icon" href="logo-mark.svg" type="image/svg+xml">
+<link rel="alternate icon" href="logo.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap">
 <style>
-:root{ --bg:#EEF4F0; --surface:#FFFFFF; --ink:#111A1F; --muted:#4E6069; --line:#E0E6EA;
-       --good:#17A05E; --warn:#A96A08; --bad:#E04257; }
+:root{ --bg:#F6F8FB; --surface:#FFFFFF; --ink:#0F172A; --muted:#5B6478; --line:#E2E8F0;
+       --good:#12A594; --warn:#D98B1E; --bad:#E5484D; --shadow:0 1px 2px rgba(15,23,42,.06),0 2px 8px rgba(15,23,42,.05); }
 @media (prefers-color-scheme: dark){
-  :root{ --bg:#0A0F0C; --surface:#111814; --ink:#E9F5EE; --muted:#9CB3A6; --line:#1F2B24;
-         --good:#6EE7B7; --warn:#FFC46B; --bad:#FF6B7F; }
+  :root{ --bg:#0C1222; --surface:#141C30; --ink:#EEF2FA; --muted:#9AA6C0; --line:#26314F;
+         --good:#2DD4BF; --warn:#F4A93B; --bad:#E5484D; --shadow:none; }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,system-ui,sans-serif;line-height:1.8}
 .wrap{max-width:560px;margin:0 auto;padding:28px 18px 40px}
-h1{margin:0;font-size:24px;font-weight:900}
+h1{margin:0;font-size:24px;font-weight:900;display:flex;align-items:center;gap:10px}
+h1 img{width:26px;height:auto}
 .sum{margin:4px 0 18px;color:var(--muted);font-size:14px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 18px;box-shadow:var(--shadow)}
 .item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
 .item:last-child{border-bottom:0}
 .dot{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none}
@@ -32,7 +34,7 @@ footer{margin-top:18px;text-align:center;font-size:12.5px;color:var(--muted)}
 </head>
 <body>
 <div class="wrap">
-  <h1>وضعیت سرویس</h1>
+  <h1><img src="logo-mark.svg" alt="">وضعیت سرویس</h1>
   <p class="sum" id="sum">در حال بررسی…</p>
   <div class="card" id="list"></div>
   <footer><a href="./">بازگشت به صفحهٔ نصب</a> · هر ۵ دقیقه خودکار تازه می‌شود</footer>

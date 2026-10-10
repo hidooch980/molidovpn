@@ -18,7 +18,7 @@ class FlagBadge extends StatelessWidget {
     final code = this.code;
     if (code == null) {
       return _circle(
-        const [Color(0xFF8B5CF6), Color(0xFF06B6D4)],
+        Palette.brandGradient,
         Icon(Icons.auto_awesome_rounded, color: Colors.white, size: size * 0.5),
       );
     }
@@ -36,7 +36,7 @@ class FlagBadge extends StatelessWidget {
     }
     if (code == 'ZZ') {
       return _circle(
-        const [Color(0xFF14B8A6), Color(0xFF6366F1)],
+        const [Color(0xFF12A594), Color(0xFF4F6BED)],
         Icon(Icons.bookmark_added_rounded, color: Colors.white, size: size * 0.5),
       );
     }

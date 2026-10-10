@@ -116,7 +116,7 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
               useMaterial3: true,
               colorSchemeSeed: Palette.accent,
               scaffoldBackgroundColor: Palette.bg,
-              fontFamily: Platform.isWindows ? 'Segoe UI' : null,
+              fontFamily: 'Vazirmatn',
             ),
             builder: (context, child) => Directionality(textDirection: L10n.direction, child: child!),
             home: ListenableBuilder(
