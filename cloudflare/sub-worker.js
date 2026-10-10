@@ -271,7 +271,7 @@ async function ensureActiveSchema(env) {
   activeSchemaReady = true;
 }
 const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
-const ONLINE_WINDOW_S = 90;
+const ONLINE_WINDOW_S = 300; // Windows heartbeat: every 3 min + up to 30 s jitter
 const ACTIVE_PRUNE_S = 600;
 
 async function heartbeatRoute(request, env, ctx) {
