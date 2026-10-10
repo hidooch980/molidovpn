@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -246,7 +247,8 @@ class VpnController extends ChangeNotifier {
     Timer.periodic(const Duration(seconds: 30), (_) => _scheduleTick());
     if (Account.configured) Timer.periodic(const Duration(minutes: 1), (_) => _reportUsage());
     // Opt-in anonymous "still connected" ping for the admin panel's live count; no IPs, same opt-in as reports.
-    Timer.periodic(const Duration(seconds: 50), (_) => _heartbeatTick());
+    // Checked every 30 s, sent every ~3 min (+ jitter) and right after a new connection.
+    Timer.periodic(const Duration(seconds: 30), (_) => _heartbeatTick());
   }
 
   /// Shared quality score (0..1) per server uri from the optional /scores endpoint; empty when unavailable.
@@ -276,8 +278,24 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  /// Heartbeat period while connected (was 50 s): far fewer D1 writes on the worker. The worker's online
+  /// window must cover the longest gap (period + jitter + the 30 s check tick = 4 min).
+  static const heartbeatEvery = Duration(minutes: 3);
+  static const heartbeatJitterSeconds = 30;
+
+  DateTime? _lastHeartbeat;
+  Duration _heartbeatGap = heartbeatEvery;
+
   void _heartbeatTick() {
-    if (!settings.anonymousReports || state != VpnState.connected) return;
+    if (!settings.anonymousReports || state != VpnState.connected) {
+      _lastHeartbeat = null; // next connection is announced at the first tick
+      return;
+    }
+    final now = DateTime.now();
+    final last = _lastHeartbeat;
+    if (last != null && now.difference(last) < _heartbeatGap) return;
+    _lastHeartbeat = now;
+    _heartbeatGap = heartbeatEvery + Duration(seconds: math.Random().nextInt(heartbeatJitterSeconds + 1));
     final server = current;
     unawaited(ServerReports.heartbeat(proxy: engine.httpProxy, mode: server != null ? _routeOf(server) : null));
   }
@@ -1036,6 +1054,38 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  /// Servers tested at once before the direct attempts, and the per-server time limit of that test.
+  static const _quickProbeCount = 4;
+  static const _quickProbeTimeout = Duration(seconds: 4);
+
+  /// Windows: one throwaway sing-box probes the first few direct candidates in parallel (HTTP 204, ~4 s);
+  /// the first that answers goes first, failed ones move to the back. Instead of waiting up to
+  /// [_directBudget] per dead server in turn. Exit checks still run on the real connection afterwards.
+  Future<List<Server>> _quickProbe(List<Server> tried, EngineOptions options) async {
+    final eng = engine;
+    if (eng is! WindowsEngine) return tried;
+    final probe = tried
+        .where((s) => !FreeRoutes.isFree(s) && !WinFreeRoutes.isChain(s) && !_needsWarp(s))
+        .take(_quickProbeCount)
+        .toList();
+    if (probe.length < 2) return tried;
+    phase = 'آزمایش هم‌زمان ${probe.length} سرور…';
+    notifyListeners();
+    try {
+      final result = await eng
+          .probeAll(probe, _optionsWith(timeout: _quickProbeTimeout),
+              isCancelled: () => _cancel, concurrency: probe.length, stopOnFirstGood: true)
+          .timeout(_quickProbeTimeout + const Duration(seconds: 6));
+      final times = {for (var i = 0; i < probe.length; i++) probe[i]: result[i]};
+      final ordered = quickProbeOrder(tried, times);
+      AppLog.add('connect: quick probe ${[for (final s in probe) '${s.displayName}=${times[s]}'].join(' ')}');
+      return ordered;
+    } catch (e) {
+      AppLog.add('connect: quick probe skipped ($e)');
+      return tried;
+    }
+  }
+
   void _checkCancel() {
     if (_cancel) throw _Cancelled();
   }
@@ -1633,7 +1683,8 @@ class VpnController extends ChangeNotifier {
 
       {
         // Direct first (like v2rayNG): no ping round, try servers in order until one really carries traffic.
-        final tried = pool.take(_directAttempts).toList();
+        var tried = pool.take(_directAttempts).toList();
+        tried = await _quickProbe(tried, options);
         for (final server in tried) {
           _checkCancel();
           phase = 'اتصال مستقیم به ${server.displayName}';

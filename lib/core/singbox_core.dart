@@ -68,12 +68,55 @@ class SingboxCore {
     }, onError: (_) {});
   }
 
-  static Json tagged(Json outbound, String tag, EngineOptions o) {
+  /// QUIC outbounds: sing-box supports no custom TLS (fragment / record_fragment) over QUIC.
+  static const _quicTypes = {'hysteria2', 'tuic'};
+
+  /// Wait between ClientHello segments when sing-box cannot measure it (Windows without admin); the
+  /// sing-box default of 500 ms per segment makes every handshake seconds slower.
+  static const fragmentFallbackDelay = '100ms';
+
+  /// Master switch for sing-box multiplex (sing-mux). Off: sing-mux is a sing-box-only wire format and
+  /// Xray-core servers (most public VLESS/VMess/Trojan nodes) do not accept it, so it would break them.
+  /// Turn on only for servers known to run a sing-box inbound with multiplex enabled.
+  static const muxEnabled = false;
+
+  /// sing-box `multiplex` block used when [muxEnabled] (or a caller) asks for it.
+  static const muxOptions = <String, dynamic>{
+    'enabled': true,
+    'protocol': 'h2mux',
+    'max_connections': 4,
+    'min_streams': 4,
+    'padding': true,
+  };
+
+  /// VLESS/VMess/Trojan over plain TCP, WebSocket or gRPC. Never Reality-Vision (flow), Hysteria2/TUIC
+  /// (QUIC), XHTTP (local Xray bridge, a socks outbound) or other transports.
+  static bool muxCompatible(Json outbound) {
+    if (!const {'vless', 'vmess', 'trojan'}.contains(outbound['type'])) return false;
+    final flow = outbound['flow'];
+    if (flow is String && flow.isNotEmpty) return false;
+    final transport = outbound['transport'];
+    final kind = transport is Map ? transport['type'] : null;
+    return kind == null || kind == 'ws' || kind == 'grpc';
+  }
+
+  static Json tagged(Json outbound, String tag, EngineOptions o, {bool mux = muxEnabled}) {
     final result = {...outbound, 'tag': tag};
     final tls = outbound['tls'];
-    if (o.fragment && tls is Map && tls['enabled'] == true && tls['reality'] == null) {
-      result['tls'] = {...tls, 'record_fragment': true};
+    if (o.fragment &&
+        tls is Map &&
+        tls['enabled'] == true &&
+        tls['reality'] == null &&
+        !_quicTypes.contains(outbound['type'])) {
+      // record_fragment: several TLS records; fragment (sing-box 1.12+): ClientHello split over TCP segments.
+      result['tls'] = {
+        ...tls,
+        'record_fragment': true,
+        'fragment': true,
+        'fragment_fallback_delay': fragmentFallbackDelay,
+      };
     }
+    if (mux && outbound['multiplex'] == null && muxCompatible(outbound)) result['multiplex'] = {...muxOptions};
     return result;
   }
 
@@ -199,8 +242,12 @@ class SingboxCore {
   /// Real HTTP probe of many servers: one throwaway sing-box with a local mixed inbound per server (routed to
   /// that server only); each probe fetches [AppSettings.defaultTestUrl] through its inbound and only an HTTP 204
   /// counts. Returns the time in ms per server (same order), -1 when it failed or the config is invalid.
+  /// [stopOnFirstGood]: the first HTTP 204 ends every other probe at once; those report 0 (= unknown).
   Future<List<int>> probeAll(List<Server> servers, EngineOptions options,
-      {void Function(int done)? onProgress, bool Function()? isCancelled, int concurrency = 12}) async {
+      {void Function(int done)? onProgress,
+      bool Function()? isCancelled,
+      int concurrency = 12,
+      bool stopOnFirstGood = false}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
       for (var i = 0; i < servers.length; i++) tagged(outbound(servers[i]) ?? const {}, 'p$i', options),
@@ -239,19 +286,32 @@ class SingboxCore {
         AppLog.add('$label: probe core API did not start');
         return results;
       }
+      final inFlight = <HttpClient>{};
+      var gotGood = false;
       final times = await runPool(valid.length, concurrency, (k) async {
+        if (stopOnFirstGood && gotGood) return 0;
         if (isCancelled?.call() ?? false) return -1;
         final client = HttpClient()
           ..findProxy = ((_) => 'PROXY 127.0.0.1:${ports[k]}')
           ..connectionTimeout = options.timeout;
+        inFlight.add(client);
         final watch = Stopwatch()..start();
         try {
           final res = await (await client.getUrl(Uri.parse(AppSettings.defaultTestUrl))).close().timeout(options.timeout);
           await res.drain<void>();
-          return res.statusCode == 204 ? math.max(1, watch.elapsedMilliseconds) : -1;
+          if (res.statusCode != 204) return -1;
+          if (stopOnFirstGood && gotGood) return 0;
+          gotGood = true;
+          if (stopOnFirstGood) {
+            for (final other in inFlight) {
+              if (!identical(other, client)) other.close(force: true);
+            }
+          }
+          return math.max(1, watch.elapsedMilliseconds);
         } catch (_) {
-          return -1;
+          return stopOnFirstGood && gotGood ? 0 : -1;
         } finally {
+          inFlight.remove(client);
           client.close(force: true);
         }
       }, onProgress: (n) => onProgress?.call(skipped + n));
@@ -390,7 +450,8 @@ class SingboxCore {
                 if (warpMember != null) multiPathWarpTag,
               ],
               'url': AppSettings.defaultTestUrl,
-              'interval': '30s',
+              // 15 s: a dead member is noticed about twice as fast; tolerance keeps it from flapping.
+              'interval': multiPathInterval,
               'tolerance': 100,
               'idle_timeout': '30m',
               'interrupt_exist_connections': true,
@@ -518,6 +579,9 @@ class SingboxCore {
     _logStderr(proc, 'core');
     return proc;
   }
+
+  /// Test interval of the multi-path urltest group.
+  static const multiPathInterval = '15s';
 
   /// Tag of the direct WARP member of the multi-path urltest group.
   static const multiPathWarpTag = 'proxy-warp';
