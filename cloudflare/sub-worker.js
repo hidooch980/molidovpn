@@ -1237,25 +1237,31 @@ function adminPage(env) {
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>پنل مدیریت MolidoVPN</title>
 <style>
-:root{--bg:#f4f6fb;--card:#fff;--text:#1b2030;--mute:#6b7285;--line:#dde2ee;--accent:#3b5bdb;--danger:#d6336c;--ok:#2b8a3e}
-@media (prefers-color-scheme:dark){:root{--bg:#10131b;--card:#191d29;--text:#e8ebf3;--mute:#9aa1b5;--line:#2a3042;--accent:#748ffc;--danger:#f06595;--ok:#69db7c}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Tahoma,"Segoe UI",system-ui,sans-serif;padding:16px}
-main{max-width:720px;margin:0 auto}h1{font-size:20px;margin:0 0 12px}h2{font-size:16px;margin:0 0 8px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-input,textarea,select{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px;margin:4px 0 10px}
+:root{--bg:#F6F8FB;--card:#fff;--raised:#EEF2F7;--text:#0F172A;--mute:#5B6478;--line:#E2E8F0;--accent:#12A594;--on-accent:#fff;--danger:#E5484D;--ok:#0B8577;--warn:#D98B1E;--lajvard:#4F6BED;--shadow:0 1px 2px rgba(15,23,42,.06),0 2px 8px rgba(15,23,42,.05)}
+@media (prefers-color-scheme:dark){:root{--bg:#0C1222;--card:#141C30;--raised:#1C2640;--text:#EEF2FA;--mute:#9AA6C0;--line:#26314F;--accent:#2DD4BF;--on-accent:#06201D;--danger:#E5484D;--ok:#2DD4BF;--warn:#F4A93B;--lajvard:#7088F2;--shadow:none}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;padding:20px 16px 40px}
+main{max-width:760px;margin:0 auto}h1{font-size:22px;font-weight:900;margin:4px 0 18px;display:flex;align-items:center;gap:10px}h1 svg{width:28px;height:32px;flex:none}h2{font-size:16px;font-weight:800;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+label{font-size:14px;font-weight:500}
+input,textarea,select{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:4px 0 12px}
+input:focus,textarea:focus,select:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+input[type=checkbox]{accent-color:var(--accent)}
 textarea{min-height:120px;direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:13px}
-button{font:inherit;border:0;border-radius:8px;padding:8px 14px;background:var(--accent);color:#fff;cursor:pointer}
-button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}button.danger{background:var(--danger)}
+button{font:inherit;font-weight:700;border:1px solid transparent;border-radius:14px;padding:9px 16px;background:var(--accent);color:var(--on-accent);cursor:pointer}
+button:hover{filter:brightness(1.05)}button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.ghost{background:var(--card);color:var(--text);border-color:var(--line)}button.ghost:hover{border-color:var(--accent);filter:none}
+button.danger{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.mute{color:var(--mute);font-size:13px}
-.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border-top:0}
-.val{direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all;margin:4px 0}
-.badge{font-size:12px;border-radius:6px;padding:1px 8px;border:1px solid var(--line)}.on{color:var(--ok)}.off{color:var(--danger)}
-table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}th,td{text-align:right;padding:5px 4px;border-top:1px solid var(--line);vertical-align:middle}
-.bar{height:8px;border-radius:4px;background:var(--line);min-width:60px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.item{border-top:1px solid var(--line);padding:12px 0}.item:first-child{border-top:0}
+.val{direction:ltr;text-align:left;font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all;margin:6px 0;background:var(--raised);border-radius:10px;padding:6px 10px}
+.badge{font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;background:var(--raised);border:1px solid var(--line)}.on{color:var(--ok)}.off{color:var(--danger)}
+.badge.on{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:transparent}.badge.off{background:color-mix(in srgb,var(--danger) 14%,transparent);border-color:transparent}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}th{color:var(--mute);font-weight:500;font-size:12px}th,td{text-align:right;padding:7px 6px;border-top:1px solid var(--line);vertical-align:middle}
+.bar{height:8px;border-radius:99px;background:var(--raised);min-width:60px;overflow:hidden}.bar>i{display:block;height:100%;background:linear-gradient(270deg,#2DD4BF,#0B8577);border-radius:99px}
 .tbl{overflow-x:auto}
-#msg{min-height:1.4em}code{direction:ltr;display:inline-block;background:var(--bg);padding:2px 6px;border-radius:6px}
+#msg{min-height:1.4em}code{direction:ltr;display:inline-block;background:var(--raised);padding:2px 6px;border-radius:8px}
 </style></head><body><main>
-<h1>پنل مدیریت MolidoVPN</h1>
+<h1><svg viewBox="100 90 312 350" aria-hidden="true"><defs><linearGradient id="lg" x1="0.85" y1="0.05" x2="0.15" y2="0.95"><stop offset="0" stop-color="#2DD4BF"/><stop offset="1" stop-color="#0B6E7A"/></linearGradient><mask id="lm"><rect width="512" height="512" fill="#fff"/><path d="M204 364L204 274C204 240 234 226 249 198Q256 184 263 198C278 226 308 240 308 274L308 364Z" fill="#000"/></mask></defs><path d="M256 100C300 124 350 138 396 140L396 252C396 340 338 398 256 428C174 398 116 340 116 252L116 140C162 138 212 124 256 100Z" fill="url(#lg)" mask="url(#lm)"/><circle cx="256" cy="304" r="18" fill="#12A594"/></svg>پنل مدیریت MolidoVPN</h1>
 ${
   keySet
     ? ''
