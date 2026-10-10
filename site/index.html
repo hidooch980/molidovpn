@@ -5,71 +5,130 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MolidoVPN</title>
 <meta name="description" content="MolidoVPN — اینترنت آزاد، رایگان و با یک دکمه. برای اندروید، ویندوز و آیفون">
-<meta name="theme-color" content="#F3FAF8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#07110F" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="logo.png">
+<meta name="theme-color" content="#F6F8FB" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C1222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="logo-mark.svg" type="image/svg+xml">
+<link rel="alternate icon" href="logo.png">
 <link rel="apple-touch-icon" href="logo.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800;900&display=swap">
 <style>
+/* «فیروزه و شب» design system */
 :root{
-  --bg:#F3FAF8; --surface:#FFFFFF; --raised:#E6F4F0; --line:#D3E7E1; --ink:#0B1F1B; --muted:#4B6B64;
-  --accent:#0F9E8A; --on:#FFFFFF; --warn:#8A5A00;
+  --firoozeh-50:#E8FAF7; --firoozeh-100:#C6F2EA; --firoozeh-300:#5EE0CC; --firoozeh-400:#2DD4BF;
+  --firoozeh-500:#12A594; --firoozeh-600:#0B8577; --firoozeh-700:#0B6E7A;
+  --saffron:#F4A93B; --anar:#E5484D; --lajvard:#4F6BED;
+  --bg:#F6F8FB; --surface:#FFFFFF; --raised:#EEF2F7; --line:#E2E8F0; --ink:#0F172A; --muted:#5B6478; --faint:#94A0B8;
+  --accent:#12A594; --accent-ink:#0B8577; --on:#FFFFFF; --warn:#9A5B00; --pill-bg:var(--firoozeh-50);
+  --grad:linear-gradient(225deg,#2DD4BF 0%,#0B6E7A 100%);
+  --shadow-1:0 1px 2px rgba(15,23,42,.06),0 2px 8px rgba(15,23,42,.05);
+  --shadow-2:0 8px 30px rgba(15,23,42,.10);
+  --r-md:14px; --r-lg:20px; --r-xl:28px;
 }
 @media (prefers-color-scheme: dark){
-  :root{ --bg:#07110F; --surface:#0E1C19; --raised:#142824; --line:#1C3530; --ink:#EAF7F3; --muted:#8FB3AA;
-         --accent:#2DD4BF; --on:#07110F; --warn:#FFD48A; }
+  :root{ --bg:#0C1222; --surface:#141C30; --raised:#1C2640; --line:#26314F; --ink:#EEF2FA; --muted:#9AA6C0; --faint:#66728F;
+         --accent:#2DD4BF; --accent-ink:#5EE0CC; --on:#06201D; --warn:#F4C27A; --pill-bg:rgba(45,212,191,.12);
+         --shadow-1:0 1px 2px rgba(0,0,0,.3); --shadow-2:0 10px 40px rgba(0,0,0,.45); }
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-.subbtns{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px}
-.support{margin:18px 0 0;padding:14px 16px;background:var(--raised);border-radius:14px;text-align:center;font-size:15px}
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,system-ui,sans-serif;line-height:1.9}
-.wrap{max-width:560px;margin:0 auto;padding:40px 20px calc(48px + env(safe-area-inset-bottom))}
-a{color:var(--accent)}
-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
-header img{width:96px;height:96px;border-radius:26px}
-h1{margin:10px 0 0;font-size:30px;font-weight:900}
-.tag{margin:0 0 28px;color:var(--muted);font-size:17px}
-h2{font-size:21px;margin:56px 0 16px;text-align:center}
-h3{font-size:17px;margin:0}
-.btn{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border:0;cursor:pointer;
-     font:inherit;font-weight:800;font-size:18px;border-radius:16px;min-height:56px;padding:10px 18px;width:100%;text-align:center}
-.btn.primary{background:var(--accent);color:var(--on)}
-.btn.outline{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
-.btn.sm{font-size:14.5px;min-height:44px;border-radius:12px;padding:8px 12px}
-.hero-actions{width:100%;display:flex;flex-direction:column;gap:12px}
-.linkbtn{background:none;border:0;font:inherit;font-size:14.5px;color:var(--accent);cursor:pointer;text-decoration:underline;padding:6px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Vazirmatn,Tahoma,system-ui,sans-serif;line-height:1.7}
+a{color:var(--accent-ink)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px calc(40px + env(safe-area-inset-bottom))}
+.narrow{max-width:760px;margin-inline:auto}
+
+/* nav */
+.nav{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:72px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:20px;color:var(--ink);text-decoration:none}
+.brand img{width:30px;height:auto}
+.brand small{font-weight:500;color:var(--muted);font-size:13px}
+.nav ul{display:flex;gap:24px;list-style:none;margin:0;padding:0;font-weight:500;font-size:15px}
+.nav ul a{color:var(--muted);text-decoration:none}
+.nav ul a:hover{color:var(--ink)}
+
+/* buttons */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border:1px solid transparent;cursor:pointer;
+     font:inherit;font-weight:800;font-size:17px;border-radius:var(--r-md);min-height:54px;padding:10px 22px;width:100%;text-align:center}
+.btn.primary{background:var(--accent);color:var(--on);box-shadow:0 10px 24px rgba(18,165,148,.28)}
+.btn.primary:hover{filter:brightness(1.05)}
+.btn.outline{background:var(--surface);color:var(--ink);border-color:var(--line)}
+.btn.outline:hover{border-color:var(--accent)}
+.btn.sm{font-size:14.5px;min-height:42px;border-radius:12px;padding:6px 14px;font-weight:700}
+.btn.nav-cta{width:auto}
+.linkbtn{background:none;border:0;font:inherit;font-size:14.5px;color:var(--accent-ink);cursor:pointer;text-decoration:underline;padding:6px;align-self:flex-start}
 .row{display:flex;gap:10px;flex-wrap:wrap}
 .row>.btn{flex:1 1 40%}
-.devices{display:flex;flex-direction:column;gap:10px}
-.small{font-size:13.5px;color:var(--muted);text-align:center;margin:0}
+.subbtns{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
 a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
-.tabs{display:flex;gap:4px;background:var(--raised);padding:4px;border-radius:14px;margin:0 0 20px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:40px 0 64px}
+.hero-text{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.hero-logo{width:72px;height:72px;border-radius:20px;box-shadow:var(--shadow-2)}
+.pill{display:inline-flex;gap:8px;align-items:center;background:var(--pill-bg);color:var(--accent-ink);font-weight:700;font-size:14px;padding:5px 14px;border-radius:99px;margin-top:14px}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+h1{margin:10px 0 0;font-size:52px;line-height:1.3;font-weight:900;letter-spacing:-.5px}
+h1 em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{margin:6px 0 24px;color:var(--muted);font-size:19px}
+.hero-actions{width:100%;max-width:520px;display:flex;flex-direction:column;gap:12px}
+.devices{display:flex;flex-direction:column;gap:10px}
+.visual{position:relative;height:500px;display:grid;place-items:center}
+.visual .blob{position:absolute;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle at 60% 40%,var(--firoozeh-100),transparent 70%);opacity:.8}
+.visual .arch{position:absolute;width:340px;height:450px;background:var(--grad);border-radius:170px 170px 32px 32px;opacity:.95}
+.mini{position:relative;width:250px;height:480px;border-radius:38px;background:#0A0F1C;padding:9px;box-shadow:0 40px 80px rgba(11,110,122,.35)}
+.mini .s{height:100%;border-radius:30px;background:#0C1222;color:#EEF2FA;display:flex;flex-direction:column;align-items:center;padding:24px 16px;gap:14px}
+.mini .b{display:flex;gap:6px;align-items:center;font-weight:900;align-self:flex-start}
+.mini .b img{width:18px}
+.mini .orb{margin-top:44px;width:140px;height:140px;border-radius:50%;background:var(--grad);display:grid;place-items:center;color:#fff;font-weight:900;font-size:18px;
+           box-shadow:0 0 0 10px rgba(45,212,191,.15),0 0 0 22px rgba(45,212,191,.06),0 14px 40px rgba(18,165,148,.5)}
+.mini .st{font-weight:700;margin-top:14px}
+.mini .st i{display:inline-block;width:9px;height:9px;border-radius:50%;background:#2DD4BF;margin-inline-end:6px}
+.mini .loc{margin-top:auto;width:100%;background:#141C30;border:1px solid #26314F;border-radius:16px;padding:10px 12px;font-size:13px;display:flex;gap:10px;align-items:center}
+.mini .loc b{display:block;font-size:14px}
+.mini .loc .f{width:32px;height:32px;border-radius:10px;background:rgba(45,212,191,.12);color:#5EE0CC;display:grid;place-items:center;font-weight:800;font-size:14px}
+
+/* sections */
+section{scroll-margin-top:16px}
+h2{font-size:32px;font-weight:900;margin:64px 0 8px;text-align:center}
+.sh-sub{color:var(--muted);text-align:center;margin:0 0 24px;font-size:16px}
+h3{font-size:17px;margin:0}
+.small{font-size:13.5px;color:var(--muted);text-align:center;margin:0}
+.tabs{display:flex;gap:4px;background:var(--raised);padding:4px;border-radius:var(--r-md);margin:0 auto 24px;max-width:520px}
 .tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-weight:700;padding:10px 0;border-radius:10px;cursor:pointer}
-.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line),var(--shadow-1)}
 .panel{display:none;flex-direction:column;gap:16px}
 .panel.on{display:flex}
-.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
-.steps li{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.steps li{display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:22px;box-shadow:var(--shadow-1)}
 .steps li>div{flex:1;display:flex;flex-direction:column;gap:10px}
+.steps h3{font-size:18px}
 .steps p{margin:0;color:var(--muted);font-size:14.5px}
-.num{flex:none;display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--raised);color:var(--accent);font-size:17px;font-weight:900}
-.done{text-align:center;font-weight:700;margin:0}
+.num{flex:none;display:inline-grid;place-items:center;width:42px;height:42px;border-radius:14px;background:var(--grad);color:#fff;font-size:19px;font-weight:900}
+.done{text-align:center;font-weight:700;margin:0;color:var(--accent-ink)}
 .note{font-size:13.5px;color:var(--warn);margin:0}
-.help{margin:0;padding:18px 20px;padding-inline-start:40px;background:var(--surface);border:1px solid var(--line);border-radius:16px;font-size:15.5px}
-.help li{margin:6px 0}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+
+/* "if it doesn't connect" — night band */
+.band{margin-top:64px;background:#0C1222;color:#EEF2FA;border-radius:32px;padding:40px 44px}
+.band h2{margin:0 0 6px;text-align:start;font-size:28px;color:#EEF2FA}
+.band a{color:#5EE0CC}
+.help{list-style:none;margin:16px 0 0;padding:0}
+.help li{border-bottom:1px solid #26314F;padding:14px 0;font-weight:700;display:flex;gap:10px}
+.help li::before{content:"+";color:#2DD4BF;font-weight:900}
+.support{margin:20px 0 0;padding:14px 18px;background:#141C30;border:1px solid #26314F;border-radius:var(--r-md);font-size:15px;color:#9AA6C0}
+
+/* advanced */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px;display:flex;flex-direction:column;gap:10px}
 .card p{margin:0;color:var(--muted);font-size:14px}
-.badge{font-size:12px;font-weight:700;color:var(--accent);background:var(--raised);border-radius:8px;padding:1px 8px}
-details{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:2px 16px;margin-bottom:10px}
-summary{cursor:pointer;font-weight:700;padding:12px 0}
+.badge{font-size:12px;font-weight:700;color:var(--accent-ink);background:var(--pill-bg);border-radius:99px;padding:1px 10px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:2px 18px;margin-bottom:10px;box-shadow:var(--shadow-1)}
+summary{cursor:pointer;font-weight:700;padding:13px 0}
+summary::marker{color:var(--accent)}
 details[open]>summary{margin-bottom:4px}
 .dbody{display:flex;flex-direction:column;gap:12px;padding-bottom:16px;font-size:14.5px}
 .dbody p{margin:0;color:var(--muted)}
 .dbody ul,.dbody ol{margin:0;padding-inline-start:22px}
 .dbody li{margin:4px 0}
-.dbody .card{background:var(--bg)}
+.dbody .card,.dbody details{background:var(--bg);box-shadow:none}
 .qr{display:flex;justify-content:center}
 .qr canvas,.qr img{background:#fff;padding:10px;border-radius:12px}
 code{direction:ltr;unicode-bidi:isolate;background:var(--raised);border-radius:8px;padding:2px 6px;font-size:12.5px;word-break:break-all}
@@ -81,36 +140,78 @@ th{font-weight:700}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);
        padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 .toast.show{opacity:1}
-footer{margin-top:56px;padding-top:24px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:13px;display:flex;flex-direction:column;gap:8px}
+footer{margin-top:56px;padding-top:24px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:13.5px;display:flex;flex-direction:column;gap:8px;align-items:center}
+footer .brand{font-size:16px}
 footer a{color:var(--muted)}
+
+/* mobile: single column */
+@media (max-width: 860px){
+  .nav ul{display:none}
+  .hero{grid-template-columns:1fr;padding:16px 0 24px;gap:0}
+  .hero-text{align-items:center;text-align:center}
+  .hero-actions{margin-inline:auto}
+  .linkbtn{align-self:center}
+  .visual{display:none}
+  h1{font-size:34px}
+  .tag{font-size:17px}
+  h2{font-size:24px;margin-top:48px}
+  .steps{grid-template-columns:1fr}
+  .steps li{flex-direction:row;align-items:flex-start;padding:16px}
+  .num{width:36px;height:36px;border-radius:12px;font-size:17px}
+  .band{padding:28px 22px;border-radius:24px}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 
+  <nav class="nav" aria-label="منوی اصلی">
+    <a class="brand" href="./"><img src="logo-mark.svg" alt="" width="30" height="34">مولیدو <small dir="ltr">MolidoVPN</small></a>
+    <ul>
+      <li><a href="#steps">دانلود و نصب</a></li>
+      <li><a href="#help">اگر وصل نشد</a></li>
+      <li><a href="#pro">برای کاربران حرفه‌ای</a></li>
+      <li><a href="status.html">وضعیت سرویس</a></li>
+    </ul>
+    <a class="btn outline sm nav-cta" href="https://t.me/Molido_Vpn" rel="noopener">پشتیبانی تلگرام</a>
+  </nav>
+
   <!-- 1. Hero -->
-  <header>
-    <img src="logo.png" alt="لوگوی MolidoVPN" width="96" height="96">
-    <h1>MolidoVPN</h1>
-    <p class="tag">اینترنت آزاد، رایگان و با یک دکمه</p>
-    <div class="hero-actions">
-      <a class="btn primary" id="main-btn" href="#steps">دانلود</a>
-      <button class="linkbtn" type="button" id="other-toggle" aria-expanded="false" aria-controls="other-devices">دستگاه دیگری دارید؟</button>
-      <div class="devices" id="other-devices" hidden>
-        <a class="btn outline" data-device="android" href="#steps">اندروید</a>
-        <a class="btn outline" data-device="windows" href="#steps">ویندوز</a>
-        <a class="btn outline" data-device="ios" href="#steps">آیفون</a>
+  <header class="hero">
+    <div class="hero-text">
+      <img class="hero-logo" src="logo.png" alt="لوگوی MolidoVPN" width="72" height="72">
+      <span class="pill"><i></i>متن‌باز · اندروید، ویندوز و آیفون</span>
+      <h1>اینترنت آزاد،<br>رایگان و با <em>یک دکمه</em></h1>
+      <p class="tag"><bdi dir="ltr">MolidoVPN</bdi> · کاملاً رایگان و بدون تبلیغ</p>
+      <div class="hero-actions">
+        <a class="btn primary" id="main-btn" href="#steps">دانلود</a>
+        <button class="linkbtn" type="button" id="other-toggle" aria-expanded="false" aria-controls="other-devices">دستگاه دیگری دارید؟</button>
+        <div class="devices" id="other-devices" hidden>
+          <a class="btn outline" data-device="android" href="#steps">اندروید</a>
+          <a class="btn outline" data-device="windows" href="#steps">ویندوز</a>
+          <a class="btn outline" data-device="ios" href="#steps">آیفون</a>
+        </div>
+        <div class="row">
+          <a class="btn outline sm" href="https://t.me/Molido_Vpn" rel="noopener">پشتیبانی تلگرام <bdi dir="ltr">@Molido_Vpn</bdi></a>
+          <a class="btn outline sm" href="https://reymit.ir/molido" rel="noopener">💚 حمایت مالی</a>
+        </div>
       </div>
-      <div class="row">
-        <a class="btn outline sm" href="https://t.me/Molido_Vpn" rel="noopener">پشتیبانی تلگرام <bdi dir="ltr">@Molido_Vpn</bdi></a>
-        <a class="btn outline sm" href="https://reymit.ir/molido" rel="noopener">💚 حمایت مالی</a>
-      </div>
+    </div>
+    <div class="visual" aria-hidden="true">
+      <div class="blob"></div><div class="arch"></div>
+      <div class="mini"><div class="s">
+        <div class="b"><img src="logo-mark.svg" alt="">مولیدو</div>
+        <div class="orb">اتصال</div>
+        <div class="st"><i></i>یک دکمه، بدون تنظیمات</div>
+        <div class="loc"><div class="f">★</div><div><small style="color:#9AA6C0">مکان</small><b>خودکار (بهترین)</b></div></div>
+      </div></div>
     </div>
   </header>
 
   <!-- 2. Three steps -->
   <section id="steps" aria-labelledby="steps-title">
     <h2 id="steps-title">فقط ۳ قدم</h2>
+    <p class="sh-sub">دستگاهتان را انتخاب کنید</p>
     <div class="tabs" role="tablist" aria-label="انتخاب دستگاه">
       <button role="tab" id="tab-android" data-tab="android" aria-controls="android" aria-selected="false">اندروید</button>
       <button role="tab" id="tab-windows" data-tab="windows" aria-controls="windows" aria-selected="false">ویندوز</button>
@@ -167,7 +268,7 @@ footer a{color:var(--muted)}
   </section>
 
   <!-- 3. Help -->
-  <section id="help" aria-labelledby="help-title">
+  <section id="help" class="band" aria-labelledby="help-title">
     <h2 id="help-title">اگر وصل نشد</h2>
     <ul class="help">
       <li>دوباره دکمه را بزنید؛ برنامه خودش راه دیگری امتحان می‌کند.</li>
@@ -179,7 +280,7 @@ footer a{color:var(--muted)}
   </section>
 
   <!-- 4. Advanced -->
-  <section id="pro" aria-labelledby="pro-title">
+  <section id="pro" class="narrow" aria-labelledby="pro-title">
     <h2 id="pro-title">برای کاربران حرفه‌ای</h2>
     <p class="small" style="margin:-8px 0 20px">این بخش برای کسانی است که برنامه‌ی اندروید/ویندوز MolidoVPN یا اپ Hiddify روی آیفون برایشان کافی نیست و می‌خواهند از برنامه‌های دیگر، DNS مخصوص بازی یا راه‌های جایگزین استفاده کنند. اگر همه‌چیز خوب کار می‌کند، نیازی به باز کردن این بخش نیست.</p>
 
@@ -306,6 +407,7 @@ footer a{color:var(--muted)}
   </section>
 
   <footer>
+    <div class="brand"><img src="logo-mark.svg" alt="" width="22" height="25">مولیدو · اینترنت آزاد با یک دکمه</div>
     <div><a href="https://t.me/Molido_Vpn" rel="noopener">تلگرام <bdi dir="ltr">@Molido_Vpn</bdi></a> · <a href="https://reymit.ir/molido" rel="noopener">حمایت مالی</a> · <a href="status.html">وضعیت سرویس</a> · <a href="https://github.com/hidooch980/molidovpn/releases" rel="noopener">همه‌ی نسخه‌ها</a></div>
     <div>رایگان و متن‌باز · <a href="https://github.com/hidooch980/molidovpn-android" rel="noopener" title="کد منبع برنامه‌ی اندروید (AGPL-3.0): github.com/hidooch980/molidovpn-android">مجوزها / Licenses</a>: برنامه‌ی اندروید متن‌باز (AGPL-3.0)</div>
   </footer>
