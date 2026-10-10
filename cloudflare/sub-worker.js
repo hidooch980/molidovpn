@@ -219,6 +219,7 @@ async function reportRoute(request, env, ctx) {
     } catch {}
     if (isOwner) {
       const now = Date.now();
+      try {
       await env.DB.prepare(
         `INSERT INTO owner_tests (fp, ok, ms, tested_at, fail_streak) VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(fp) DO UPDATE SET
@@ -229,31 +230,33 @@ async function reportRoute(request, env, ctx) {
       )
         .bind(r.node, r.ok ? 1 : 0, r.ok && Number.isInteger(ms) ? ms : null, now, r.ok ? 0 : 1, now - OWNER_RUN_GAP_MS)
         .run();
+      } catch {} // D1 down or over quota: drop this result, the tester runs again
       return new Response(null, { status: 204, headers: CORS });
     }
   }
 
-  const day = new Date().toISOString().slice(0, 10);
-  const hasMs = Number.isInteger(ms) ? 1 : 0;
-  const upsert = (node, net) =>
-    env.DB.prepare(
-      `INSERT INTO reports (day, node, app, net, ok, fail, ms_sum, ms_n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-       ON CONFLICT(day, node, app, net) DO UPDATE SET ok = ok + excluded.ok, fail = fail + excluded.fail,
-         ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
-    ).bind(day, node, r.app, net, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs);
-  const writes = [upsert(r.node, netKey)];
-  if (r.mode && !r.node.startsWith('mode:')) writes.push(upsert(`mode:${r.mode}`, `${netKey}|m`));
-  if (cf && r.ok) {
-    await ensureCfSchema(env);
-    writes.push(
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const hasMs = Number.isInteger(ms) ? 1 : 0;
+    const upsert = (node, net) =>
       env.DB.prepare(
-        `INSERT INTO cf_ips (op, ip, ok_count, ms_avg, updated) VALUES (?1, ?2, 1, ?3, ?4)
-         ON CONFLICT(op, ip) DO UPDATE SET ok_count = ok_count + 1,
-           ms_avg = (ms_avg * 3 + excluded.ms_avg) / 4, updated = excluded.updated`
-      ).bind(r.op || 'other', cf.ip, cf.ms, Date.now())
-    );
-  }
-  await env.DB.batch(writes);
+        `INSERT INTO reports (day, node, app, net, ok, fail, ms_sum, ms_n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(day, node, app, net) DO UPDATE SET ok = ok + excluded.ok, fail = fail + excluded.fail,
+           ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
+      ).bind(day, node, r.app, net, r.ok ? 1 : 0, r.ok ? 0 : 1, hasMs ? ms : 0, hasMs);
+    const writes = [upsert(r.node, netKey)];
+    if (r.mode && !r.node.startsWith('mode:')) writes.push(upsert(`mode:${r.mode}`, `${netKey}|m`));
+    if (cf && r.ok) {
+      writes.push(
+        env.DB.prepare(
+          `INSERT INTO cf_ips (op, ip, ok_count, ms_avg, updated) VALUES (?1, ?2, 1, ?3, ?4)
+           ON CONFLICT(op, ip) DO UPDATE SET ok_count = ok_count + 1,
+             ms_avg = (ms_avg * 3 + excluded.ms_avg) / 4, updated = excluded.updated`
+        ).bind(r.op || 'other', cf.ip, cf.ms, Date.now())
+      );
+    }
+    await withSchema(env, () => env.DB.batch(writes));
+  } catch {} // D1 down or over quota: reports are best-effort, never an error for the app
   return new Response(null, { status: 204, headers: CORS });
 }
 
@@ -290,21 +293,23 @@ async function heartbeatRoute(request, env, ctx) {
 
   if (limited(request.headers.get('cf-connecting-ip') || 'unknown')) return new Response(null, { status: 204, headers: CORS });
 
-  await ensureActiveSchema(env);
-  await env.DB.prepare(
-    `INSERT INTO active_sessions (session_id, op, mode, last_seen) VALUES (?1, ?2, ?3, ?4)
-     ON CONFLICT(session_id) DO UPDATE SET op = excluded.op, mode = excluded.mode, last_seen = excluded.last_seen`
-  )
-    .bind(r.session_id, r.op || null, r.mode || null, Math.floor(Date.now() / 1000))
-    .run();
+  try {
+    await withSchema(env, () => env.DB.prepare(
+      `INSERT INTO active_sessions (session_id, op, mode, last_seen) VALUES (?1, ?2, ?3, ?4)
+       ON CONFLICT(session_id) DO UPDATE SET op = excluded.op, mode = excluded.mode, last_seen = excluded.last_seen`
+    )
+      .bind(r.session_id, r.op || null, r.mode || null, Math.floor(Date.now() / 1000))
+      .run());
+  } catch {} // best-effort, like /report
   return new Response(null, { status: 204, headers: CORS });
 }
 
 // GET /admin/api/online — admin-only, no caching (must be fresh).
 async function onlineRoute(env) {
-  await ensureActiveSchema(env);
   const since = Math.floor(Date.now() / 1000) - ONLINE_WINDOW_S;
-  const { results } = await env.DB.prepare('SELECT op, mode FROM active_sessions WHERE last_seen > ?1').bind(since).all();
+  const { results } = await withSchema(env, () =>
+    env.DB.prepare('SELECT op, mode FROM active_sessions WHERE last_seen > ?1').bind(since).all()
+  );
   const byOperator = { mci: 0, irancell: 0, tci: 0, other: 0 };
   const byMode = {};
   for (const row of results) {
@@ -353,15 +358,14 @@ async function cfipRoute(request, env, ctx) {
   if (hit) return hit;
   let out = [];
   try {
-    await ensureCfSchema(env);
     const since = Date.now() - 3 * 86400000;
     const query = (byOp) =>
       env.DB.prepare(
         `SELECT ip, SUM(ok_count) ok, CAST(AVG(ms_avg) AS INTEGER) ms FROM cf_ips
          WHERE updated > ?1 ${byOp ? 'AND op = ?2' : ''} GROUP BY ip ORDER BY ok * 1000 / (ms + 50) DESC LIMIT 10`
       ).bind(...(byOp ? [since, op] : [since]));
-    if (op) out = (await query(true).all()).results;
-    if (!out.length) out = (await query(false).all()).results;
+    if (op) out = (await withSchema(env, () => query(true).all())).results;
+    if (!out.length) out = (await withSchema(env, () => query(false).all())).results;
   } catch {}
   const res = new Response(JSON.stringify(out.map((r) => ({ ip: r.ip, ms: r.ms, n: r.ok }))), {
     headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', ...CORS },
@@ -391,12 +395,18 @@ async function scoresRoute(request, env, ctx) {
   if (hit) return hit;
 
   const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-  const { results } = await env.DB.prepare(
-    `SELECT node, net, SUM(ok) ok, SUM(fail) fail, SUM(ms_sum) ms_sum, SUM(ms_n) ms_n
-     FROM reports WHERE day >= ?1 AND (?2 = '' OR net LIKE '%|' || ?2 OR net LIKE '%|' || ?2 || '|m') GROUP BY node, net`
-  )
-    .bind(since, op)
-    .all();
+  let results;
+  try {
+    ({ results } = await env.DB.prepare(
+      `SELECT node, net, SUM(ok) ok, SUM(fail) fail, SUM(ms_sum) ms_sum, SUM(ms_n) ms_n
+       FROM reports WHERE day >= ?1 AND (?2 = '' OR net LIKE '%|' || ?2 OR net LIKE '%|' || ?2 || '|m') GROUP BY node, net`
+    )
+      .bind(since, op)
+      .all());
+  } catch {
+    // D1 down or over quota: no scores (apps then keep their own order), briefly cached by clients only.
+    return new Response('{}', { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=60', ...CORS } });
+  }
   const acc = {};
   for (const row of results) {
     const a = (acc[row.node] ||= { all: { ok: 0, fail: 0, ms_sum: 0, ms_n: 0 } });
@@ -451,25 +461,130 @@ const SUB_MAX = 100;
 const strongTransport = (line) => iosFriendly(line.split('#')[0]);
 
 // Iran-measured quality from the anonymous reports (apps + local Iran tests), last 7 days.
-// Cached per isolate for 2 minutes: this runs on every hit to the main lists (/, /ios, /sub/N), which is
-// by far the busiest traffic on the worker, and the score shape barely moves minute to minute — reading
-// it fresh every time was most of this worker's D1 row-read quota for no real benefit.
-let _reportScoresCache = { at: 0, map: new Map() };
-async function reportScores(env) {
-  if (Date.now() - _reportScoresCache.at < 120000) return _reportScoresCache.map;
-  try {
-    const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-    const { results } = await env.DB.prepare(
-      'SELECT node, SUM(ok) ok, SUM(fail) fail FROM reports WHERE day >= ?1 GROUP BY node'
-    )
-      .bind(since)
-      .all();
-    _reportScoresCache = { at: Date.now(), map: new Map(results.map((r) => [r.node, r])) };
-  } catch {
-    // A DB hiccup (including a quota error) keeps serving the last good scores instead of ranking blind.
-    if (_reportScoresCache.map.size) _reportScoresCache = { ..._reportScoresCache, at: Date.now() };
+// Read from the precomputed snapshot (see getSnapshot): this runs on every hit to the main lists
+// (/, /ios, /sub/N), and querying the reports table each time used up the daily D1 read quota.
+async function reportScores(env, ctx) {
+  const snap = await getSnapshot(env, ctx);
+  return snap ? snap.scores : new Map();
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Precomputed snapshot: report scores, local Iran tests and resolved owner configs, computed by the
+// 15-minute cron (and right after admin changes) and stored as ONE owner_kv row, so a list request
+// costs one D1 row read instead of a scan of the reports table. Also kept in caches.default (custom
+// domains; a no-op on workers.dev) and per isolate for a minute.
+// ---------------------------------------------------------------------------------------------------
+const SNAP_KEY = 'snapshot';
+const SNAP_STALE_MS = 40 * 60000; // older than this (cron missed twice): recompute live
+const SNAP_CACHE_KEY = 'https://molido-cache.invalid/snapshot/v1';
+const SNAP_CACHE_TTL = 600; // seconds
+const SNAP_MEM_MS = 60000;
+let _snapMem = { at: 0, snap: null, raw: null, failedAt: 0 };
+let _snapInflight = null;
+
+async function computeSnapshotRaw(env, ctx) {
+  const day = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  const [rep, tests] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT node, SUM(ok) ok, SUM(fail) fail, SUM(CASE WHEN day >= ?2 THEN ok ELSE 0 END) recent_ok
+       FROM reports WHERE day >= ?1 GROUP BY node`
+    ).bind(day(6), day(1)),
+    env.DB.prepare('SELECT fp, ok, ms, tested_at, fail_streak FROM owner_tests'),
+  ]);
+  const entries = await ownerEntriesUncached(env, ctx);
+  return {
+    v: 1,
+    at: Date.now(),
+    r: rep.results.map((x) => [x.node, x.ok, x.fail, x.recent_ok]),
+    t: tests.results.map((x) => [x.fp, x.ok, x.ms, x.tested_at, x.fail_streak]),
+    e: entries.map((x) => [x.line, x.fp, x.item.always_show ? 1 : 0]),
+  };
+}
+
+function parseSnapshot(raw) {
+  if (!raw || raw.v !== 1 || !Array.isArray(raw.r) || !Array.isArray(raw.t) || !Array.isArray(raw.e)) return null;
+  const scores = new Map();
+  const users = new Map();
+  for (const [node, ok, fail, recent_ok] of raw.r) {
+    scores.set(node, { node, ok, fail });
+    users.set(node, { node, ok, fail, recent_ok });
   }
-  return _reportScoresCache.map;
+  const tests = new Map(raw.t.map(([fp, ok, ms, tested_at, fail_streak]) => [fp, { fp, ok, ms, tested_at, fail_streak }]));
+  const entries = raw.e.map(([line, fp, always_show]) => ({ line, fp, item: { always_show } }));
+  return { at: raw.at, scores, status: { tests, users }, entries };
+}
+
+function cacheSnapshot(raw, ctx) {
+  const res = new Response(JSON.stringify(raw), {
+    headers: { 'content-type': 'application/json', 'cache-control': `public, max-age=${SNAP_CACHE_TTL}` },
+  });
+  ctx.waitUntil(caches.default.put(SNAP_CACHE_KEY, res).catch(() => {}));
+}
+
+// Recompute and store the snapshot. Throws on D1 failure.
+async function refreshSnapshot(env, ctx) {
+  let raw;
+  try {
+    raw = await computeSnapshotRaw(env, ctx);
+  } catch (e) {
+    if (!/no such table/i.test(String(e && e.message))) throw e;
+    await ensureAllSchemas(env); // first run on an empty database
+    raw = await computeSnapshotRaw(env, ctx);
+  }
+  await env.DB.prepare(
+    'INSERT INTO owner_kv (k, v, updated) VALUES (?1, ?2, ?3) ON CONFLICT(k) DO UPDATE SET v = excluded.v, updated = excluded.updated'
+  )
+    .bind(SNAP_KEY, JSON.stringify(raw), raw.at)
+    .run();
+  cacheSnapshot(raw, ctx);
+  _snapMem = { at: Date.now(), snap: parseSnapshot(raw), raw, failedAt: 0 };
+  return raw;
+}
+
+async function loadSnapshot(env, ctx) {
+  const now = Date.now();
+  let raw = null;
+  try {
+    const hit = await caches.default.match(SNAP_CACHE_KEY);
+    if (hit) raw = await hit.json();
+  } catch {}
+  if (raw && now - raw.at < SNAP_STALE_MS) return raw;
+  try {
+    const row = await env.DB.prepare('SELECT v FROM owner_kv WHERE k = ?1').bind(SNAP_KEY).first();
+    if (row) raw = JSON.parse(row.v);
+  } catch {}
+  if (raw && now - raw.at < SNAP_STALE_MS) {
+    cacheSnapshot(raw, ctx);
+    return raw;
+  }
+  // Missing or stale (cron not running yet): compute live once; the stored row then serves the rest.
+  if (now - _snapMem.failedAt > 30000) {
+    try {
+      return await refreshSnapshot(env, ctx);
+    } catch {
+      _snapMem.failedAt = now;
+    }
+  }
+  return raw || _snapMem.raw; // stale beats none; null = rank blind, no owner configs
+}
+
+// Never throws; null when nothing could be loaded.
+async function getSnapshot(env, ctx) {
+  if (_snapMem.snap && Date.now() - _snapMem.at < SNAP_MEM_MS) return _snapMem.snap;
+  if (!_snapInflight) {
+    _snapInflight = loadSnapshot(env, ctx)
+      .then((raw) => {
+        const snap = parseSnapshot(raw);
+        if (snap && raw !== _snapMem.raw) _snapMem = { ..._snapMem, at: Date.now(), snap, raw };
+        else if (snap) _snapMem.at = Date.now();
+        return snap || _snapMem.snap;
+      })
+      .catch(() => _snapMem.snap)
+      .finally(() => {
+        _snapInflight = null;
+      });
+  }
+  return _snapInflight;
 }
 
 async function nodeFingerprint(line) {
@@ -585,7 +700,7 @@ async function subRoute(url, env, ctx) {
 
   // Deal the non-CDN pool round-robin so every link gets a similar mix, then top each link up with
   // CDN nodes (shared across links — they are the most reliable in Iran) to reach at least SUB_MIN.
-  const scores = await reportScores(env);
+  const scores = await reportScores(env, ctx);
   const ranked = await rankByReports([...strong, ...rest], scores);
   const cdnRanked = await rankByReports(cdn, scores);
   cdn.splice(0, cdn.length, ...cdnRanked);
@@ -651,7 +766,7 @@ async function iosRoute(url, env, ctx) {
 
   // Collect everything iPhone-friendly, put Iran-proven servers first, drop Iran-failed ones when
   // enough others exist, then cap for the iOS memory limit.
-  const scores = await reportScores(env);
+  const scores = await reportScores(env, ctx);
   const rankedOut = await rankByReports(out, scores);
   const lines = brand(mergeOwner(await owner, (await dropIranFailed(rankedOut, scores, 20)).slice(0, IOS_MAX)));
   if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
@@ -716,6 +831,25 @@ async function ensureOwnerSchema(env) {
     await env.DB.prepare(`ALTER TABLE owner_items ADD COLUMN ${col}`).run().catch(() => {});
   }
   ownerSchemaReady = true;
+}
+
+// Table creation runs from the scheduled handler (and the first snapshot on an empty database) only,
+// not once per isolate: isolates recycle every few requests, so that was thousands of queries a day.
+async function ensureAllSchemas(env) {
+  await ensureOwnerSchema(env);
+  await ensureCfSchema(env);
+  await ensureActiveSchema(env);
+}
+
+// Runs fn; when a lazily created table is missing (fresh database), creates the tables once and retries.
+async function withSchema(env, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!/no such table/i.test(String(e && e.message))) throw e;
+    await ensureAllSchemas(env);
+    return fn();
+  }
 }
 
 const lineCore = (line) => line.split('#')[0].trim();
@@ -792,7 +926,6 @@ async function ownerEntries(env, ctx) {
 }
 
 async function ownerEntriesUncached(env, ctx) {
-  await ensureOwnerSchema(env);
   const { results } = await env.DB.prepare(
     'SELECT id, kind, value, always_show, due_at FROM owner_items WHERE enabled = 1 ORDER BY id'
   ).all();
@@ -853,10 +986,9 @@ function ownerDue(entry, st, now) {
 // Owner configs served to users (Iran-failed ones removed). Never throws.
 async function ownerLines(env, ctx) {
   try {
-    const entries = await ownerEntries(env, ctx);
-    if (!entries.length) return [];
-    const st = await ownerStatus(env);
-    return entries.filter((e) => !ownerHidden(e, st)).map((e) => e.line);
+    const snap = await getSnapshot(env, ctx);
+    if (!snap || !snap.entries.length) return [];
+    return snap.entries.filter((e) => !ownerHidden(e, snap.status)).map((e) => e.line);
   } catch {
     return [];
   }
@@ -868,7 +1000,12 @@ async function ownerConfigsRoute(env, ctx) {
   const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
   try {
     const entries = await ownerEntries(env, ctx);
-    const st = entries.length ? await ownerStatus(env) : { tests: new Map(), users: new Map() };
+    // "due" only needs the local test rows (read live so a fresh result is seen at once), not the reports scan.
+    const st = { tests: new Map(), users: new Map() };
+    if (entries.length) {
+      const { results } = await env.DB.prepare('SELECT fp, ok, ms, tested_at, fail_streak FROM owner_tests').all();
+      for (const r of results) st.tests.set(r.fp, r);
+    }
     const now = Date.now();
     const configs = entries.map((e) => ({ id: e.fp, uri: e.line, due: ownerDue(e, st, now) }));
     return new Response(JSON.stringify({ configs }), { headers });
@@ -877,13 +1014,11 @@ async function ownerConfigsRoute(env, ctx) {
   }
 }
 
-// Owner fingerprints, cached per isolate for a minute (used to accept owner test results in /report).
-let ownerFpCache = { at: 0, set: new Set() };
+// Owner fingerprints from the snapshot (used to accept owner test results in /report); live when it is missing.
 async function ownerFps(env, ctx) {
-  if (Date.now() - ownerFpCache.at > 60000) {
-    ownerFpCache = { at: Date.now(), set: new Set((await ownerEntries(env, ctx)).map((e) => e.fp)) };
-  }
-  return ownerFpCache.set;
+  const snap = await getSnapshot(env, ctx);
+  if (snap) return new Set(snap.entries.map((e) => e.fp));
+  return new Set((await ownerEntries(env, ctx)).map((e) => e.fp));
 }
 
 // Owner configs first, then the normal list without duplicates of them.
@@ -915,7 +1050,6 @@ async function timingSafeKeyEqual(a, b) {
 // Returns null when authorized, otherwise the error response.
 async function adminAuth(request, env) {
   if (!env.ADMIN_KEY) return adminJson({ error: 'ADMIN_KEY not set. Run: npx wrangler secret put ADMIN_KEY' }, 503);
-  await ensureOwnerSchema(env);
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
   // Salted with the admin key so stored hashes cannot be reversed to IPs; rows are removed after a day.
   const ipHash = await sha256Hex(`molido-admin|${env.ADMIN_KEY}|${ip}`);
@@ -947,6 +1081,7 @@ async function adminApi(request, env, url, ctx) {
   const denied = await adminAuth(request, env);
   if (denied) return denied;
   const path = url.pathname.replace(/\/+$/, '');
+
   const DB = env.DB;
 
   if (path === '/admin/api/items' && request.method === 'GET') {
@@ -1123,7 +1258,6 @@ const PUBLIC_JSON = {
 };
 
 async function kvGet(env, k) {
-  await ensureOwnerSchema(env);
   const row = await env.DB.prepare('SELECT v FROM owner_kv WHERE k = ?1').bind(k).first();
   if (!row) return null;
   try {
@@ -1134,7 +1268,6 @@ async function kvGet(env, k) {
 }
 
 async function kvSet(env, k, value) {
-  await ensureOwnerSchema(env);
   await env.DB.prepare(
     'INSERT INTO owner_kv (k, v, updated) VALUES (?1, ?2, ?3) ON CONFLICT(k) DO UPDATE SET v = excluded.v, updated = excluded.updated'
   )
@@ -1424,29 +1557,26 @@ if(key&&${keySet})load();
 }
 
 export default {
+  // Every 15 minutes: rebuild the list snapshot and prune stale heartbeats. Once a day (the 03:00 UTC
+  // run): schema check and the old daily cleanup.
   async scheduled(event, env, ctx) {
+    const t = new Date(event.scheduledTime || Date.now());
+    const daily = event.cron === '17 3 * * *' || (t.getUTCHours() === 3 && t.getUTCMinutes() < 15);
+    if (daily) await ensureAllSchemas(env).catch(() => {});
+    ctx.waitUntil(refreshSnapshot(env, ctx).catch(() => {}));
+    ctx.waitUntil(
+      env.DB.prepare('DELETE FROM active_sessions WHERE last_seen < ?1').bind(Math.floor(Date.now() / 1000) - ACTIVE_PRUNE_S).run().catch(() => {})
+    );
+    if (!daily) return;
     const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    ctx.waitUntil(env.DB.prepare('DELETE FROM reports WHERE day < ?1').bind(cutoff).run());
+    ctx.waitUntil(env.DB.prepare('DELETE FROM reports WHERE day < ?1').bind(cutoff).run().catch(() => {}));
     ctx.waitUntil(
-      ensureOwnerSchema(env)
-        .then(() =>
-          env.DB.batch([
-            env.DB.prepare('DELETE FROM admin_fails WHERE updated < ?1').bind(Date.now() - 86400000),
-            env.DB.prepare('DELETE FROM owner_tests WHERE tested_at < ?1').bind(Date.now() - 30 * 86400000),
-          ])
-        )
-        .catch(() => {})
+      env.DB.batch([
+        env.DB.prepare('DELETE FROM admin_fails WHERE updated < ?1').bind(Date.now() - 86400000),
+        env.DB.prepare('DELETE FROM owner_tests WHERE tested_at < ?1').bind(Date.now() - 30 * 86400000),
+      ]).catch(() => {})
     );
-    ctx.waitUntil(
-      ensureCfSchema(env)
-        .then(() => env.DB.prepare('DELETE FROM cf_ips WHERE updated < ?1').bind(Date.now() - 3 * 86400000).run())
-        .catch(() => {})
-    );
-    ctx.waitUntil(
-      ensureActiveSchema(env)
-        .then(() => env.DB.prepare('DELETE FROM active_sessions WHERE last_seen < ?1').bind(Math.floor(Date.now() / 1000) - ACTIVE_PRUNE_S).run())
-        .catch(() => {})
-    );
+    ctx.waitUntil(env.DB.prepare('DELETE FROM cf_ips WHERE updated < ?1').bind(Date.now() - 3 * 86400000).run().catch(() => {}));
   },
 
   async fetch(request, env, ctx) {
@@ -1466,7 +1596,11 @@ export default {
     if (url.pathname === '/admin' || url.pathname === '/admin/') return adminPage(env);
     if (url.pathname.startsWith('/admin/api')) {
       try {
-        return await adminApi(request, env, url, ctx);
+        const res = await adminApi(request, env, url, ctx);
+        // Owner item changed: rebuild the list snapshot now instead of waiting for the next cron run.
+        if (res.status === 200 && url.pathname.startsWith('/admin/api/items') && request.method !== 'GET')
+          ctx.waitUntil(refreshSnapshot(env, ctx).catch(() => {}));
+        return res;
       } catch {
         return adminJson({ error: 'server error' }, 500);
       }
