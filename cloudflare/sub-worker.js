@@ -24,7 +24,9 @@ async function appRoute(url, request, ctx) {
       published_at: r.published_at,
       // Old apps (<= rename) look for MobinVPN-* names: list each asset under both names.
       assets: r.assets.flatMap((a) => {
-        const one = (n) => ({ name: n, size: a.size, browser_download_url: `${url.origin}/app/${n}` });
+        // digest/sha256: the app checks the downloaded APK against it (mirror copies included).
+        const sha = /^sha256:[0-9a-f]{64}$/.test(a.digest || '') ? a.digest.slice(7) : undefined;
+        const one = (n) => ({ name: n, size: a.size, digest: a.digest, sha256: sha, browser_download_url: `${url.origin}/app/${n}` });
         return a.name.startsWith('MolidoVPN-') ? [one(a.name), one(a.name.replace(/^MolidoVPN-/, 'MobinVPN-'))] : [one(a.name)];
       }),
     };
@@ -113,6 +115,8 @@ const REMOTE_FILES = {
   'policy.json': 'application/json; charset=utf-8',
   'shard-nodes.txt': 'text/plain; charset=utf-8',
   'smart-split.json': 'application/json; charset=utf-8',
+  // Mirrors + DNS-tunnel settings for the shutdown-resilience features (Android).
+  'resilience.json': 'application/json; charset=utf-8',
 };
 async function remoteRoute(url) {
   const name = url.pathname.slice('/remote/'.length);
