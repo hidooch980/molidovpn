@@ -424,7 +424,7 @@ async function scoresRoute(request, env, ctx) {
     if (a.wifi) out[node].wifi = summarize(a.wifi);
   }
   const res = new Response(JSON.stringify(out), {
-    headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', ...CORS },
+    headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=1200', ...CORS },
   });
   ctx.waitUntil(cache.put(key, res.clone()));
   return res;
@@ -983,12 +983,44 @@ function ownerDue(entry, st, now) {
   return !t || t.tested_at < now - OWNER_RETEST_MS || entry.item.due_at > t.tested_at;
 }
 
-// Owner configs served to users (Iran-failed ones removed). Never throws.
+// Anonymous Iranian user reports for owner configs (last 7 days). The local Iran tester only runs while the
+// owner's PC is on, so without these an owner config that never works in Iran stayed at the top of every list.
+const OWNER_USER_HIDE_FAILS = 3; // only failures, at least this many: hidden
+const OWNER_USER_WEAK_N = 4; // with at least this many reports and ...
+const OWNER_USER_WEAK_SCORE = 0.35; // ... a smoothed success rate below this: moved after the normal list
+const ownerUserScore = (u) => (u ? (u.ok + 1) / (u.ok + u.fail + 2) : 0.5);
+
+// Owner configs split for serving: [top] (good or untested, best first) and [weak] (mostly failing in Iran,
+// served after the normal list). Hidden ones are dropped. always_show configs always stay in [top]. Pure.
+function ownerOrder(entries, st) {
+  const top = [];
+  const weak = [];
+  entries.forEach((e, i) => {
+    if (ownerHidden(e, st)) return;
+    const u = st.users.get(e.fp);
+    const s = ownerUserScore(u);
+    if (!e.item.always_show && u) {
+      if (u.ok === 0 && u.fail >= OWNER_USER_HIDE_FAILS) return;
+      if (u.ok + u.fail >= OWNER_USER_WEAK_N && s < OWNER_USER_WEAK_SCORE) {
+        weak.push({ e, s, i });
+        return;
+      }
+    }
+    top.push({ e, s: e.item.always_show ? 2 : s, i });
+  });
+  const by = (a, b) => b.s - a.s || a.i - b.i;
+  return { top: top.sort(by).map((x) => x.e.line), weak: weak.sort(by).map((x) => x.e.line) };
+}
+
+// Owner configs served to users (Iran-failed ones removed, weak ones flagged). Never throws.
 async function ownerLines(env, ctx) {
   try {
     const snap = await getSnapshot(env, ctx);
     if (!snap || !snap.entries.length) return [];
-    return snap.entries.filter((e) => !ownerHidden(e, snap.status)).map((e) => e.line);
+    const { top, weak } = ownerOrder(snap.entries, snap.status);
+    const out = [...top, ...weak];
+    out.weak = new Set(weak.map(lineCore));
+    return out;
   } catch {
     return [];
   }
@@ -1021,11 +1053,16 @@ async function ownerFps(env, ctx) {
   return new Set((await ownerEntries(env, ctx)).map((e) => e.fp));
 }
 
-// Owner configs first, then the normal list without duplicates of them.
+// Owner configs first (weak ones after the normal list), then the normal list without duplicates of them.
 function mergeOwner(owner, lines) {
   if (!owner.length) return lines;
   const seen = new Set(owner.map(lineCore));
-  const merged = [...owner, ...lines.filter((l) => !seen.has(lineCore(l)))];
+  const weak = owner.weak || new Set();
+  const merged = [
+    ...owner.filter((l) => !weak.has(lineCore(l))),
+    ...lines.filter((l) => !seen.has(lineCore(l))),
+    ...owner.filter((l) => weak.has(lineCore(l))),
+  ];
   merged.vip = seen; // brand() names owner configs "... VIP"
   return merged;
 }
