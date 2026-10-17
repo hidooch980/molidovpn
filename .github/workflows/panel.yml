@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Assemble site (install page at /, admin panel at /panel)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -30,8 +30,8 @@ jobs:
           cp assets/icon/icon.png _site/logo.png
           cp -r panel/* _site/panel/
           printf "window.MOBIN_PANEL_CONFIG = { url: '%s', anonKey: '%s' };\n" "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > _site/panel/config.js
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
