@@ -283,10 +283,21 @@ class WindowsEngine implements VpnEngine {
           {void Function(int done)? onProgress,
           bool Function()? isCancelled,
           int concurrency = 12,
-          bool stopOnFirstGood = false}) async {
+          bool stopOnFirstGood = false,
+          void Function(int index, int ms)? onResult}) async {
     await _xrayFor(servers);
     return _core.probeAll(servers, options.forPing,
-        onProgress: onProgress, isCancelled: isCancelled, concurrency: concurrency, stopOnFirstGood: stopOnFirstGood);
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+        concurrency: concurrency,
+        stopOnFirstGood: stopOnFirstGood,
+        onResult: onResult);
+  }
+
+  /// [server] is TLS over TCP (not Reality, not QUIC): a TLS-fragment variant of it is worth racing.
+  bool fragmentable(Server server) {
+    final o = _core.outbound(server);
+    return o != null && SingboxCore.fragmentable(o);
   }
 
   /// Background re-ping while idle: few parallel tests so the PC and UI stay responsive.

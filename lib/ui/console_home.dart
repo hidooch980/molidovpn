@@ -16,6 +16,7 @@ import 'location_sheet.dart';
 import 'onboarding.dart';
 import 'servers_screen.dart';
 import 'settings_screen.dart';
+import 'smart_panel.dart';
 import 'strings.dart';
 import 'style.dart';
 import 'support.dart';
@@ -170,6 +171,7 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     if (c.update != null) _UpdateLine(controller: c),
                     const SizedBox(height: 14),
                     Center(child: _Squircle(controller: c)),
+                    SmartConnectPanel(run: c.smart, state: c.state),
                     if (!advanced) ...[
                       _SimpleStatus(controller: c),
                       const SizedBox(height: 16),
@@ -414,6 +416,8 @@ class _SimpleStatus extends StatelessWidget {
         const _SupportButton(),
       ]);
     }
+    // Smart Connect shows its own race panel (progress, chips, leader) right above.
+    if (c.state == VpnState.connecting && c.smart != null) return const SizedBox(height: 4);
     final line = switch (c.state) {
       VpnState.connected => c.exitInIran
           ? tr('متصل هستید (خروجی ایران است؛ بعضی سایت‌ها باز نمی‌شوند)', 'Connected (exit is in Iran; some sites will not open)')

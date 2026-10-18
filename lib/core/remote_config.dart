@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'smart/smart_connect.dart';
+
 import 'app_log.dart';
 
 /// One announcement from the owner panel (/app/notice.json).
@@ -25,6 +27,9 @@ class RemoteConfig {
 
   static Set<String> disabled = {};
   static String defaultMode = 'auto';
+
+  /// Smart Connect limits from flags.json "smart" (defaults when absent or invalid).
+  static SmartConfig smart = const SmartConfig();
   static AppNotice? notice;
   static DateTime? _fetchedAt;
 
@@ -82,6 +87,7 @@ class RemoteConfig {
       disabled = off.length >= known.length ? {} : off;
       final def = json['default_mode'];
       defaultMode = def is String && known.contains(def) && !disabled.contains(def) ? def : 'auto';
+      smart = SmartConfig.fromJson(json['smart']);
       return true;
     } catch (_) {
       return false;
