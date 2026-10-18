@@ -1,0 +1,6 @@
+name = "molido-edge"
+main = "edge-worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+# Secrets (set with `wrangler secret put`, never committed): UUID, WS_PATH; optional PROXY_IP (host[:port])
+# used as a relay when the destination is itself behind Cloudflare (Workers cannot open sockets to CF IPs).

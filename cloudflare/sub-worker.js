@@ -613,6 +613,141 @@ async function rankByReports(lines, scores) {
     .map((x) => x.line);
 }
 
+// Smart Connect score (same weights as the Android/Windows apps: stability 0.45, latency 0.30, evidence 0.15,
+// transport 0.10). From the server side: stability = Laplace success rate of the Iran reports, latency = local
+// Iran test (owner_tests) when there is one, evidence = how many recent successes back it, transport = what
+// survives Iranian filtering best (CDN WS/TLS > XHTTP > Reality > Trojan > QUIC). Only-failed servers sink.
+const smartLatNorm = (ms) =>
+  Math.min(1, Math.max(0, 1 - (Math.log(Math.max(ms, 1)) - Math.log(100)) / (Math.log(3000) - Math.log(100))));
+function transportPrior(line) {
+  const core = line.split('#')[0];
+  const scheme = core.slice(0, core.indexOf('://')).toLowerCase();
+  if (scheme === 'hysteria2' || scheme === 'hy2' || scheme === 'tuic') return 0.55;
+  const q = new URLSearchParams(core.split('?')[1] || '');
+  const sec = (q.get('security') || (scheme === 'trojan' ? 'tls' : '')).toLowerCase();
+  const type = (q.get('type') || 'tcp').toLowerCase();
+  if (sec === 'tls' && (type === 'ws' || type === 'grpc' || type === 'httpupgrade')) return 1;
+  if (type === 'xhttp' || type === 'splithttp') return 0.9;
+  if (sec === 'reality') return 0.85;
+  if (sec === 'tls') return 0.75;
+  return 0.5;
+}
+async function smartScoreLine(line, snap) {
+  const fp = await nodeFingerprint(line);
+  const s = snap?.scores.get(fp);
+  const u = snap?.status.users.get(fp);
+  const t = snap?.status.tests.get(fp);
+  const stability = s ? (s.ok + 1) / (s.ok + s.fail + 2) : 0.5;
+  const latency = t && t.ok && t.ms > 0 ? smartLatNorm(t.ms) : 0.5;
+  const evidence = s ? Math.min(1, ((u && u.recent_ok) || s.ok) / 20) : 0.3;
+  let score = 100 * (0.45 * stability + 0.3 * latency + 0.15 * evidence + 0.1 * transportPrior(line));
+  if (s && s.ok === 0 && s.fail > 0) score *= 0.3;
+  return score;
+}
+async function smartRankLines(lines, snap) {
+  const scores = await Promise.all(lines.map((l) => smartScoreLine(l, snap)));
+  return lines
+    .map((line, i) => ({ line, s: scores[i], i }))
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .map((x) => x.line);
+}
+
+// Share link -> sing-box outbound (vless / trojan / hysteria2 / tuic); null when unsupported.
+function singboxOutbound(line, tag) {
+  let u;
+  try {
+    u = new URL(line.split('#')[0]);
+  } catch {
+    return null;
+  }
+  const scheme = u.protocol.replace(':', '').toLowerCase();
+  const q = u.searchParams;
+  const server = u.hostname.replace(/^\[|\]$/g, '');
+  const port = Number(u.port) || 443;
+  const user = decodeURIComponent(u.username);
+  const sni = q.get('sni') || q.get('peer') || q.get('host') || server;
+  const alpn = q.get('alpn') ? q.get('alpn').split(',') : undefined;
+  const tls = (extra = {}) => ({ enabled: true, server_name: sni, ...(alpn ? { alpn } : {}), ...extra });
+  if (scheme === 'hysteria2' || scheme === 'hy2') {
+    const o = { type: 'hysteria2', tag, server, server_port: port, password: user, tls: tls({ insecure: q.get('insecure') === '1' }) };
+    if (q.get('obfs') === 'salamander') o.obfs = { type: 'salamander', password: q.get('obfs-password') || '' };
+    return o;
+  }
+  if (scheme === 'tuic') {
+    const [uuid, password] = user.split(':');
+    return { type: 'tuic', tag, server, server_port: port, uuid, password: password || '', congestion_control: q.get('congestion_control') || 'bbr', tls: tls({ alpn: alpn || ['h3'] }) };
+  }
+  if (scheme !== 'vless' && scheme !== 'trojan') return null;
+  const o = scheme === 'vless' ? { type: 'vless', tag, server, server_port: port, uuid: user } : { type: 'trojan', tag, server, server_port: port, password: user };
+  if (scheme === 'vless' && q.get('flow')) o.flow = q.get('flow');
+  const sec = (q.get('security') || (scheme === 'trojan' ? 'tls' : 'none')).toLowerCase();
+  const fp = q.get('fp');
+  if (sec === 'tls') o.tls = tls(fp ? { utls: { enabled: true, fingerprint: fp } } : {});
+  else if (sec === 'reality') {
+    if (!q.get('pbk')) return null;
+    o.tls = tls({ utls: { enabled: true, fingerprint: fp || 'chrome' }, reality: { enabled: true, public_key: q.get('pbk'), short_id: q.get('sid') || '' } });
+  }
+  const type = (q.get('type') || 'tcp').toLowerCase();
+  if (type === 'ws' || type === 'httpupgrade') {
+    let path = q.get('path') || '/';
+    const t = { type, path, headers: q.get('host') ? { Host: q.get('host') } : undefined };
+    const ed = path.match(/[?&]ed=(\d+)/);
+    if (type === 'ws' && ed) {
+      t.path = path.replace(/[?&]ed=\d+/, '').replace(/\?$/, '') || '/';
+      t.max_early_data = Number(ed[1]);
+      t.early_data_header_name = 'Sec-WebSocket-Protocol';
+    }
+    if (type === 'httpupgrade') {
+      t.host = q.get('host') || undefined;
+      delete t.headers;
+    }
+    o.transport = t;
+  } else if (type === 'grpc') o.transport = { type: 'grpc', service_name: q.get('serviceName') || '' };
+  else if (type !== 'tcp' && type !== 'raw') return null; // xhttp etc. are not in sing-box
+  return o;
+}
+
+// Full sing-box profile for iPhone (SFI / Hiddify): TUN, a urltest "Auto" group over the ranked list (sing-box
+// re-tests every 5 min and keeps the fastest; tolerance keeps it from flapping) and a manual selector.
+function singboxProfile(lines) {
+  const outbounds = [];
+  for (const line of lines) {
+    let name = '';
+    try {
+      name = decodeURIComponent(line.split('#')[1] || '');
+    } catch {}
+    const tag = `${name || 'MolidoVPN'} [${outbounds.length + 1}]`;
+    const o = singboxOutbound(line, tag);
+    if (o) outbounds.push(o);
+    if (outbounds.length >= 60) break;
+  }
+  const tags = outbounds.map((o) => o.tag);
+  return {
+    log: { level: 'warn' },
+    dns: {
+      servers: [
+        { tag: 'remote', type: 'https', server: '1.1.1.1', detour: 'MolidoVPN' },
+        { tag: 'local', type: 'local' },
+      ],
+      final: 'remote',
+      strategy: 'prefer_ipv4',
+    },
+    inbounds: [{ type: 'tun', tag: 'tun', address: ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'], auto_route: true, strict_route: true, stack: 'mixed' }],
+    outbounds: [
+      { type: 'selector', tag: 'MolidoVPN', outbounds: ['♻️ Auto', ...tags], default: '♻️ Auto' },
+      { type: 'urltest', tag: '♻️ Auto', outbounds: tags, url: 'https://www.gstatic.com/generate_204', interval: '5m', tolerance: 80, idle_timeout: '30m' },
+      ...outbounds,
+      { type: 'direct', tag: 'direct' },
+    ],
+    route: {
+      rules: [{ action: 'sniff' }, { protocol: 'dns', action: 'hijack-dns' }, { ip_is_private: true, outbound: 'direct' }],
+      final: 'MolidoVPN',
+      auto_detect_interface: true,
+      default_domain_resolver: 'local',
+    },
+  };
+}
+
 // Drop servers that only ever failed from inside Iran, as long as at least [min] others remain.
 async function dropIranFailed(lines, scores, min) {
   if (!scores.size) return lines;
@@ -646,6 +781,7 @@ function brand(lines) {
       } catch {}
     }
     flag = flag || '🌐';
+    if (name.startsWith(EDGE_NAME)) return line; // owner Cloudflare route keeps its own name
     const vip = lines.vip?.has(lineCore(line)) ? ' VIP' : '';
     const n = (counters.get(flag + vip) || 0) + 1;
     counters.set(flag + vip, n);
@@ -768,13 +904,27 @@ async function iosRoute(url, env, ctx) {
   for (const l of decodeList(lite).split('\n')) add(l);
   for (const l of decodeList(full).split('\n')) add(l);
 
-  // Collect everything iPhone-friendly, put Iran-proven servers first, drop Iran-failed ones when
-  // enough others exist, then cap for the iOS memory limit.
-  const scores = await reportScores(env, ctx);
-  const rankedOut = await rankByReports(out, scores);
+  // Collect everything iPhone-friendly, rank strongest-first with the apps' Smart Connect score, drop
+  // Iran-failed ones when enough others exist, then cap for the iOS memory limit.
+  const snap = await getSnapshot(env, ctx);
+  const scores = snap ? snap.scores : new Map();
+  const rankedOut = await smartRankLines(out, snap);
   const lines = brand(mergeOwner(await owner, (await dropIranFailed(rankedOut, scores, 20)).slice(0, IOS_MAX)));
-  if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
   if (!lines.length) return new Response('server list unavailable, try again shortly', { status: 502 });
+  // sing-box (SFI / Hiddify "sing-box config"): a full profile with a urltest auto-select group.
+  if (url.pathname.endsWith('/singbox') || url.searchParams.get('format') === 'singbox') {
+    return new Response(JSON.stringify(singboxProfile(lines), null, 1), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'content-disposition': 'inline; filename="MolidoVPN.json"',
+        'profile-title': 'base64:' + btoa('MolidoVPN'),
+        'profile-update-interval': '1',
+        'cache-control': 'public, max-age=300',
+        'access-control-allow-origin': '*',
+      },
+    });
+  }
+  if (url.pathname.startsWith('/hiddify')) lines.unshift('warp://auto#MolidoVPN%20WARP', 'warp://p2@auto#MolidoVPN%20WARP%20in%20WARP');
 
   const bytes = new TextEncoder().encode(lines.join('\n'));
   let bin = '';
@@ -1018,16 +1168,64 @@ function ownerOrder(entries, st) {
 
 // Owner configs served to users (Iran-failed ones removed, weak ones flagged). Never throws.
 async function ownerLines(env, ctx) {
+  const edge = await edgeLines(env).catch(() => []);
   try {
     const snap = await getSnapshot(env, ctx);
-    if (!snap || !snap.entries.length) return [];
+    if (!snap || !snap.entries.length) return edge;
     const { top, weak } = ownerOrder(snap.entries, snap.status);
-    const out = [...top, ...weak];
+    const out = [...edge, ...top, ...weak];
     out.weak = new Set(weak.map(lineCore));
     return out;
   } catch {
-    return [];
+    return edge;
   }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Owner Cloudflare route: the separate molido-edge Worker (VLESS over WebSocket + TLS, early data). Its
+// id/path/host live only in this Worker's secrets (EDGE_UUID, EDGE_PATH, EDGE_HOST); nothing is in the repo or
+// in the APK. Variants: the workers.dev name itself, then clean Cloudflare IPs (crowd-reported on /cfip, plus a
+// static fallback) on the four Cloudflare HTTPS ports. Placed first in every list as "☁️ MolidoVPN Cloudflare N".
+// ---------------------------------------------------------------------------------------------------
+const EDGE_NAME = '☁️ MolidoVPN Cloudflare';
+const EDGE_PORTS = [443, 2053, 2083, 8443, 443, 2096];
+const EDGE_STATIC_IPS = ['104.16.132.229', '104.18.32.47', '172.64.155.209', '104.17.147.22', '162.159.140.10'];
+let _edgeIps = { at: 0, ips: [] };
+
+async function edgeCleanIps(env) {
+  if (Date.now() - _edgeIps.at < 10 * 60000) return _edgeIps.ips;
+  let ips = [];
+  try {
+    const since = Date.now() - 3 * 86400000;
+    const { results } = await env.DB.prepare(
+      `SELECT ip, SUM(ok_count) ok, CAST(AVG(ms_avg) AS INTEGER) ms FROM cf_ips WHERE updated > ?1
+       GROUP BY ip ORDER BY ok * 1000 / (ms + 50) DESC LIMIT 3`
+    )
+      .bind(since)
+      .all();
+    ips = results.map((r) => r.ip).filter((ip) => /^\d{1,3}(\.\d{1,3}){3}$/.test(ip));
+  } catch {}
+  _edgeIps = { at: Date.now(), ips };
+  return ips;
+}
+
+async function edgeLines(env) {
+  const { EDGE_UUID: id, EDGE_PATH: path, EDGE_HOST: host } = env;
+  if (!id || !path || !host) return [];
+  const q = (sni) =>
+    new URLSearchParams({
+      encryption: 'none',
+      security: 'tls',
+      sni,
+      fp: 'chrome',
+      alpn: 'http/1.1',
+      type: 'ws',
+      host,
+      path: `${path}?ed=2048`,
+    }).toString();
+  const ips = [...new Set([...(await edgeCleanIps(env)), ...EDGE_STATIC_IPS])].slice(0, EDGE_PORTS.length - 1);
+  const targets = [[host, 443], ...ips.map((ip, i) => [ip, EDGE_PORTS[i + 1]])];
+  return targets.map(([addr, port], i) => `vless://${id}@${addr}:${port}?${q(host)}#${encodeURIComponent(`${EDGE_NAME} ${i + 1}`)}`);
 }
 
 // /owner/configs — public list of owner config URIs for the local Iran tester (they are public inside / anyway).

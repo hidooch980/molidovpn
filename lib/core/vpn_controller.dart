@@ -1308,6 +1308,9 @@ class VpnController extends ChangeNotifier {
     return pool;
   }
 
+  /// Owner Cloudflare Worker route from the subscription (see cloudflare-edge/).
+  static bool isOwnerEdge(Server s) => s.remark.contains('MolidoVPN Cloudflare');
+
   Future<List<Server>> _candidates() async {
     final List<Server> pool;
     final country = selectedCountry;
@@ -1336,6 +1339,14 @@ class VpnController extends ChangeNotifier {
       pool
         ..remove(lastServer)
         ..insert(0, lastServer);
+    }
+    // The owner's own Cloudflare route (molido-edge, "☁️ MolidoVPN Cloudflare N" at the top of every list) always
+    // joins the automatic pool first, so Smart Connect races it on every network.
+    if (country == null) {
+      final edge = servers.where(isOwnerEdge).toList();
+      pool
+        ..removeWhere(isOwnerEdge)
+        ..insertAll(0, edge);
     }
     // Skip servers that just dropped, unless nothing else is left.
     final healthy = pool.where((s) => !_isBad(s)).toList();
