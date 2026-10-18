@@ -71,6 +71,27 @@ class EngineOptions {
   /// When set, traffic leaves through Cloudflare WARP chained behind the server.
   final WarpAccount? warp;
 
+  /// The same options with TLS fragmentation switched [on] (Smart Connect races fragment variants).
+  EngineOptions withFragment(bool on) => EngineOptions(
+        testUrl: testUrl,
+        timeout: timeout,
+        proxyOnly: proxyOnly,
+        systemProxy: systemProxy,
+        tunMode: tunMode,
+        killSwitch: killSwitch,
+        localPort: localPort,
+        bypassIran: bypassIran,
+        dns: dns,
+        fragment: on,
+        excludedApps: excludedApps,
+        warp: warp,
+        tunnelDns: tunnelDns,
+        tunMtu: tunMtu,
+        iranRuleSets: iranRuleSets,
+        multiPath: multiPath,
+        dataSaver: dataSaver,
+      );
+
   /// Pings measure the server itself, without the WARP hop.
   EngineOptions get forPing => EngineOptions(
         testUrl: testUrl,

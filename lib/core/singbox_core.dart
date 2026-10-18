@@ -100,14 +100,16 @@ class SingboxCore {
     return kind == null || kind == 'ws' || kind == 'grpc';
   }
 
+  /// TLS over TCP without Reality: the outbounds that TLS fragmentation changes.
+  static bool fragmentable(Json outbound) {
+    final tls = outbound['tls'];
+    return tls is Map && tls['enabled'] == true && tls['reality'] == null && !_quicTypes.contains(outbound['type']);
+  }
+
   static Json tagged(Json outbound, String tag, EngineOptions o, {bool mux = muxEnabled}) {
     final result = {...outbound, 'tag': tag};
     final tls = outbound['tls'];
-    if (o.fragment &&
-        tls is Map &&
-        tls['enabled'] == true &&
-        tls['reality'] == null &&
-        !_quicTypes.contains(outbound['type'])) {
+    if (o.fragment && tls is Map && fragmentable(outbound)) {
       // record_fragment: several TLS records; fragment (sing-box 1.12+): ClientHello split over TCP segments.
       result['tls'] = {
         ...tls,
@@ -247,7 +249,8 @@ class SingboxCore {
       {void Function(int done)? onProgress,
       bool Function()? isCancelled,
       int concurrency = 12,
-      bool stopOnFirstGood = false}) async {
+      bool stopOnFirstGood = false,
+      void Function(int index, int ms)? onResult}) async {
     final results = List<int>.filled(servers.length, -1);
     final outbounds = [
       for (var i = 0; i < servers.length; i++) tagged(outbound(servers[i]) ?? const {}, 'p$i', options),
@@ -288,7 +291,7 @@ class SingboxCore {
       }
       final inFlight = <HttpClient>{};
       var gotGood = false;
-      final times = await runPool(valid.length, concurrency, (k) async {
+      Future<int> one(int k) async {
         if (stopOnFirstGood && gotGood) return 0;
         if (isCancelled?.call() ?? false) return -1;
         final client = HttpClient()
@@ -314,6 +317,12 @@ class SingboxCore {
           inFlight.remove(client);
           client.close(force: true);
         }
+      }
+
+      final times = await runPool(valid.length, concurrency, (k) async {
+        final ms = await one(k);
+        onResult?.call(valid[k], ms);
+        return ms;
       }, onProgress: (n) => onProgress?.call(skipped + n));
       for (var k = 0; k < valid.length; k++) {
         results[valid[k]] = times[k];

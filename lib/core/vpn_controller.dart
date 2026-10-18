@@ -21,6 +21,7 @@ import 'remote_config.dart';
 import 'reports.dart';
 import 'server.dart';
 import 'settings.dart';
+import 'smart/smart_connect.dart';
 import 'subscription.dart';
 import 'udp_probe.dart';
 import 'update_notifier.dart';
@@ -1008,9 +1009,11 @@ class VpnController extends ChangeNotifier {
   }
 
   /// Connects to [server] with up to two backups (best recent delays, same location mode) ready inside the core.
-  Future<bool> _engineConnect(Server server, EngineOptions options) {
+  Future<bool> _engineConnect(Server server, EngineOptions options, {List<Server>? standby}) {
     final eng = engine;
-    if (eng is WindowsEngine) {
+    if (eng is WindowsEngine && standby != null) {
+      eng.standby = standby;
+    } else if (eng is WindowsEngine) {
       final country = selectedCountry;
       final backups = servers
           .where((s) =>
@@ -1033,15 +1036,15 @@ class VpnController extends ChangeNotifier {
 
   /// Direct or fast-path attempt. Windows: bounded by [_directBudget] (a very slow server can no longer freeze
   /// "connecting"); a server that fails is put aside for 10 minutes so the next connect does not start with it.
-  Future<bool> _directConnect(Server server, EngineOptions options) async {
+  Future<bool> _directConnect(Server server, EngineOptions options, {List<Server>? standby}) async {
     final eng = engine;
     if (eng is! WindowsEngine || FreeRoutes.isFree(server) || WinFreeRoutes.isChain(server)) {
-      return _engineConnect(server, options);
+      return _engineConnect(server, options, standby: standby);
     }
     eng.deadline = DateTime.now().add(_directBudget);
     try {
       // The engine stops by itself at the deadline; this is only a safety net.
-      final ok = await _engineConnect(server, options).timeout(_directBudget + const Duration(seconds: 4),
+      final ok = await _engineConnect(server, options, standby: standby).timeout(_directBudget + const Duration(seconds: 4),
           onTimeout: () async {
         AppLog.add('connect: ${server.displayName} exceeded the ${_directBudget.inSeconds} s budget');
         await engine.disconnect();
@@ -1305,6 +1308,9 @@ class VpnController extends ChangeNotifier {
     return pool;
   }
 
+  /// Owner Cloudflare Worker route from the subscription (see cloudflare-edge/).
+  static bool isOwnerEdge(Server s) => s.remark.contains('MolidoVPN Cloudflare');
+
   Future<List<Server>> _candidates() async {
     final List<Server> pool;
     final country = selectedCountry;
@@ -1333,6 +1339,14 @@ class VpnController extends ChangeNotifier {
       pool
         ..remove(lastServer)
         ..insert(0, lastServer);
+    }
+    // The owner's own Cloudflare route (molido-edge, "☁️ MolidoVPN Cloudflare N" at the top of every list) always
+    // joins the automatic pool first, so Smart Connect races it on every network.
+    if (country == null) {
+      final edge = servers.where(isOwnerEdge).toList();
+      pool
+        ..removeWhere(isOwnerEdge)
+        ..insertAll(0, edge);
     }
     // Skip servers that just dropped, unless nothing else is left.
     final healthy = pool.where((s) => !_isBad(s)).toList();
@@ -1633,8 +1647,14 @@ class VpnController extends ChangeNotifier {
         AppLog.add('connect: UDP blocked here, skipped ${before - pool.length} UDP-only routes');
       }
 
+      // Smart Connect (Windows, automatic / V2Ray): race every route at once and connect to the strongest.
+      final smartOn = only == null &&
+          eng is WindowsEngine &&
+          RemoteConfig.smart.enabled &&
+          (settings.transport == 'auto' || settings.transport == 'v2ray');
+
       // Fast path like v2rayNG: reconnect straight to the last working server, no ping round.
-      final last = await _lastWinner();
+      final last = smartOn ? null : await _lastWinner();
       if (only == null && pool.isNotEmpty && pool.first.uri == last) {
         final server = pool.first;
         phase = 'اتصال سریع به ${server.displayName}';
@@ -1679,6 +1699,20 @@ class VpnController extends ChangeNotifier {
         }
         if (!_cancel) _report(only, false);
         throw const _UserError('این سرور وصل نشد. سرور دیگری را امتحان کنید.');
+      }
+
+      if (smartOn) {
+        if (await _smartConnect(eng, pool, options, exitOk)) return;
+        _checkCancel();
+        if (countryMode) throw _UserError(noCountryServer);
+        if (await _amneziaAuto(options)) return;
+        _checkCancel();
+        if (await useIrFallback()) return;
+        if (await _amneziaAuto(options, allowIranExit: true)) return;
+        _checkCancel();
+        if (await _warpDirectAuto(options)) return;
+        throw _UserError(eng.freeRouteError ??
+            'اتصال برقرار نشد. «ضد فیلتر» را روشن کنید یا کشور دیگری را امتحان کنید. جزئیات در تنظیمات ← گزارش خطا.');
       }
 
       {
@@ -1856,6 +1890,192 @@ class VpnController extends ChangeNotifier {
     traffic = const TrafficStat();
     phase = null;
     progressDone = progressTotal = 0;
+    smart = null;
     notifyListeners();
+  }
+
+  // ---- Smart Connect (Windows) ----
+
+  /// Live race / winner state for the home screen; null when no smart run belongs to this session.
+  SmartRun? smart;
+
+  static const _smartMemoryKey = 'smart_network_memory';
+
+  /// Races [pool] in one throwaway sing-box (real HTTP 204 through every route, in parallel), adds TLS-fragment
+  /// variants when plain TLS is being blocked, re-probes the leaders for stability, scores everything with the
+  /// shared SmartScore and connects in score order. The next two healthy routes ride along in the same core as a
+  /// warm standby, so the watchdog's failover is instant. Psiphon / Tor / WARP chains are not probed (they need
+  /// their own bootstrap) and only run when no probed route connected. Returns false when nothing connected.
+  Future<bool> _smartConnect(
+      WindowsEngine eng, List<Server> pool, EngineOptions options, Future<bool> Function(Server) exitOk) async {
+    final cfg = RemoteConfig.smart;
+    final run = SmartRun();
+    smart = run;
+    final network = await CleanIp.networkKey();
+    final prefs = await SharedPreferences.getInstance();
+    final memory = SmartMemory.decode(prefs.getString(_smartMemoryKey));
+    final remembered = memory.lookup(network, DateTime.now(), ttlDays: cfg.memoryTtlDays);
+    final candidates = [
+      for (final s in pool.take(cfg.maxPool)) SmartCandidate(s)..shared = _scoreByUri[s.uri],
+    ];
+    candidates.forEach(run.register);
+    final cheap = [for (final c in candidates) if (c.cost == SmartCost.cheap) c];
+    final probeOptions = _optionsWith(timeout: Duration(seconds: cfg.probeTimeoutS));
+    AppLog.add('smart: racing ${cheap.length} routes (${candidates.length - cheap.length} expensive queued) '
+        'net=$network memory=${remembered?.winner == null ? '-' : 'yes'}');
+
+    void sync() {
+      progressDone = run.done;
+      progressTotal = run.total;
+      _throttledNotify();
+    }
+
+    Future<void> probe(List<SmartCandidate> list, EngineOptions opts) async {
+      if (list.isEmpty) return;
+      run.testing(list);
+      final before = [for (final c in list) c.probes.length];
+      sync();
+      final rounds = (list.length / cfg.concurrency).ceil();
+      try {
+        await eng
+            .probeAll([for (final c in list) c.server], opts,
+                isCancelled: () => _cancel,
+                concurrency: cfg.concurrency,
+                onResult: (i, ms) {
+                  if (list[i].probes.length == before[i]) run.record(list[i], ms);
+                  sync();
+                })
+            .timeout(Duration(seconds: cfg.probeTimeoutS * rounds + 25));
+      } catch (e) {
+        AppLog.add('smart: probe round cut short ($e)');
+      }
+      // Invalid configs and timed-out probes count as failures.
+      for (final (i, c) in list.indexed) {
+        if (c.probes.length == before[i]) run.record(c, -1);
+      }
+      sync();
+    }
+
+    // Stage 1: every probe-able route at once.
+    run.total = cheap.length + math.min(cheap.length, cfg.stabilityTop) * cfg.stabilityRounds;
+    phase = 'سنجش هوشمند ${cheap.length} مسیر به‌صورت هم‌زمان…';
+    notifyListeners();
+    await probe(cheap, probeOptions);
+    _checkCancel();
+
+    // Stage 2a: TLS is being cut on this network — race TLS-fragment variants of the failed TLS routes.
+    if (cfg.fragmentRace && !options.fragment && cheap.where((c) => c.responded).length < cfg.fragmentBelow) {
+      final targets = smartFragmentTargets(cheap, eng.fragmentable, cfg.fragmentMax);
+      if (targets.isNotEmpty) {
+        run.stage = 2;
+        final frag = [for (final s in targets) SmartCandidate(s, fragment: true)..shared = _scoreByUri[s.uri]];
+        frag.forEach(run.register);
+        candidates.addAll(frag);
+        run.total += frag.length;
+        phase = 'آزمون Fragment روی ${frag.length} مسیر…';
+        notifyListeners();
+        await probe(frag, probeOptions.withFragment(true));
+        _checkCancel();
+      }
+    }
+
+    // Stage 2b: stability — the leaders are probed again (in parallel) so one lucky answer does not win.
+    final leaders = smartRank([for (final c in candidates) if (c.responded) c], memory: remembered, config: cfg)
+        .take(cfg.stabilityTop)
+        .toList();
+    run.total = run.done + leaders.length * cfg.stabilityRounds;
+    for (var round = 0; round < cfg.stabilityRounds && leaders.isNotEmpty; round++) {
+      run.stage = 2;
+      phase = 'سنجش پایداری ${leaders.length} مسیر برتر…';
+      notifyListeners();
+      await probe([for (final c in leaders) if (!c.fragment) c], probeOptions);
+      await probe([for (final c in leaders) if (c.fragment) c], probeOptions.withFragment(true));
+      _checkCancel();
+    }
+    for (final c in candidates) {
+      final m = c.measured.medianMs;
+      if (c.cost == SmartCost.cheap && !c.fragment) delays[c.server.uri] = m ?? -1;
+    }
+
+    // Stage 3: connect in score order.
+    final ranked = smartRank(candidates, memory: remembered, config: cfg);
+    final anyResponded = ranked.any((c) => c.cost == SmartCost.cheap && c.responded);
+    AppLog.add('smart: ranking ${[
+      for (final c in ranked.take(6)) '${c.label}=${c.score.toStringAsFixed(0)}(${smartReason(c.measured, stableWord: 'ok')})'
+    ].join(' ')}');
+    run.stage = 3;
+    var cheapTried = 0, failedTried = 0;
+    for (var k = 0; k < ranked.length; k++) {
+      _checkCancel();
+      final c = ranked[k];
+      final probedOk = c.cost == SmartCost.cheap && c.responded;
+      if (c.cost == SmartCost.cheap) {
+        if (probedOk && ++cheapTried > _connectAttempts) continue;
+        // Failed probes are only a last resort when nothing at all answered.
+        if (!probedOk && (anyResponded || ++failedTried > _connectAttempts)) continue;
+      }
+      run.leader = c;
+      phase = 'اتصال به برنده: ${c.label}';
+      notifyListeners();
+      final standby = [
+        for (final o in ranked.skip(k + 1))
+          if (o.cost == SmartCost.cheap && o.responded && o.fragment == c.fragment && o.server.uri != c.server.uri) o.server,
+      ].take(2).toList();
+      final opts = c.fragment ? options.withFragment(true) : options;
+      final started = DateTime.now();
+      final ok = c.cost == SmartCost.cheap
+          ? await _directConnect(c.server, opts, standby: standby)
+          : await _engineConnect(c.server, opts, standby: const []);
+      if (!ok) {
+        AppLog.add('smart: ${c.label} failed to connect');
+        if (!_cancel) _report(c.server, false, ms: c.measured.medianMs);
+        continue;
+      }
+      if (_cancel) {
+        await engine.disconnect();
+        throw _Cancelled();
+      }
+      if (!await exitOk(c.server)) {
+        c.exitIran = true;
+        continue;
+      }
+      if (c.cost == SmartCost.expensive) {
+        // Bootstrap time and one probe through the running tunnel stand in for the race measurements.
+        final ms = await measureConnection();
+        c.probes.add(ms ?? -1);
+      }
+      final runner = ranked.skip(k + 1).where((o) => o.server.uri != c.server.uri && (o.cost == SmartCost.expensive || o.responded)).firstOrNull;
+      final measured = SmartMeasured(
+        probes: c.probes,
+        throughput: c.shared,
+        connectMs: c.cost == SmartCost.expensive ? DateTime.now().difference(started).inMilliseconds : null,
+      );
+      run
+        ..winner = c
+        ..runnerUp = runner
+        ..reason = smartReason(measured, stableWord: 'پایدار')
+        ..routesTested = candidates.where((x) => x.probes.isNotEmpty).length
+        ..finish();
+      AppLog.add('smart: winner ${c.label} score=${smartScore(measured).toStringAsFixed(0)} '
+          'runner-up=${runner?.label ?? '-'} standby=${standby.length}${c.fragment ? ' (fragment on)' : ''}');
+      memory.remember(
+          network,
+          SmartMemoryEntry(
+              winner: c.id, runnerUp: runner?.id, score: smartScore(measured), at: DateTime.now()));
+      unawaited(prefs.setString(_smartMemoryKey, memory.encode()));
+      current = c.server;
+      currentDelay = c.measured.medianMs;
+      connectedAt = DateTime.now();
+      state = VpnState.connected;
+      phase = null;
+      progressDone = progressTotal = 0;
+      notifyListeners();
+      _report(c.server, true, ms: c.measured.medianMs);
+      await _rememberWinner(c.server.uri);
+      return true;
+    }
+    run.finish();
+    notifyListeners();
+    return false;
   }
 }
