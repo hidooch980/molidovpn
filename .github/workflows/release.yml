@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VERSION: 3.0.${{ github.run_number }}
+  VERSION: 3.2.${{ github.run_number }}
 
 jobs:
   test:
@@ -75,7 +75,7 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
           chmod +x gradlew
-          ./gradlew testReleaseUnitTest assembleRelease --no-daemon             -PtargetAbi=arm64-v8a,armeabi-v7a             -PaetheryKeystore=release.keystore             -PmolidoVersionCode=$((30000 + ${{ github.run_number }}))             -PmolidoVersionName=$VERSION
+          ./gradlew testReleaseUnitTest assembleRelease --no-daemon             -PtargetAbi=arm64-v8a,armeabi-v7a             -PaetheryKeystore=release.keystore             -PmolidoVersionCode=$((40000 + ${{ github.run_number }}))             -PmolidoVersionName=$VERSION
           mkdir -p ../dist
           for f in app/build/outputs/apk/release/*.apk; do
             case "$f" in
