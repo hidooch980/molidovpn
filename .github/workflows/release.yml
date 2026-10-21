@@ -43,7 +43,7 @@ jobs:
           repository: hidooch980/molidovpn-android
           # Tested Android source: personal WireGuard IPv4/IPv6 and protected recovery.
           # Update this pin when promoting a newer verified Android revision.
-          ref: 31df38d7b66f27456bf621db81b158a416b8dde7
+          ref: aba98e3794dc4f44eba289789f3baa5ba0467dcb
           path: native
       - uses: actions/setup-java@v5
         with:
@@ -389,7 +389,7 @@ jobs:
           repository: hidooch980/molidovpn-android
           # Tested Android source: personal WireGuard IPv4/IPv6 and protected recovery.
           # Update this pin when promoting a newer verified Android revision.
-          ref: 31df38d7b66f27456bf621db81b158a416b8dde7
+          ref: aba98e3794dc4f44eba289789f3baa5ba0467dcb
           path: native
           fetch-depth: 0
       - name: Changelog (never fails the release)
