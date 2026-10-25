@@ -281,7 +281,7 @@ class VpnController extends ChangeNotifier {
 
   /// Heartbeat period while connected (was 50 s): far fewer D1 writes on the worker. The worker's online
   /// window must cover the longest gap (period + jitter + the 30 s check tick = 4 min).
-  static const heartbeatEvery = Duration(minutes: 3);
+  static const heartbeatEvery = Duration(minutes: 15);
   static const heartbeatJitterSeconds = 30;
 
   DateTime? _lastHeartbeat;
