@@ -275,7 +275,7 @@ async function ensureActiveSchema(env) {
   activeSchemaReady = true;
 }
 const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
-const ONLINE_WINDOW_S = 300; // Windows heartbeat: every 3 min + up to 30 s jitter
+const ONLINE_WINDOW_S = 1200; // app heartbeats every 15 min (+ jitter); free plan is 100k req/day per account
 const ACTIVE_PRUNE_S = 600;
 
 async function heartbeatRoute(request, env, ctx) {
@@ -1173,7 +1173,9 @@ async function ownerLines(env, ctx) {
     const snap = await getSnapshot(env, ctx);
     if (!snap || !snap.entries.length) return edge;
     const { top, weak } = ownerOrder(snap.entries, snap.status);
-    const out = [...edge, ...top, ...weak];
+    // Edge routes share the account's 100k/day request quota and the Worker CPU cap, so they are a
+    // fallback after the ranked top configs, not pinned first (pinned they won every latency race at ~1 Mbit/s).
+    const out = [...top.slice(0, 10), ...edge, ...top.slice(10), ...weak];
     out.weak = new Set(weak.map(lineCore));
     return out;
   } catch {
