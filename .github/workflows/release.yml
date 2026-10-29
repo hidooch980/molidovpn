@@ -41,9 +41,9 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: hidooch980/molidovpn-android
-          # Tested Android source: verified compatible TLS retries and atomic per-source catalogs.
+          # Tested Android source: bound Worker requests, HTTP freshness and retry backoff.
           # Update this pin when promoting a newer verified Android revision.
-          ref: b4e592302afba7937bf9f36e00820166497e4e17
+          ref: 472bb66f2d3c30109ceb2af20bb1ca8296b77c0f
           path: native
       - uses: actions/setup-java@v5
         with:
@@ -387,9 +387,9 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: hidooch980/molidovpn-android
-          # Tested Android source: verified compatible TLS retries and atomic per-source catalogs.
+          # Tested Android source: bound Worker requests, HTTP freshness and retry backoff.
           # Update this pin when promoting a newer verified Android revision.
-          ref: b4e592302afba7937bf9f36e00820166497e4e17
+          ref: 472bb66f2d3c30109ceb2af20bb1ca8296b77c0f
           path: native
           fetch-depth: 0
       - name: Changelog (never fails the release)
