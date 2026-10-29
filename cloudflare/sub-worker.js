@@ -592,9 +592,29 @@ async function getSnapshot(env, ctx) {
 }
 
 async function nodeFingerprint(line) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(line.split('#')[0].trim()));
-  return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const core = line.split('#')[0].trim();
+  const hit = fingerprintMemo.get(core);
+  if (hit) return hit;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(core));
+  const fp = [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (core.length <= 4096) {
+    // Bounded per-isolate memo: one list used to hash every node repeatedly
+    // during ranking, failure filtering and owner merging.
+    if (!fingerprintMemo.has(core)) {
+      fingerprintMemo.set(core, fp);
+      fingerprintChars += core.length;
+    }
+    while (fingerprintMemo.size > 4096 || fingerprintChars > 1_000_000) {
+      const first = fingerprintMemo.keys().next().value;
+      fingerprintChars -= first.length;
+      fingerprintMemo.delete(first);
+    }
+  }
+  return fp;
 }
+
+const fingerprintMemo = new Map();
+let fingerprintChars = 0;
 
 // 0 = worked in Iran, 1 = no data, 2 = only failures in Iran. Stable within a tier.
 async function rankByReports(lines, scores) {
@@ -633,7 +653,10 @@ function transportPrior(line) {
   return 0.5;
 }
 async function smartScoreLine(line, snap) {
-  const fp = await nodeFingerprint(line);
+  // Without measured evidence, transport is the only varying term. Avoid
+  // thousands of digests on a cold deployment / unavailable report database.
+  const hasEvidence = snap && (snap.scores.size || snap.status.users.size || snap.status.tests.size);
+  const fp = hasEvidence ? await nodeFingerprint(line) : '';
   const s = snap?.scores.get(fp);
   const u = snap?.status.users.get(fp);
   const t = snap?.status.tests.get(fp);
@@ -1797,6 +1820,79 @@ if(key&&${keySet})load();
   });
 }
 
+// Cache the FINISHED public catalog, not only upstream fetches. Rebuilding
+// thousands of URIs and scores on every 5-second app poll wastes Worker CPU.
+// Memory also works when Cache API is unavailable (e.g. local preview).
+const catalogMemo = new Map();
+const catalogInflight = new Map();
+const CATALOG_TTL_MS = 60_000;
+let catalogChars = 0;
+
+function catalogKey(url) {
+  const p = url.pathname;
+  if (/^\/sub\/[1-5]$/.test(p)) return p;
+  if (/^\/(ios|lite|hiddify)(\/singbox)?$/.test(p))
+    return p.split('/').slice(0, 2).join('/') +
+      ((p.endsWith('/singbox') || url.searchParams.get('format') === 'singbox') ? '/singbox' : '');
+  return p === '/' ? '/' : null;
+}
+
+function catalogResponse(entry, request) {
+  const headers = new Headers(entry.headers);
+  const validator = request.headers.get('if-none-match');
+  const matches = validator && validator.split(',').some((v) =>
+    v.trim() === '*' || v.trim().replace(/^W\//, '') === headers.get('etag'));
+  if (matches) return new Response(null, { status: 304, headers });
+  return new Response(request.method === 'HEAD' ? null : entry.body, { status: 200, headers });
+}
+
+async function cachedCatalog(request, url, ctx, build) {
+  if (request.method !== 'GET' && request.method !== 'HEAD')
+    return new Response('method not allowed', { status: 405, headers: { allow: 'GET, HEAD' } });
+  const path = catalogKey(url);
+  if (path === null) return new Response('not found', { status: 404 });
+  const key = `${url.origin}/__catalog/v2${path}`;
+  const old = catalogMemo.get(key);
+  if (old && Date.now() - old.at < CATALOG_TTL_MS) return catalogResponse(old, request);
+  // Never use the caller's arbitrary query string or conditional headers as
+  // a cache key: cache-busting polls must share the same computed catalog.
+  try {
+    const hit = await caches.default.match(key);
+    if (hit) return catalogResponse({ body: await hit.text(), headers: [...hit.headers] }, request);
+  } catch {}
+  let pending = catalogInflight.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const response = await build();
+      const body = await response.text();
+      const headers = new Headers(response.headers);
+      if (response.status !== 200) return { status: response.status, body, headers: [...headers] };
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)));
+      headers.set('etag', '"' + Array.from(digest, b => b.toString(16).padStart(2, '0')).join('') + '"');
+      headers.set('cache-control', 'public, max-age=60');
+      const entry = { status: 200, body, headers: [...headers], at: Date.now() };
+      if (body.length <= 1_000_000) {
+        const previous = catalogMemo.get(key);
+        if (previous) catalogChars -= previous.body.length;
+        catalogMemo.delete(key);
+        catalogMemo.set(key, entry);
+        catalogChars += body.length;
+        while (catalogMemo.size > 12 || catalogChars > 2_000_000) {
+          const first = catalogMemo.keys().next().value;
+          catalogChars -= catalogMemo.get(first).body.length;
+          catalogMemo.delete(first);
+        }
+        ctx.waitUntil(caches.default.put(key, new Response(body, { headers })).catch(() => {}));
+      }
+      return entry;
+    })().finally(() => catalogInflight.delete(key));
+    catalogInflight.set(key, pending);
+  }
+  const entry = await pending;
+  return entry.status === 200 ? catalogResponse(entry, request) :
+    new Response(request.method === 'HEAD' ? null : entry.body, { status: entry.status, headers: entry.headers });
+}
+
 export default {
   // Every 15 minutes: rebuild the list snapshot and prune stale heartbeats. Once a day (the 03:00 UTC
   // run): schema check and the old daily cleanup.
@@ -1847,9 +1943,10 @@ export default {
       }
     }
     if (url.pathname.startsWith('/admin')) return adminJson({ error: 'not found' }, 404);
-    if (url.pathname.startsWith('/sub/')) return subRoute(url, env, ctx);
+    if (url.pathname.startsWith('/sub/')) return cachedCatalog(request, url, ctx, () => subRoute(url, env, ctx));
     if (url.pathname.startsWith('/lite') || url.pathname.startsWith('/ios') || url.pathname.startsWith('/hiddify'))
-      return iosRoute(url, env, ctx);
+      return cachedCatalog(request, url, ctx, () => iosRoute(url, env, ctx));
+    return cachedCatalog(request, url, ctx, async () => {
     const sources = [FULL, MIRROR('sub_base64.txt')];
     const owner = ownerLines(env, ctx);
 
@@ -1872,5 +1969,7 @@ export default {
       });
     }
     return new Response('server list unavailable, try again shortly', { status: 502 });
+    });
   },
 };
+
