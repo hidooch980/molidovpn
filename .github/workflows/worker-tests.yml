@@ -1,0 +1,21 @@
+name: Worker catalog regression tests
+
+on:
+  pull_request:
+    paths: ['cloudflare/**', '.github/workflows/worker-tests.yml']
+  push:
+    branches: [main]
+    paths: ['cloudflare/**', '.github/workflows/worker-tests.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test cloudflare/catalog-cache.test.mjs
