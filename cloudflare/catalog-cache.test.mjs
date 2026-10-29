@@ -6,7 +6,7 @@ import test from 'node:test';
 if (!globalThis.crypto) Object.defineProperty(globalThis, 'crypto', { value: webcrypto });
 // Exercise the real production functions; no duplicate cache implementation.
 const source = await readFile(new URL('./sub-worker.js', import.meta.url), 'utf8');
-const { cachedCatalog, catalogKey, nodeFingerprint, smartRankLines } = await import(
+const { default: worker, cachedCatalog, catalogKey, nodeFingerprint, smartRankLines } = await import(
   'data:text/javascript;base64,' + Buffer.from(source + '\nexport { cachedCatalog, catalogKey, nodeFingerprint, smartRankLines };').toString('base64')
 );
 const edge = new Map();
@@ -77,4 +77,30 @@ test('fingerprints retain protocol identity and ignore display names; no-evidenc
   assert.equal(await nodeFingerprint(line + '#renamed'), expected);
   const quic = 'hysteria2://id@example.com:443';
   assert.deepEqual(await smartRankLines([quic, line], null), [line, quic]);
+});
+
+test('production subscription route reuses a prepared 2000-node catalog over repeated polls', async () => {
+  const fetchBefore = globalThis.fetch;
+  let fetches = 0;
+  globalThis.fetch = async () => {
+    fetches++;
+    return new Response(Array.from({ length: 2000 }, (_, i) =>
+      `vless://fixture-${i}@example.com:443?security=tls&type=ws#Test`).join('\n'));
+  };
+  const raw = { v: 1, at: Date.now(), r: [], t: [], e: [] };
+  const env = { DB: { prepare() { return { bind() { return this; }, async first() { return { v: JSON.stringify(raw) }; } }; } } };
+  try {
+    const req = new Request('https://actual-worker.example/sub/4');
+    const first = await worker.fetch(req, env, ctx);
+    assert.equal(first.status, 200);
+    const expected = await first.text();
+    assert.ok(atob(expected).includes('vless://'));
+    const coldFetches = fetches;
+    assert.ok(coldFetches > 0);
+    for (let i = 0; i < 100; i++) {
+      const res = await worker.fetch(new Request(req.url + '?poll=' + i), env, ctx);
+      assert.equal(await res.text(), expected);
+    }
+    assert.equal(fetches, coldFetches, 'warm polls must not rebuild/fetch the upstream catalog');
+  } finally { globalThis.fetch = fetchBefore; }
 });
