@@ -336,6 +336,7 @@ jobs:
           gh release download $prev --repo $env:GITHUB_REPOSITORY --pattern MolidoVPN-windows-setup.exe --output $old --clobber
           # Start-Process -Wait would also wait for children (an app the installer launches), so wait on setup only.
           $p = Start-Process $old -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru
+          $null = $p.Handle  # cache the handle so ExitCode is readable after exit
           if (-not $p.WaitForExit(300000)) { throw 'old installer timed out' }
           Start-Sleep 3
           Get-Process mobin_vpn -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -346,6 +347,7 @@ jobs:
           Start-Sleep 8
           $before = (Get-Item (Join-Path $dir 'mobin_vpn.exe')).LastWriteTimeUtc
           $p = Start-Process dist/MolidoVPN-windows-setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1','/LOG=upgrade.log' -PassThru
+          $null = $p.Handle
           $done = $p.WaitForExit(300000)
           Get-Content upgrade.log -Tail 40 -ErrorAction SilentlyContinue
           if (-not $done) { throw 'upgrade installer timed out' }
