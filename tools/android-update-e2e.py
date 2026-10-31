@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 PKG = "com.mobin.mobin_vpn"
 ACTIVITY = f"{PKG}/com.molido.vpn.MainActivity"
+SHEET_DISMISS = {"ارسال نشود", "Don't send", "Do not send"}
 INSTALLER_BUTTONS = re.compile(r"^(install|update|نصب|به‌روزرسانی|بروزرسانی)$", re.I)
 
 
@@ -96,7 +97,12 @@ def main():
                 print(f"accepted system dialog from {sorted(packages)}")
         elif PKG in packages:
             positive = [n for n in nodes if n.get("resource-id") == "android:id/button1"]
-            if positive and new_version in texts:
+            # The first-run reports bottom sheet sits on top of the update dialog: answer it like a user would.
+            sheet = [n for n in nodes if (n.get("text") or "").strip() in SHEET_DISMISS]
+            if sheet:
+                tap(sheet[0])
+                print(f"answered the first-run sheet: {sheet[0].get('text')!r}")
+            elif positive and new_version in texts:
                 shot("1-update-dialog")
                 tap(positive[0])
                 stage = "downloading"
