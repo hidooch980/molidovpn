@@ -319,35 +319,43 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress | Out-Null
-          $iss = @"
-          [Setup]
-          AppId={{8F3C2A1E-6B4D-4F7A-9C1E-2D5B7A9E4C10}
-          AppName=MolidoVPN
-          AppVersion=$env:VERSION
-          AppPublisher=MolidoVPN
-          DefaultDirName={localappdata}/Programs/MolidoVPN
-          PrivilegesRequired=lowest
-          DisableProgramGroupPage=yes
-          OutputDir=dist
-          OutputBaseFilename=MolidoVPN-windows-setup
-          SetupIconFile=windows/runner/resources/app_icon.ico
-          Compression=lzma2
-          SolidCompression=yes
-          WizardStyle=modern
-          [Languages]
-          Name: "en"; MessagesFile: "compiler:Default.isl"
-          [Tasks]
-          Name: "desktopicon"; Description: "Desktop shortcut"; Flags: checkedonce
-          [Files]
-          Source: "build/windows/x64/runner/Release/*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
-          [Icons]
-          Name: "{autoprograms}\MolidoVPN"; Filename: "{app}/mobin_vpn.exe"
-          Name: "{autodesktop}\MolidoVPN"; Filename: "{app}/mobin_vpn.exe"; Tasks: desktopicon
-          [Run]
-          Filename: "{app}/mobin_vpn.exe"; Description: "Start MolidoVPN"; Flags: nowait postinstall skipifsilent
-          "@
-          Set-Content -Path molido.iss -Value $iss -Encoding UTF8
-          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" molido.iss
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" "/DMyVersion=$env:VERSION" windows/installer/molido.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+      # Upgrade in place: install the current public release, leave the app AND a core running (files locked,
+      # as on a user's PC), then run the new setup silently the way the in-app updater does. It must succeed
+      # without an uninstall, replace the files, keep one uninstall entry, and relaunch the app.
+      - name: Upgrade test (previous release -> this build, app and core running)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs/MolidoVPN'
+          $old = Join-Path $env:RUNNER_TEMP 'old-setup.exe'
+          $prev = gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName 2>$null
+          if (-not $prev) { Write-Output 'no previous release; skipping'; exit 0 }
+          gh release download $prev --repo $env:GITHUB_REPOSITORY --pattern MolidoVPN-windows-setup.exe --output $old --clobber
+          $p = Start-Process $old -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "old installer exit $($p.ExitCode)" }
+          $app = Start-Process (Join-Path $dir 'mobin_vpn.exe') -PassThru
+          $core = Get-ChildItem $dir -Recurse -Filter xray.exe | Select-Object -First 1
+          if ($core) { Start-Process $core.FullName -ArgumentList 'run','-c','nonexistent.json' -PassThru | Out-Null }
+          Start-Sleep 8
+          $before = (Get-Item (Join-Path $dir 'mobin_vpn.exe')).LastWriteTimeUtc
+          $p = Start-Process dist/MolidoVPN-windows-setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1','/LOG=upgrade.log' -Wait -PassThru
+          Get-Content upgrade.log -Tail 40
+          if ($p.ExitCode -ne 0) { throw "upgrade installer exit $($p.ExitCode)" }
+          $after = (Get-Item (Join-Path $dir 'mobin_vpn.exe')).LastWriteTimeUtc
+          $newSrc = (Get-Item build/windows/x64/runner/Release/mobin_vpn.exe).Length
+          if ((Get-Item (Join-Path $dir 'mobin_vpn.exe')).Length -ne $newSrc) { throw 'mobin_vpn.exe was not replaced' }
+          $entries = @(Get-ChildItem 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall' | Where-Object { $_.PSChildName -like '*8F3C2A1E-6B4D-4F7A-9C1E-2D5B7A9E4C10*' })
+          if ($entries.Count -ne 1) { throw "expected one uninstall entry, found $($entries.Count)" }
+          $ver = (Get-ItemProperty $entries[0].PSPath).DisplayVersion
+          if ($ver -ne $env:VERSION) { throw "installed version $ver, expected $env:VERSION" }
+          Start-Sleep 6
+          if (-not (Get-Process mobin_vpn -ErrorAction SilentlyContinue)) { throw 'app was not relaunched' }
+          Write-Output "upgrade OK: $prev -> $env:VERSION (exe $before -> $after)"
+          Get-Process mobin_vpn,xray -ErrorAction SilentlyContinue | Stop-Process -Force
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Screenshots of the Windows app (branch previews-windows)
         continue-on-error: true
         shell: pwsh

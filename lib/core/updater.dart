@@ -26,7 +26,9 @@ class Updater {
 
   /// Per-ABI APK (~50 MB) matching the running build; universal (~140 MB) only for other CPUs.
   static String get _assetName {
-    if (Platform.isWindows) return 'MolidoVPN-windows-x64.zip';
+    // The installer, not the zip: it closes the app and every core (also elevated ones, and the AmneziaWG
+    // service) before copying, so an update upgrades in place instead of failing on locked files.
+    if (Platform.isWindows) return 'MolidoVPN-windows-setup.exe';
     return switch (Abi.current()) {
       Abi.androidArm64 => 'MolidoVPN-android-arm64.apk',
       Abi.androidArm => 'MolidoVPN-android-armv7.apk',
@@ -165,6 +167,28 @@ class Updater {
     String q(String s) => "'${s.replaceAll("'", "''")}'";
     final script = File('$temp\\mobin_update.ps1');
     final log = '$temp\\mobin_update.log';
+    if (file.path.toLowerCase().endsWith('.exe')) {
+      // Silent in-place upgrade; the installer relaunches the app (/relaunch=1) when it is done.
+      final setupLog = '$temp\\mobin_setup.log';
+      final setupScript = '''
+\$ErrorActionPreference = 'Stop'
+Start-Transcript -Path ${q(log)} -Append | Out-Null
+try {
+  while (Get-Process -Id $pid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }
+  \$p = Start-Process -FilePath ${q(file.path)} -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1',${q('/LOG="$setupLog"')} -Wait -PassThru
+  if (\$p.ExitCode -ne 0) { throw "setup exit code \$(\$p.ExitCode)" }
+} catch {
+  Write-Output "update failed: \$_"
+  Start-Process ${q(releasesPage)}
+  Start-Process -FilePath ${q(exe)}
+}
+Stop-Transcript | Out-Null
+''';
+      await script.writeAsBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(setupScript)]);
+      AppLog.add('update: running installer silently via ${script.path} (log: $log, $setupLog)');
+      await _runDetached(script);
+      return;
+    }
     // Extract to a staging folder first, then copy over the app. If the app folder is not writable
     // (e.g. Program Files) the script re-runs itself as administrator.
     final content = '''
@@ -198,6 +222,11 @@ Stop-Transcript | Out-Null
     // UTF-8 with BOM so Windows PowerShell 5.1 reads non-English paths correctly.
     await script.writeAsBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(content)]);
     AppLog.add('update: starting installer script ${script.path} (log: $log)');
+    await _runDetached(script);
+  }
+
+  /// Runs [script] in PowerShell outside this process (it must survive our exit).
+  Future<void> _runDetached(File script) async {
     // `Process.start(mode: detached)` is not enough on Windows: when this app runs inside a job
     // object (Windows Terminal, some launchers, MSIX) with "kill on close", the detached child dies
     // the instant this process exits, even though DETACHED_PROCESS was requested — the update script
