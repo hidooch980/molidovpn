@@ -116,11 +116,24 @@ class RemoteConfig {
     } catch (_) {}
   }
 
+  /// Static copies (vpn-sub `meta/`, mirrored every ~15 min) first; the Worker last.
   static Future<String?> _get(String file, String? proxy) async {
+    for (final base in const [
+      'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/meta',
+      'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/meta',
+      _base,
+    ]) {
+      final body = await _getFrom('$base/$file', proxy);
+      if (body != null && body.trimLeft().startsWith('{')) return body;
+    }
+    return null;
+  }
+
+  static Future<String?> _getFrom(String url, String? proxy) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
-      final req = await client.getUrl(Uri.parse('$_base/$file')).timeout(const Duration(seconds: 8));
+      final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 8));
       final res = await req.close().timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) {
         await res.drain<void>();
@@ -129,7 +142,7 @@ class RemoteConfig {
       final body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 8));
       return body.length < 16000 ? body : null;
     } catch (e) {
-      AppLog.add('remote config: $file not fetched ($e)');
+      AppLog.add('remote config: $url not fetched ($e)');
       return null;
     } finally {
       client.close(force: true);
