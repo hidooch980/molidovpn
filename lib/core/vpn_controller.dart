@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account.dart';
@@ -15,6 +16,7 @@ import 'cf_clean_ip.dart';
 import 'countries.dart';
 import 'free_routes.dart';
 import 'engine.dart';
+import 'install_id.dart';
 import 'network_info.dart';
 import 'outline.dart';
 import 'remote_config.dart';
@@ -25,6 +27,7 @@ import 'smart/smart_connect.dart';
 import 'subscription.dart';
 import 'udp_probe.dart';
 import 'update_notifier.dart';
+import 'live_sync.dart';
 import 'updater.dart';
 import 'usage_stats.dart';
 import 'warp.dart';
@@ -167,7 +170,7 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> init() async {
-    await Future.wait([settings.load(), usage.load(), RemoteConfig.loadCached()]);
+    await Future.wait([settings.load(), usage.load(), RemoteConfig.loadCached(), InstallId.load()]);
     _applyRemoteFlags();
     unawaited(refreshRemoteConfig(force: true));
     settings.addListener(() {
@@ -179,6 +182,9 @@ class VpnController extends ChangeNotifier {
       final dropped = current;
       _markDisconnected();
       if (settings.autoReconnect) unawaited(_switchAway(dropped, alreadyDisconnected: true));
+    });
+    engine.states.listen((s) {
+      if (s == VpnState.connected) unawaited(liveTick('connect'));
     });
     // Watchdog: a tunnel can stay "up" while the server stops passing traffic.
     Timer.periodic(const Duration(seconds: 5), (_) => _watchdog());
@@ -228,6 +234,10 @@ class VpnController extends ChangeNotifier {
     await checkUpdate();
     // Long-running sessions (e.g. Windows left open) still hear about new releases and get fresh servers.
     Timer.periodic(const Duration(hours: 6), (_) => checkUpdate());
+    // Live changes (owner flags/notice, releases, server list) from GitHub's live branch; never the Worker.
+    Timer.periodic(const Duration(minutes: 10), (_) => liveTick('timer'));
+    _lifecycle = AppLifecycleListener(onResume: () => liveTick('focus'));
+    Timer.periodic(const Duration(minutes: 1), (_) => _idleInstallTick());
     // Server lists stay fresh while the app runs (the built-in list every 30 min; Connect refreshes a stale one).
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
     unawaited(refreshUserSubscriptions());
@@ -407,6 +417,7 @@ class VpnController extends ChangeNotifier {
     }
     if (!alreadyDisconnected) await disconnect();
     error = 'سرور ${dropped?.displayName ?? ''} قطع شد؛ جابه‌جایی خودکار به سرور دیگر…';
+    unawaited(Diagnostics.record('drop', dropped != null ? _routeOf(dropped) : null, 'server stopped working; switching'));
     notifyListeners();
     await connect();
   }
@@ -649,6 +660,63 @@ class VpnController extends ChangeNotifier {
       loading = false;
       notifyListeners();
     }
+  }
+
+  // ignore: unused_field
+  AppLifecycleListener? _lifecycle;
+
+  /// A failed connect: into the local diagnostics buffer, and up to the owner (reports opt-in, ≤ 1/hour).
+  void _diagFailure(String kind, String msg) {
+    unawaited(Diagnostics.record(kind, settings.transport, msg)
+        .then((_) => Diagnostics.upload(reportsOn: settings.anonymousReports)));
+  } // held so the focus listener stays registered
+
+  /// Installer downloaded and verified in the background, waiting for exit or idle (Windows).
+  File? readyInstaller;
+  DateTime? _idleSince;
+
+  /// Cheap change check (304 when nothing moved); applies what changed without reconnecting.
+  Future<void> liveTick(String reason) async {
+    final parts = await LiveSync.check(proxy: engine.httpProxy, reason: reason);
+    if (parts.isEmpty) return;
+    if (parts.contains('flags') || parts.contains('notice')) await refreshRemoteConfig(force: true);
+    if (parts.contains('catalog') && state == VpnState.disconnected) unawaited(refresh());
+    if (parts.contains('release')) await _onLiveRelease();
+  }
+
+  Future<void> _onLiveRelease() async {
+    final found = await checkUpdate();
+    if (found == null || !Platform.isWindows || found.critical) return; // critical: the banner + notification now
+    if (readyInstaller != null) return;
+    try {
+      readyInstaller = await updater.download(found, proxy: engine.httpProxy, onProgress: (_) {});
+      AppLog.add('update: ${found.version} downloaded and verified; installs on exit or when idle');
+    } catch (e) {
+      AppLog.add('update: background download failed: $e');
+    }
+  }
+
+  /// Idle = disconnected and the window not in front for 15 min: upgrade silently in place.
+  void _idleInstallTick() {
+    final file = readyInstaller;
+    final front = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    if (file == null || state != VpnState.disconnected || front || updateProgress != null) {
+      _idleSince = null;
+      return;
+    }
+    _idleSince ??= DateTime.now();
+    if (DateTime.now().difference(_idleSince!) < const Duration(minutes: 15)) return;
+    AppLog.add('update: idle, installing ${file.path} silently');
+    unawaited(updater.install(file).then((_) => exit(0)));
+  }
+
+  /// Exit from the tray: a ready installer runs silently (no relaunch) after we quit.
+  Future<void> installOnExit() async {
+    final file = readyInstaller;
+    if (file == null || !Platform.isWindows) return;
+    try {
+      await updater.install(file, relaunch: false);
+    } catch (_) {}
   }
 
   /// Returns the available update (also stored in [update]), null when up to date or offline.
@@ -1855,9 +1923,11 @@ class VpnController extends ChangeNotifier {
       AppLog.add('connect: ${e.message}');
       error = e.message;
       _markDisconnected();
+      _diagFailure('fail', e.message);
     } catch (e, st) {
       AppLog.add('connect: unexpected $e\n$st');
       error = 'خطای غیرمنتظره: $e';
+      _diagFailure('error', '$e');
       await engine.disconnect();
       _markDisconnected();
     }

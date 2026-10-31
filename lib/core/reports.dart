@@ -5,8 +5,10 @@ import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
+import 'install_id.dart';
 import 'cf_clean_ip.dart';
 import 'network_info.dart';
 
@@ -93,10 +95,17 @@ class ServerReports {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
+      final prefs = await SharedPreferences.getInstance();
       final body = jsonEncode({
         'session_id': _sessionIdFor(),
         'op': ?NetworkInfo.operatorBucket,
         'mode': ?mode,
+        // Install ID for the admin device list; the same sampled request, nothing extra.
+        'install_id': await InstallId.load(),
+        'platform': 'windows',
+        'ver': (await PackageInfo.fromPlatform()).version,
+        // The older account device ID (when an account was ever set up), so old and new can be matched.
+        'legacy': ?prefs.getString('account_device_id'),
       });
       final req = await client.postUrl(Uri.parse('$_base/heartbeat')).timeout(const Duration(seconds: 8));
       req.headers.contentType = ContentType.json;

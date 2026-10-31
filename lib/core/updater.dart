@@ -4,6 +4,7 @@ import 'dart:ffi' show Abi;
 import 'dart:io';
 
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:cryptography/cryptography.dart' show Sha256;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,9 +12,22 @@ import 'package:path_provider/path_provider.dart';
 import 'app_log.dart';
 
 class UpdateInfo {
-  const UpdateInfo({required this.version, required this.url, required this.assetName, required this.size});
+  const UpdateInfo({
+    required this.version,
+    required this.url,
+    required this.assetName,
+    required this.size,
+    this.sha256,
+    this.critical = false,
+  });
 
   final String version, url, assetName;
+
+  /// From the release metadata (GitHub `digest`); the download must match it when known.
+  final String? sha256;
+
+  /// Owner marked the release "[critical]": prompt at once instead of installing on exit/idle.
+  final bool critical;
 
   /// 0 when unknown (found without the GitHub API).
   final int size;
@@ -48,17 +62,16 @@ class Updater {
   Future<UpdateInfo?> check({String? proxy}) async {
     final installed = await installedVersion();
     UpdateInfo? latest;
-    try {
-      latest = await _fromApi(installed, proxy, _mirrorApi);
-    } catch (e) {
-      AppLog.add('update: mirror failed ($e), trying the GitHub API');
+    // Static GitHub copies first (no Cloudflare request), the GitHub API, the Worker, then the page redirect.
+    for (final url in sources) {
       try {
-        latest = await _fromApi(installed, proxy, 'https://api.github.com/repos/$_repo/releases/latest');
+        latest = await _fromApi(installed, proxy, url);
+        break;
       } catch (e) {
-        AppLog.add('update: GitHub API failed ($e), trying the releases page');
-        latest = await _fromRedirect(proxy);
+        AppLog.add('update: $url failed ($e)');
       }
     }
+    latest ??= await _fromRedirect(proxy);
     if (latest == null) return null;
     final newer = isNewer(latest.version, installed);
     AppLog.add('update: installed $installed, latest ${latest.version}${newer ? ' → update available' : ''}');
@@ -67,6 +80,31 @@ class Updater {
 
   /// Our Cloudflare worker: same JSON as the GitHub API, download links served through the worker.
   static const _mirrorApi = 'https://molido-sub.hidooch980.workers.dev/app/latest.json';
+
+  static const sources = [
+    'https://raw.githubusercontent.com/hidooch980/vpn-sub/live/latest.json',
+    'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@live/latest.json',
+    'https://api.github.com/repos/$_repo/releases/latest',
+    _mirrorApi,
+  ];
+
+  /// Release JSON (GitHub shape, or our mirrors' with `sha256`/`critical`) → the asset for this build.
+  static UpdateInfo? parseRelease(Map<String, dynamic> json, String assetName) {
+    final version = '${json['tag_name']}'.replaceFirst(RegExp('^v'), '');
+    final asset = (json['assets'] as List).cast<Map<String, dynamic>>().where((a) => a['name'] == assetName).firstOrNull;
+    if (asset == null) return null;
+    final digest = '${asset['digest'] ?? ''}';
+    var sha = '${asset['sha256'] ?? ''}'.toLowerCase();
+    if (sha.isEmpty && digest.startsWith('sha256:')) sha = digest.substring(7).toLowerCase();
+    return UpdateInfo(
+      version: version,
+      url: asset['browser_download_url'] as String,
+      assetName: assetName,
+      size: (asset['size'] as num?)?.toInt() ?? 0,
+      sha256: RegExp(r'^[0-9a-f]{64}$').hasMatch(sha) ? sha : null,
+      critical: json['critical'] == true || '${json['body'] ?? ''}'.toLowerCase().contains('[critical]'),
+    );
+  }
 
   Future<UpdateInfo?> _fromApi(String installed, String? proxy, String url) async {
     final client = _client(proxy);
@@ -78,16 +116,7 @@ class Updater {
       final res = await req.close().timeout(const Duration(seconds: 20));
       final body = await res.transform(utf8.decoder).join();
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
-      final json = jsonDecode(body) as Map<String, dynamic>;
-      final version = '${json['tag_name']}'.replaceFirst(RegExp('^v'), '');
-      final asset = (json['assets'] as List).cast<Map<String, dynamic>>().where((a) => a['name'] == _assetName).firstOrNull;
-      if (asset == null) return null;
-      return UpdateInfo(
-        version: version,
-        url: asset['browser_download_url'] as String,
-        assetName: _assetName,
-        size: (asset['size'] as num).toInt(),
-      );
+      return parseRelease(jsonDecode(body) as Map<String, dynamic>, _assetName);
     } finally {
       client.close(force: true);
     }
@@ -145,6 +174,14 @@ class Updater {
         await sink.close();
       }
       if (total > 0 && received != total) throw FileSystemException('download incomplete: $received of $total bytes');
+      final want = update.sha256;
+      if (want != null) {
+        final got = await sha256File(file);
+        if (got != want) {
+          await file.delete();
+          throw FileSystemException('download damaged (sha256 $got, expected $want)');
+        }
+      }
       AppLog.add('update: downloaded $received bytes to ${file.path}');
       return file;
     } finally {
@@ -154,7 +191,17 @@ class Updater {
 
   /// Android: opens the system installer. Windows: a detached script swaps the files once this process exits,
   /// then relaunches the app — the caller must exit right after.
-  Future<void> install(File file) async {
+  static Future<String> sha256File(File file) async {
+    final sink = Sha256().newHashSink();
+    await for (final chunk in file.openRead()) {
+      sink.add(chunk);
+    }
+    sink.close();
+    return (await sink.hash()).bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// [relaunch]: start the new version when setup is done (false when the user chose Exit).
+  Future<void> install(File file, {bool relaunch = true}) async {
     if (Platform.isAndroid) {
       final result = await OpenFilex.open(file.path, type: 'application/vnd.android.package-archive');
       AppLog.add('update: installer result ${result.type} ${result.message}');
@@ -175,7 +222,7 @@ class Updater {
 Start-Transcript -Path ${q(log)} -Append | Out-Null
 try {
   while (Get-Process -Id $pid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }
-  \$p = Start-Process -FilePath ${q(file.path)} -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1',${q('/LOG="$setupLog"')} -Wait -PassThru
+  \$p = Start-Process -FilePath ${q(file.path)} -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=${relaunch ? 1 : 0}',${q('/LOG="$setupLog"')} -Wait -PassThru
   if (\$p.ExitCode -ne 0) { throw "setup exit code \$(\$p.ExitCode)" }
 } catch {
   Write-Output "update failed: \$_"

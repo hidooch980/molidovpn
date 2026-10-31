@@ -76,6 +76,7 @@ class _TrayHandler with TrayListener {
 
   Future<void> _exit() async {
     if (controller.state != VpnState.disconnected) await controller.disconnect();
+    await controller.installOnExit();
     await trayManager.destroy();
     exit(0);
   }
