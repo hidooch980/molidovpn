@@ -16,10 +16,14 @@ class LiveVersion {
     this.critical = false,
     this.resilience = '',
     this.catalog = '',
+    this.at = 0,
   });
 
   final String v, flags, notice, release, resilience, catalog;
   final bool critical;
+
+  /// When the live job wrote it (unix seconds); a CDN edge may still serve an older one.
+  final int at;
 
   static LiveVersion? parse(String? text) {
     try {
@@ -35,6 +39,7 @@ class LiveVersion {
         critical: o['critical'] == true,
         resilience: s('resilience'),
         catalog: s('catalog'),
+        at: (o['at'] as num?)?.toInt() ?? 0,
       );
     } catch (_) {
       return null;
@@ -49,11 +54,16 @@ class LiveVersion {
     'critical': critical,
     'resilience': resilience,
     'catalog': catalog,
+    'at': at,
   };
+
+  /// A copy written before the one we have: never step back to it.
+  static bool isOlder(LiveVersion? old, LiveVersion fresh) => old != null && fresh.at > 0 && fresh.at < old.at;
 
   /// Parts whose hash moved ('flags', 'notice', 'release', 'catalog'). No previous copy: all known parts.
   static Set<String> changes(LiveVersion? old, LiveVersion fresh) {
     if (old != null && old.v == fresh.v) return {};
+    if (isOlder(old, fresh)) return {};
     bool moved(String? o, String n) => n.isNotEmpty && o != n;
     return {
       if (moved(old?.flags, fresh.flags)) 'flags',
@@ -89,7 +99,7 @@ class LiveSync {
         if (r == null) continue;
         if (r.$1 == 304) return {};
         final fresh = LiveVersion.parse(r.$2);
-        if (fresh == null) continue;
+        if (fresh == null || LiveVersion.isOlder(current, fresh)) continue;
         if (r.$3 != null) await prefs.setString(etagKey, r.$3!);
         final parts = LiveVersion.changes(current, fresh);
         current = fresh;

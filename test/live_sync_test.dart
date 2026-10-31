@@ -36,4 +36,12 @@ void main() {
     expect(Updater.sources.first, startsWith('https://raw.githubusercontent.com/'));
     expect(Updater.sources.last, contains('workers.dev'));
   });
+  test('an older CDN copy never steps back', () {
+    const now = LiveVersion(v: '2', flags: 'f2', release: 'v3.2.158', at: 200);
+    const stale = LiveVersion(v: '1', flags: 'f1', release: 'v3.2.156', at: 100);
+    expect(LiveVersion.isOlder(now, stale), isTrue);
+    expect(LiveVersion.changes(now, stale), isEmpty);
+    expect(LiveVersion.isOlder(stale, now), isFalse);
+    expect(LiveVersion.parse('{"v":"x","at":5}')!.at, 5);
+  });
 }
