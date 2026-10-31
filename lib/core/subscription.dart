@@ -57,12 +57,15 @@ class SubscriptionRepository {
   static const shareLink = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/lite_base64.txt';
 
   static const _mirrors = [
-    'https://molido-sub.hidooch980.workers.dev/',
+    // Static copy of the Worker's ranked catalog first; the Worker itself last (100k requests/day per account).
+    'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/meta/catalog.txt',
+    'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/meta/catalog.txt',
     'https://hidooch980.github.io/vpn-sub/sub.txt',
     'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/sub.txt',
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt',
     'https://fastly.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub.txt',
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub_base64.txt',
+    'https://molido-sub.hidooch980.workers.dev/',
   ];
   static const _textKey = 'sub_text', _timeKey = 'sub_time';
 

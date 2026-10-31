@@ -275,8 +275,11 @@ async function ensureActiveSchema(env) {
   activeSchemaReady = true;
 }
 const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
-const ONLINE_WINDOW_S = 1200; // app heartbeats every 15 min (+ jitter); free plan is 100k req/day per account
-const ACTIVE_PRUNE_S = 600;
+// Apps heartbeat every 30 min, and only a 1-in-HEARTBEAT_SAMPLE sample of devices does (free plan: 100k
+// requests/day for the whole account). Online figures are scaled back up, so they are estimates.
+const ONLINE_WINDOW_S = 2400;
+const ACTIVE_PRUNE_S = 3600;
+const HEARTBEAT_SAMPLE = 10;
 
 async function heartbeatRoute(request, env, ctx) {
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405, headers: CORS });
@@ -322,7 +325,10 @@ async function onlineRoute(env) {
     const mode = row.mode || 'unknown';
     byMode[mode] = (byMode[mode] || 0) + 1;
   }
-  return adminJson({ count: results.length, byOperator, byMode });
+  const k = HEARTBEAT_SAMPLE;
+  for (const o of Object.keys(byOperator)) byOperator[o] *= k;
+  for (const m of Object.keys(byMode)) byMode[m] *= k;
+  return adminJson({ count: results.length * k, sampled: results.length, sample: k, byOperator, byMode });
 }
 
 // Cloudflare IPv4 ranges (https://www.cloudflare.com/ips-v4); none overlap private space.
@@ -890,7 +896,7 @@ function listResponse(lines, title) {
     headers: {
       'content-type': 'text/plain; charset=utf-8',
       'profile-title': 'base64:' + btoa(title),
-      'profile-update-interval': '1',
+      'profile-update-interval': '12',
       'profile-web-page-url': 'https://hidooch980.github.io/molidovpn/',
       'cache-control': 'public, max-age=300',
       'access-control-allow-origin': '*',
@@ -941,7 +947,7 @@ async function iosRoute(url, env, ctx) {
         'content-type': 'application/json; charset=utf-8',
         'content-disposition': 'inline; filename="MolidoVPN.json"',
         'profile-title': 'base64:' + btoa('MolidoVPN'),
-        'profile-update-interval': '1',
+        'profile-update-interval': '12',
         'cache-control': 'public, max-age=300',
         'access-control-allow-origin': '*',
       },
@@ -956,7 +962,7 @@ async function iosRoute(url, env, ctx) {
     headers: {
       'content-type': 'text/plain; charset=utf-8',
       'profile-title': 'base64:' + btoa('MolidoVPN'),
-      'profile-update-interval': '1',
+      'profile-update-interval': '12',
       'profile-web-page-url': 'https://hidooch980.github.io/molidovpn/',
       'cache-control': 'public, max-age=300',
       'access-control-allow-origin': '*',
@@ -1191,14 +1197,15 @@ function ownerOrder(entries, st) {
 
 // Owner configs served to users (Iran-failed ones removed, weak ones flagged). Never throws.
 async function ownerLines(env, ctx) {
-  const edge = await edgeLines(env).catch(() => []);
+  // Edge routes are not in the normal lists any more: every proxied connection is a Worker request on
+  // the same 100k/day account quota, and the Worker CPU cap throttles video. Apps fetch /edge only as a
+  // last resort when nothing else connects.
+  const edge = [];
   try {
     const snap = await getSnapshot(env, ctx);
     if (!snap || !snap.entries.length) return edge;
     const { top, weak } = ownerOrder(snap.entries, snap.status);
-    // Edge routes share the account's 100k/day request quota and the Worker CPU cap, so they are a
-    // fallback after the ranked top configs, not pinned first (pinned they won every latency race at ~1 Mbit/s).
-    const out = [...top.slice(0, 10), ...edge, ...top.slice(10), ...weak];
+    const out = [...top, ...weak];
     out.weak = new Set(weak.map(lineCore));
     return out;
   } catch {
@@ -1213,6 +1220,17 @@ async function ownerLines(env, ctx) {
 // static fallback) on the four Cloudflare HTTPS ports. Placed first in every list as "☁️ MolidoVPN Cloudflare N".
 // ---------------------------------------------------------------------------------------------------
 const EDGE_NAME = '☁️ MolidoVPN Cloudflare';
+
+// GET /edge: the edge routes alone (base64 list), for the apps' last-resort fallback. Long client cache.
+async function edgeRoute(env) {
+  const lines = await edgeLines(env).catch(() => []);
+  const bytes = new TextEncoder().encode(lines.join('\n'));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return new Response(btoa(bin), {
+    headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400', ...CORS },
+  });
+}
 const EDGE_PORTS = [443, 2053, 2083, 8443, 443, 2096];
 const EDGE_STATIC_IPS = ['104.16.132.229', '104.18.32.47', '172.64.155.209', '104.17.147.22', '162.159.140.10'];
 let _edgeIps = { at: 0, ips: [] };
@@ -1925,6 +1943,7 @@ export default {
     if (url.pathname === '/owner/configs') return ownerConfigsRoute(env, ctx);
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname === '/cfip') return cfipRoute(request, env, ctx);
+    if (url.pathname === '/edge') return edgeRoute(env);
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname === '/app/notice.json') return noticeRoute(env);
     if (url.pathname === '/app/flags.json') return flagsRoute(env);
@@ -1961,7 +1980,7 @@ export default {
         headers: {
           'content-type': 'text/plain; charset=utf-8',
           'profile-title': 'base64:' + btoa('MolidoVPN'),
-          'profile-update-interval': '1',
+          'profile-update-interval': '12',
           'profile-web-page-url': 'https://hidooch980.github.io/molidovpn/',
           'cache-control': 'public, max-age=300',
           'access-control-allow-origin': '*',

@@ -88,6 +88,8 @@ class ServerReports {
 
   /// Opt-in "still connected" ping; fire-and-forget, never throws. Windows calls it every ~3 min while connected.
   static Future<void> heartbeat({String? proxy, String? mode}) async {
+    // 1 in 10 sessions only; the Worker scales the online count back up (free plan: 100k requests/day).
+    if (_sessionIdFor().hashCode % 10 != 0) return;
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
