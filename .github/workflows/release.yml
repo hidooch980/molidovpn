@@ -325,6 +325,7 @@ jobs:
       # as on a user's PC), then run the new setup silently the way the in-app updater does. It must succeed
       # without an uninstall, replace the files, keep one uninstall entry, and relaunch the app.
       - name: Upgrade test (previous release -> this build, app and core running)
+        timeout-minutes: 15
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -333,15 +334,21 @@ jobs:
           $prev = gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName 2>$null
           if (-not $prev) { Write-Output 'no previous release; skipping'; exit 0 }
           gh release download $prev --repo $env:GITHUB_REPOSITORY --pattern MolidoVPN-windows-setup.exe --output $old --clobber
-          $p = Start-Process $old -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          # Start-Process -Wait would also wait for children (an app the installer launches), so wait on setup only.
+          $p = Start-Process $old -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru
+          if (-not $p.WaitForExit(300000)) { throw 'old installer timed out' }
+          Start-Sleep 3
+          Get-Process mobin_vpn -ErrorAction SilentlyContinue | Stop-Process -Force
           if ($p.ExitCode -ne 0) { throw "old installer exit $($p.ExitCode)" }
           $app = Start-Process (Join-Path $dir 'mobin_vpn.exe') -PassThru
           $core = Get-ChildItem $dir -Recurse -Filter xray.exe | Select-Object -First 1
           if ($core) { Start-Process $core.FullName -ArgumentList 'run','-c','nonexistent.json' -PassThru | Out-Null }
           Start-Sleep 8
           $before = (Get-Item (Join-Path $dir 'mobin_vpn.exe')).LastWriteTimeUtc
-          $p = Start-Process dist/MolidoVPN-windows-setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1','/LOG=upgrade.log' -Wait -PassThru
-          Get-Content upgrade.log -Tail 40
+          $p = Start-Process dist/MolidoVPN-windows-setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/relaunch=1','/LOG=upgrade.log' -PassThru
+          $done = $p.WaitForExit(300000)
+          Get-Content upgrade.log -Tail 40 -ErrorAction SilentlyContinue
+          if (-not $done) { throw 'upgrade installer timed out' }
           if ($p.ExitCode -ne 0) { throw "upgrade installer exit $($p.ExitCode)" }
           $after = (Get-Item (Join-Path $dir 'mobin_vpn.exe')).LastWriteTimeUtc
           $newSrc = (Get-Item build/windows/x64/runner/Release/mobin_vpn.exe).Length
