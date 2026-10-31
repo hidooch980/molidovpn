@@ -66,6 +66,14 @@ class Updater {
     for (final url in sources) {
       try {
         latest = await _fromApi(installed, proxy, url);
+        // A static copy is refreshed by a cron job every few minutes: when it says "nothing newer", ask
+        // GitHub's redirect once (not the Worker) so a just-published release is not hidden behind it.
+        if (url.contains('/vpn-sub') && (latest == null || !isNewer(latest.version, installed))) {
+          final fresh = await _fromRedirect(proxy).catchError((_) => null);
+          if (fresh != null && isNewer(fresh.version, installed)) {
+            latest = await _fromApi(installed, proxy, sources[2]).catchError((_) => fresh) ?? fresh; // with sha256 when it can
+          }
+        }
         break;
       } catch (e) {
         AppLog.add('update: $url failed ($e)');
