@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../core/install_id.dart';
 
 import '../core/app_log.dart';
 import '../core/engine.dart';
@@ -26,6 +27,7 @@ Future<String> redactedProblemReport(VpnController c) async {
   final lines = AppLog.dump().split('\n');
   return [
     'MolidoVPN problem report',
+    'install ${InstallId.current}',
     'version ${info.version} (${info.buildNumber}) · ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
     'isp=${NetworkInfo.operatorBucket ?? 'unknown'} state=${c.state.name} mode=${c.selectedCountry ?? 'auto'} '
         'transport=${s.transport}',

@@ -22,6 +22,8 @@ async function appRoute(url, request, ctx) {
     const body = {
       tag_name: r.tag_name,
       published_at: r.published_at,
+      // Owner marks a release "[critical]" in its notes: apps prompt at once instead of on next idle.
+      critical: /\[critical\]/i.test(r.body || ''),
       // Old apps (<= rename) look for MobinVPN-* names: list each asset under both names.
       assets: r.assets.flatMap((a) => {
         // digest/sha256: the app checks the downloaded APK against it (mirror copies included).
@@ -274,6 +276,126 @@ async function ensureActiveSchema(env) {
   ).run();
   activeSchemaReady = true;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Install IDs and per-install diagnostics. Each app makes a random install ID (MLD-XXXX-XXXX, Crockford
+// base32) on first launch; no hardware IDs, no personal data. It rides the existing sampled heartbeat
+// (no extra requests) and the failure-only /diag upload (at most one per install per hour).
+// ---------------------------------------------------------------------------------------------------
+const INSTALL_RE = /^MLD-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
+const DIAG_MAX_BYTES = 16384;
+const DIAG_MAX_EVENTS = 60;
+const DIAG_EVERY_S = 3600;
+const DIAG_KEEP_DAYS = 14;
+const clip = (v, n) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').slice(0, n) : null);
+
+let diagSchemaReady = false;
+async function ensureDiagSchema(env) {
+  if (diagSchemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS devices (install_id TEXT PRIMARY KEY, platform TEXT, ver TEXT, model TEXT, os TEXT, op TEXT, legacy TEXT, first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, diag_at INTEGER NOT NULL DEFAULT 0)'
+    ),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS diag (id INTEGER PRIMARY KEY AUTOINCREMENT, install_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT, method TEXT, op TEXT, mccmnc TEXT, net TEXT, ver TEXT, msg TEXT)'
+    ),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS diag_install_at ON diag (install_id, at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS diag_at ON diag (at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS devices_last_seen ON devices (last_seen)'),
+  ]);
+  diagSchemaReady = true;
+}
+
+// Heartbeat side: one upsert, only when the app sent an install ID.
+function deviceUpsert(env, r, now) {
+  if (typeof r.install_id !== 'string' || !INSTALL_RE.test(r.install_id)) return null;
+  return env.DB.prepare(
+    `INSERT INTO devices (install_id, platform, ver, model, os, op, legacy, first_seen, last_seen) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+     ON CONFLICT(install_id) DO UPDATE SET platform = excluded.platform, ver = excluded.ver,
+       model = COALESCE(excluded.model, devices.model), os = COALESCE(excluded.os, devices.os),
+       op = excluded.op, legacy = COALESCE(excluded.legacy, devices.legacy), last_seen = excluded.last_seen`
+  ).bind(r.install_id, clip(r.platform, 8), clip(r.ver, 24), clip(r.model, 60), clip(r.os, 40), clip(r.op, 12), clip(r.legacy, 64), now);
+}
+
+/** Validated, trimmed copy of a /diag body; null when malformed. Exported for tests. */
+function parseDiag(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  if (typeof r.install_id !== 'string' || !INSTALL_RE.test(r.install_id)) return null;
+  if (!Array.isArray(r.events) || r.events.length === 0) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const events = r.events.slice(-DIAG_MAX_EVENTS).map((e) => ({
+    at: Number.isFinite(e && e.at) ? Math.min(Math.max(Math.floor(e.at), now - DIAG_KEEP_DAYS * 86400), now) : now,
+    kind: clip(e && e.kind, 24) || 'event',
+    method: clip(e && e.method, 32),
+    net: clip(e && e.net, 16),
+    msg: clip(e && e.msg, 400),
+  }));
+  return {
+    install_id: r.install_id,
+    platform: clip(r.platform, 8),
+    ver: clip(r.ver, 24),
+    model: clip(r.model, 60),
+    os: clip(r.os, 40),
+    op: OPS.has(r.op) ? r.op : null,
+    mccmnc: typeof r.mccmnc === 'string' && /^\d{5,6}$/.test(r.mccmnc) ? r.mccmnc : null,
+    events,
+  };
+}
+
+async function diagRoute(request, env) {
+  if (request.method !== 'POST') return new Response('method not allowed', { status: 405, headers: CORS });
+  const len = Number(request.headers.get('content-length') || 0);
+  if (len > DIAG_MAX_BYTES) return bad();
+  const text = await request.text();
+  if (text.length > DIAG_MAX_BYTES) return bad();
+  let d;
+  try {
+    d = parseDiag(JSON.parse(text));
+  } catch {
+    return bad();
+  }
+  if (!d) return bad();
+  if (limited(request.headers.get('cf-connecting-ip') || 'unknown')) return new Response(null, { status: 429, headers: CORS });
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    const row = await withSchema(env, () => env.DB.prepare('SELECT diag_at FROM devices WHERE install_id = ?1').bind(d.install_id).first());
+    if (row && now - (row.diag_at || 0) < DIAG_EVERY_S) return new Response(null, { status: 429, headers: { ...CORS, 'retry-after': String(DIAG_EVERY_S) } });
+    const ins = env.DB.prepare('INSERT INTO diag (install_id, at, kind, method, op, mccmnc, net, ver, msg) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)');
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO devices (install_id, platform, ver, model, os, op, first_seen, last_seen, diag_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7)
+         ON CONFLICT(install_id) DO UPDATE SET platform = excluded.platform, ver = excluded.ver, model = COALESCE(excluded.model, devices.model),
+           os = COALESCE(excluded.os, devices.os), op = COALESCE(excluded.op, devices.op), last_seen = excluded.last_seen, diag_at = excluded.diag_at`
+      ).bind(d.install_id, d.platform, d.ver, d.model, d.os, d.op, now),
+      ...d.events.map((e) => ins.bind(d.install_id, e.at, e.kind, e.method, d.op, d.mccmnc, e.net, d.ver, e.msg)),
+    ]);
+  } catch {
+    return new Response(null, { status: 503, headers: CORS });
+  }
+  return new Response(null, { status: 204, headers: CORS });
+}
+
+// Admin: one install's timeline (indexed lookup), recent installs, and common errors per operator/method.
+async function adminDiag(env, url) {
+  const id = (url.searchParams.get('id') || '').trim().toUpperCase();
+  if (id) {
+    if (!INSTALL_RE.test(id)) return adminJson({ error: 'شناسه نامعتبر است (MLD-XXXX-XXXX)' }, 400);
+    const [dev, ev] = await withSchema(env, () => env.DB.batch([
+      env.DB.prepare('SELECT * FROM devices WHERE install_id = ?1').bind(id),
+      env.DB.prepare('SELECT at, kind, method, op, mccmnc, net, ver, msg FROM diag WHERE install_id = ?1 ORDER BY at DESC LIMIT 200').bind(id),
+    ]));
+    return adminJson({ device: dev.results[0] || null, events: ev.results });
+  }
+  const since = Math.floor(Date.now() / 1000) - DIAG_KEEP_DAYS * 86400;
+  const [recent, common] = await withSchema(env, () => env.DB.batch([
+    env.DB.prepare('SELECT install_id, platform, ver, model, op, last_seen, diag_at FROM devices ORDER BY last_seen DESC LIMIT 50'),
+    env.DB.prepare(
+      `SELECT COALESCE(op, 'other') op, COALESCE(method, '-') method, substr(msg, 1, 120) msg, COUNT(*) n, COUNT(DISTINCT install_id) installs
+       FROM diag WHERE at > ?1 AND kind IN ('error', 'fail', 'drop', 'degraded') GROUP BY 1, 2, 3 ORDER BY n DESC LIMIT 40`
+    ).bind(since),
+  ]));
+  return adminJson({ recent: recent.results, common: common.results });
+}
 const SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
 // Apps heartbeat every 30 min, and only a 1-in-HEARTBEAT_SAMPLE sample of devices does (free plan: 100k
 // requests/day for the whole account). Online figures are scaled back up, so they are estimates.
@@ -284,9 +406,9 @@ const HEARTBEAT_SAMPLE = 10;
 async function heartbeatRoute(request, env, ctx) {
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405, headers: CORS });
   const len = Number(request.headers.get('content-length') || 0);
-  if (len > 512) return bad();
+  if (len > 1024) return bad();
   const text = await request.text();
-  if (text.length > 512) return bad();
+  if (text.length > 1024) return bad();
   let r;
   try {
     r = JSON.parse(text);
@@ -301,12 +423,16 @@ async function heartbeatRoute(request, env, ctx) {
   if (limited(request.headers.get('cf-connecting-ip') || 'unknown')) return new Response(null, { status: 204, headers: CORS });
 
   try {
-    await withSchema(env, () => env.DB.prepare(
-      `INSERT INTO active_sessions (session_id, op, mode, last_seen) VALUES (?1, ?2, ?3, ?4)
-       ON CONFLICT(session_id) DO UPDATE SET op = excluded.op, mode = excluded.mode, last_seen = excluded.last_seen`
-    )
-      .bind(r.session_id, r.op || null, r.mode || null, Math.floor(Date.now() / 1000))
-      .run());
+    const now = Math.floor(Date.now() / 1000);
+    const writes = [
+      env.DB.prepare(
+        `INSERT INTO active_sessions (session_id, op, mode, last_seen) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(session_id) DO UPDATE SET op = excluded.op, mode = excluded.mode, last_seen = excluded.last_seen`
+      ).bind(r.session_id, r.op || null, r.mode || null, now),
+    ];
+    const dev = deviceUpsert(env, r, now);
+    if (dev) writes.push(dev);
+    await withSchema(env, () => env.DB.batch(writes));
   } catch {} // best-effort, like /report
   return new Response(null, { status: 204, headers: CORS });
 }
@@ -1022,6 +1148,7 @@ async function ensureAllSchemas(env) {
   await ensureOwnerSchema(env);
   await ensureCfSchema(env);
   await ensureActiveSchema(env);
+  await ensureDiagSchema(env);
 }
 
 // Runs fn; when a lazily created table is missing (fresh database), creates the tables once and retries.
@@ -1424,6 +1551,7 @@ async function adminApi(request, env, url, ctx) {
 
   if (path === '/admin/api/stats' && request.method === 'GET') return adminJson(await adminStats(env));
   if (path === '/admin/api/online' && request.method === 'GET') return onlineRoute(env);
+  if (path === '/admin/api/diag' && request.method === 'GET') return adminDiag(env, url);
 
   if (path === '/admin/api/notice' && request.method === 'GET') return adminJson({ notice: (await kvGet(env, 'notice')) || null });
   if (path === '/admin/api/notice' && request.method === 'PUT') {
@@ -1447,6 +1575,7 @@ async function adminApi(request, env, url, ctx) {
     const same = prev.id && prev.text === next.text && prev.link === next.link && prev.link_label === next.link_label && prev.type === next.type;
     next.id = same ? prev.id : Date.now().toString(36);
     await kvSet(env, 'notice', next);
+    ctx.waitUntil(livePush(env));
     return adminJson({ notice: next });
   }
 
@@ -1462,6 +1591,7 @@ async function adminApi(request, env, url, ctx) {
       return adminJson({ error: 'حالت پیش‌فرض نباید غیرفعال باشد' }, 400);
     const flags = normalizeFlags(b);
     await kvSet(env, 'flags', flags);
+    ctx.waitUntil(livePush(env));
     return adminJson({ flags });
   }
 
@@ -1589,6 +1719,36 @@ async function noticeRoute(env) {
   return new Response(JSON.stringify(body), { headers: PUBLIC_JSON });
 }
 
+// Flags + notice in one response, for the vpn-sub "Live meta" job (one request per run, ~5 min)
+// that copies them to GitHub; apps read the GitHub copy and never poll this.
+async function liveBody(env) {
+  let flags = normalizeFlags(null);
+  let notice = null;
+  try {
+    flags = normalizeFlags(await kvGet(env, 'flags'));
+    notice = activeNotice(await kvGet(env, 'notice'));
+  } catch {}
+  return { flags: { ...flags, notice: !!notice }, notice: notice || {} };
+}
+
+async function liveRoute(env) {
+  return new Response(JSON.stringify(await liveBody(env)), { headers: PUBLIC_JSON });
+}
+
+// After an owner save: the same body, signed (ECDSA P-256, secret LIVE_SIGN_KEY as JWK), on the free
+// ntfy.sh topic the apps listen to while open. A forged message fails the app's signature check.
+// No secret or no topic: nothing is sent and apps get the change from GitHub on their next check.
+async function livePush(env) {
+  if (!env.LIVE_SIGN_KEY || !env.LIVE_TOPIC) return;
+  try {
+    const payload = JSON.stringify({ t: 'live', at: Date.now(), ...(await liveBody(env)) });
+    const key = await crypto.subtle.importKey('jwk', JSON.parse(env.LIVE_SIGN_KEY), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(payload)));
+    const s = btoa(String.fromCharCode(...sig));
+    await fetch(`https://ntfy.sh/${env.LIVE_TOPIC}`, { method: 'POST', body: JSON.stringify({ p: payload, s }) });
+  } catch {}
+}
+
 // Public, cached ~60 s. Defaults (everything enabled, automatic) when nothing is set or D1 fails.
 async function flagsRoute(env) {
   let flags = normalizeFlags(null);
@@ -1687,6 +1847,7 @@ ${
 <button id="loginBtn">ورود</button></div>
 <div id="panel" hidden>
 <div class="card"><h2>کاربران متصل الان</h2><div id="online" class="row"><span class="mute">در حال بارگذاری…</span></div></div>
+<div class="card"><h2>دستگاه‌ها و خطاها</h2><div class="row"><input id="dId" placeholder="MLD-XXXX-XXXX" dir="ltr" style="max-width:14em"><button id="dFind">جستجو</button><button id="dAll">آخرین دستگاه‌ها و خطاهای رایج</button></div><div id="diag"></div></div>
 <div class="card"><h2>اطلاعیه همگانی</h2>
 <p class="mute">پیامی که بالای صفحه اصلی هر دو برنامه (اندروید و ویندوز) نشان داده می‌شود. کاربر می‌تواند آن را ببندد؛ با تغییر متن دوباره نمایش داده می‌شود.</p>
 <label>متن (فارسی)<textarea id="nText" maxlength="500" style="direction:rtl;text-align:right;font-family:inherit;min-height:80px"></textarea></label>
@@ -1812,6 +1973,17 @@ function loadOnline(){api('GET','/online').then(function(j){var box=$('online');
   if(parts.length)box.append(el('span',' · '+parts.join(' · '),'mute'));
 }).catch(function(){})}
 function startOnline(){loadOnline();if(onlineTimer)clearInterval(onlineTimer);onlineTimer=setInterval(loadOnline,17000)}
+function tsFa(s){return s?new Date(s*1000).toLocaleString('fa-IR'):'—'}
+function tbl(rows,cols){var t=document.createElement('table');var h=document.createElement('tr');cols.forEach(function(c){h.append(el('th',c[1]))});t.append(h);
+  rows.forEach(function(r){var tr=document.createElement('tr');cols.forEach(function(c){var v=c[2]?c[2](r[c[0]],r):r[c[0]];var td=el('td',v==null?'':String(v));if(c[0]==='install_id'){td.style.cursor='pointer';td.onclick=function(){$('dId').value=r.install_id;loadDiag()}}tr.append(td)});t.append(tr)});return t}
+function loadDiag(all){var box=$('diag');var id=all?'':$('dId').value.trim();box.textContent='…';
+  api('GET','/diag'+(id?'?id='+encodeURIComponent(id):'')).then(function(j){box.textContent='';if(j._s!==200){box.textContent=err(j);return}
+  if(id){var d=j.device;box.append(el('p',d?(d.install_id+' · '+(d.platform||'')+' '+(d.ver||'')+' · '+(d.model||'')+' '+(d.os||'')+' · '+(d.op||'')+(d.legacy?' · قدیمی: '+d.legacy:'')+' · آخرین بار: '+tsFa(d.last_seen)):'این شناسه هنوز دیده نشده است.','mute'));
+    box.append(tbl(j.events,[['at','زمان',tsFa],['kind','نوع'],['method','روش'],['op','اپراتور'],['net','شبکه'],['ver','نسخه'],['msg','پیام']]));return}
+  box.append(el('strong','خطاهای رایج (۱۴ روز)'));box.append(tbl(j.common,[['op','اپراتور'],['method','روش'],['msg','خطا'],['n','تعداد'],['installs','دستگاه']]));
+  box.append(el('strong','آخرین دستگاه‌ها'));box.append(tbl(j.recent,[['install_id','شناسه'],['platform','سیستم'],['ver','نسخه'],['model','مدل'],['op','اپراتور'],['last_seen','آخرین بار',tsFa],['diag_at','آخرین گزارش',tsFa]]));
+}).catch(function(){box.textContent='خطای شبکه'})}
+$('dFind').onclick=function(){loadDiag(false)};$('dAll').onclick=function(){loadDiag(true)};
 var extrasLoaded=false;
 function loadExtras(){if(extrasLoaded)return;extrasLoaded=true;loadNotice();loadFlags();loadStats();startOnline()}
 $('loginBtn').onclick=function(){key=$('key').value.trim();if(!key)return;try{sessionStorage.setItem('mk',key)}catch(e){}$('key').value='';msg('');load()};
@@ -1923,6 +2095,11 @@ export default {
       env.DB.prepare('DELETE FROM active_sessions WHERE last_seen < ?1').bind(Math.floor(Date.now() / 1000) - ACTIVE_PRUNE_S).run().catch(() => {})
     );
     if (!daily) return;
+    const diagCut = Math.floor(Date.now() / 1000) - DIAG_KEEP_DAYS * 86400;
+    ctx.waitUntil(env.DB.batch([
+      env.DB.prepare('DELETE FROM diag WHERE at < ?1').bind(diagCut),
+      env.DB.prepare('DELETE FROM devices WHERE last_seen < ?1').bind(diagCut - 76 * 86400),
+    ]).catch(() => {}));
     const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     ctx.waitUntil(env.DB.prepare('DELETE FROM reports WHERE day < ?1').bind(cutoff).run().catch(() => {}));
     ctx.waitUntil(
@@ -1936,10 +2113,11 @@ export default {
 
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (request.method === 'OPTIONS' && (url.pathname === '/report' || url.pathname === '/scores' || url.pathname === '/heartbeat'))
+    if (request.method === 'OPTIONS' && (url.pathname === '/report' || url.pathname === '/scores' || url.pathname === '/heartbeat' || url.pathname === '/diag'))
       return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === '/report') return reportRoute(request, env, ctx);
     if (url.pathname === '/heartbeat') return heartbeatRoute(request, env, ctx);
+    if (url.pathname === '/diag') return diagRoute(request, env);
     if (url.pathname === '/owner/configs') return ownerConfigsRoute(env, ctx);
     if (url.pathname === '/scores') return scoresRoute(request, env, ctx);
     if (url.pathname === '/cfip') return cfipRoute(request, env, ctx);
@@ -1947,6 +2125,7 @@ export default {
     if (url.pathname.startsWith('/remote/')) return remoteRoute(url);
     if (url.pathname === '/app/notice.json') return noticeRoute(env);
     if (url.pathname === '/app/flags.json') return flagsRoute(env);
+    if (url.pathname === '/app/live.json') return liveRoute(env);
     if (url.pathname.startsWith('/app/')) return appRoute(url, request, ctx);
     if (url.pathname === '/warp/reg') return warpRegRoute(request);
     if (url.pathname === '/admin' || url.pathname === '/admin/') return adminPage(env);

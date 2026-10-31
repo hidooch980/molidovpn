@@ -119,6 +119,9 @@ class RemoteConfig {
   /// Static copies (vpn-sub `meta/`, mirrored every ~15 min) first; the Worker last.
   static Future<String?> _get(String file, String? proxy) async {
     for (final base in const [
+      // Live copy (minutes old, see LiveSync), then the 15-min mirror, the Worker last.
+      'https://raw.githubusercontent.com/hidooch980/vpn-sub/live',
+      'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@live',
       'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/meta',
       'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/meta',
       _base,

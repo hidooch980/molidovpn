@@ -15,3 +15,8 @@ crons = ["*/15 * * * *"]
 [observability]
 enabled = true
 head_sampling_rate = 0.05
+
+# Free ntfy.sh topic the apps listen to while open; owner saves are pushed there signed with the
+# LIVE_SIGN_KEY secret (ECDSA P-256 JWK). The apps hold the public key.
+[vars]
+LIVE_TOPIC = "molidovpn-live-971a1da8ec4af75c"

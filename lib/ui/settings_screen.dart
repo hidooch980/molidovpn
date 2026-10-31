@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/install_id.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -554,6 +556,9 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () async {
                   final text = await redactedProblemReport(controller);
                   await Clipboard.setData(ClipboardData(text: text));
+                  // The same recent events go to the owner's panel under this install ID (at most once an hour).
+                  unawaited(Diagnostics.record('report', controller.settings.transport, 'user report')
+                      .then((_) => Diagnostics.upload(userAsked: true, proxy: controller.engine.httpProxy)));
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text(tr('گزارش کپی شد؛ برای پشتیبانی بفرستید', 'Report copied; send it to support')),
@@ -596,6 +601,15 @@ class SettingsScreen extends StatelessWidget {
 
             SectionHeader(tr('درباره', 'About')),
             CardGroup(children: [
+              NavSettingRow(
+                icon: Icons.fingerprint_rounded,
+                title: tr('شناسه نصب', 'Install ID'),
+                subtitle: '${InstallId.current} · ${tr('برای پشتیبانی؛ هیچ اطلاعاتی از شما ندارد', 'for support; contains nothing about you')}',
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: InstallId.current));
+                  _toast(context, tr('شناسه کپی شد', 'ID copied'));
+                },
+              ),
               const ShareFriendsRow(),
               NavSettingRow(
                 icon: Icons.code_rounded,
