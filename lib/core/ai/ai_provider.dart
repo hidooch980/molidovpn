@@ -29,14 +29,12 @@ class AiProviderPolicy {
 }
 
 class AiRequest {
-  const AiRequest({
-    required this.task,
-    required this.input,
-  });
+  const AiRequest({required this.task, required this.input});
 
   final String task;
 
-  /// Must contain minimized, non-sensitive diagnostic features only.
+  /// May contain internal fields. AiRouter strips everything except its
+  /// explicit low-risk feature allowlist before calling a provider.
   final Map<String, Object?> input;
 }
 
@@ -79,10 +77,18 @@ class AiRouter {
     this.maxOutputChars = 4096,
   }) : _providers = List.unmodifiable(providers) {
     if (providerBudget <= Duration.zero) {
-      throw ArgumentError.value(providerBudget, 'providerBudget', 'Must be positive.');
+      throw ArgumentError.value(
+        providerBudget,
+        'providerBudget',
+        'Must be positive.',
+      );
     }
     if (maxOutputChars < 1) {
-      throw ArgumentError.value(maxOutputChars, 'maxOutputChars', 'Must be positive.');
+      throw ArgumentError.value(
+        maxOutputChars,
+        'maxOutputChars',
+        'Must be positive.',
+      );
     }
   }
 
@@ -104,22 +110,24 @@ class AiRouter {
     final stopwatch = Stopwatch()..start();
 
     // If no allowlisted, non-sensitive network features remain, do not send
-    // anything to an external/local provider. The deterministic local policy
-    // still receives the original request.
+    // anything to a provider. The deterministic local policy still receives
+    // the original request.
     if (providerRequest != null) {
       for (final provider in ordered) {
-      final remaining = providerBudget - stopwatch.elapsed;
-      if (remaining <= Duration.zero) break;
+        final remaining = providerBudget - stopwatch.elapsed;
+        if (remaining <= Duration.zero) break;
+
         if (!policy.permits(provider.kind, provider.eligibility) ||
             !provider.isAvailable) {
           continue;
         }
 
         try {
-          final output = await provider.complete(providerRequest).timeout(remaining);
-        if (output != null &&
-            output.trim().isNotEmpty &&
-            output.length <= maxOutputChars) {
+          final output =
+              await provider.complete(providerRequest).timeout(remaining);
+          if (output != null &&
+              output.trim().isNotEmpty &&
+              output.length <= maxOutputChars) {
             return AiResult(
               output: output,
               providerId: provider.id,
@@ -127,8 +135,8 @@ class AiRouter {
             );
           }
         } catch (_) {
-          // Timeout, malformed adapter behaviour, and provider errors are isolated.
-          // The adapter should cancel its own underlying request when possible.
+          // Timeout, malformed adapter behaviour, and provider errors are
+          // isolated. The adapter should cancel its own request when possible.
         }
       }
     }
@@ -179,6 +187,7 @@ class AiRouter {
         safe[entry.key] = (entry.value as String).toLowerCase();
       }
     }
+
     if (safe.isEmpty) return null;
     return AiRequest(task: request.task, input: Map.unmodifiable(safe));
   }
