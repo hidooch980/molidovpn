@@ -124,7 +124,7 @@ jobs:
             line=$("$AAPT" dump badging "$1" | head -n 1)
             package=$(printf '%s' "$line" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p")
             version=$(printf '%s' "$line" | sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p")
-            printf '%s %s\\n' "$package" "$version"
+            printf '%s %s\n' "$package" "$version"
           }
           read -r old_package old_version < <(apk_meta "$OLD_APK")
           old_cert=$(cert_digest "$OLD_APK")
