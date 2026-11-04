@@ -26,6 +26,9 @@ This is an engineering control, not legal advice. Provider terms and applicable 
 
 - Local policy engine is the final fallback.
 - Provider timeouts, malformed output, quota errors, and network loss must not stop the VPN.
+- All providers share a short total request budget (default 2 seconds); an individual timeout cannot consume an unbounded wait.
+- Provider responses are capped (default 4,096 characters). Oversized or empty output is rejected.
+- Only allowlisted, bounded network-quality features are forwarded (`latency_ms`, `jitter_ms`, `packet_loss_percent`, `throughput_mbps`, `success_rate_percent`, `consecutive_failures`, `energy_cost`, and fixed network/transport/use-case enums). Unknown keys, free text, IP addresses, identifiers, and credentials are dropped.
 - AI output is advisory. It cannot directly install configs, trust a new gateway, change DNS/security policy, disable the kill switch, or publish software.
 - Validate every proposed action against deterministic constraints and signed configuration policy.
 - Do not send packet payloads, messages, browsing history, credentials, private IPs, or raw server secrets to an AI provider.
@@ -46,4 +49,6 @@ This is an engineering control, not legal advice. Provider terms and applicable 
 - A blocked/unknown provider is never called.
 - VPN operation does not depend on any AI endpoint.
 - A provider outage falls back without disconnecting an otherwise healthy tunnel.
+- Unknown task types and requests with no allowlisted network features never reach a provider.
+- A hung provider cannot consume more than the total AI request budget.
 - AI cannot override security gates or signed update verification.
