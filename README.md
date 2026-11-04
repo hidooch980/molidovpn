@@ -1,8 +1,10 @@
 <div dir="rtl">
 
-# MolidoVPN
+# Molido Mesh AI
 
-**یک VPN رایگان و ساده برای خانواده‌های ایرانی — اندروید، ویندوز و آیفون.**
+**شبکهٔ هوشمند و چندمسیرهٔ اتصال امن — اندروید، ویندوز و مسیرهای سازگار دیگر.**
+
+نام قبلی محصول: MolidoVPN. شناسه‌های فنی و مسیرهای انتشار قدیمی تا پایان مهاجرت سازگار حفظ می‌شوند.
 
 [![Release](https://img.shields.io/github/v/release/hidooch980/molidovpn?style=flat-square)](https://github.com/hidooch980/molidovpn/releases/latest)
 [![Telegram](https://img.shields.io/badge/Telegram-@Molido__Vpn-26A5E4?style=flat-square&logo=telegram)](https://t.me/Molido_Vpn)
