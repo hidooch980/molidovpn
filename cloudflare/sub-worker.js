@@ -149,9 +149,17 @@ async function warpRegRoute(request) {
     headers: { 'content-type': 'application/json', 'user-agent': 'okhttp/3.12.1', 'cf-client-version': 'a-6.10-2158' },
     body,
   });
+  const responseHeaders = new Headers({
+    'content-type': 'application/json',
+    'cache-control': 'no-store',
+  });
+  // Preserve Cloudflare's quota cooldown so clients can persist the real wait
+  // instead of immediately attempting registration through another route.
+  const retryAfter = res.headers.get('retry-after');
+  if (retryAfter) responseHeaders.set('retry-after', retryAfter);
   return new Response(await res.text(), {
     status: res.status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: responseHeaders,
   });
 }
 
