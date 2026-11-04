@@ -1012,25 +1012,41 @@ class VpnController extends ChangeNotifier {
 
   /// Last failed quick registration: automatic mode does not wait for WARP again for 30 minutes.
   DateTime? _warpQuickFailedAt;
+  DateTime? _warpRegistrationCooldownUntil;
+  bool _warpMayTryAlternateRoute = true;
 
   /// Creates the WARP identity once and keeps it permanently in settings (later connects never need the API).
-  /// Order: Cloudflare API directly (3 s), the MolidoVPN worker relay (8 s), then — full mode only — through
-  /// the active tunnel, or (Windows, not connected) a temporary relay over the best V2Ray servers.
-  /// [quick] (automatic mode): only the first two steps, and not again for 30 minutes after a failure.
+  /// Quota/server responses are not replayed through another route: a registration POST can create a new
+  /// device even when its response is lost. Only an explicit 403 or a connection failure may use fallback.
   Future<bool> ensureWarp({bool quick = false}) async {
     if (WarpAccount.fromJsonString(settings.warpAccount) != null) return true;
+    final cooldown = _warpRegistrationCooldownUntil;
+    if (cooldown != null && DateTime.now().isBefore(cooldown)) {
+      AppLog.add('warp: registration cooldown active; not creating another Cloudflare identity');
+      return false;
+    }
     if (quick) {
       final failed = _warpQuickFailedAt;
       if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 30)) return false;
     }
+    _warpMayTryAlternateRoute = true;
     if (await _registerWarp(null, const Duration(seconds: 3))) return true;
+    if (!_warpMayTryAlternateRoute) {
+      if (quick) _warpQuickFailedAt = DateTime.now();
+      return false;
+    }
     if (await _registerWarp(null, const Duration(seconds: 8), url: WarpAccount.relayUrl)) return true;
+    if (!_warpMayTryAlternateRoute) {
+      if (quick) _warpQuickFailedAt = DateTime.now();
+      return false;
+    }
     if (quick) {
       _warpQuickFailedAt = DateTime.now();
       return false;
     }
     final tunnel = engine.httpProxy;
     if (tunnel != null && await _registerWarp(tunnel, const Duration(seconds: 25))) return true;
+    if (!_warpMayTryAlternateRoute) return false;
     final eng = engine;
     if (eng is WindowsEngine && state != VpnState.connected) {
       final account = await eng.registerWarpVia(_warpRelayCandidates());
@@ -1049,6 +1065,16 @@ class VpnController extends ChangeNotifier {
       AppLog.add('warp: registered $how');
       return true;
     } catch (e) {
+      if (e is WarpRegistrationRejected) {
+        // 403 explicitly rejects this egress address, so one different route may help.
+        // 429, 5xx and other responses are not replayed: doing so can burn registrations.
+        _warpMayTryAlternateRoute = e.statusCode == 403;
+        if (e.statusCode == 429) {
+          _warpRegistrationCooldownUntil = DateTime.now().add(e.retryAfter ?? const Duration(minutes: 5));
+        }
+      } else {
+        _warpMayTryAlternateRoute = true; // connection-level failure; alternate route is useful
+      }
       AppLog.add('warp: registration $how failed ($e)');
       return false;
     }
