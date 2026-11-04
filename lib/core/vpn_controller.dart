@@ -1011,6 +1011,7 @@ class VpnController extends ChangeNotifier {
       'مسیر «V2Ray» یا «Psiphon» را انتخاب کنید؛ پس از یک اتصال موفق، WARP خودکار از داخل تونل ثبت می‌شود.';
 
   /// Last failed quick registration: automatic mode does not wait for WARP again for 30 minutes.
+  static const _warpRegistrationCooldownKey = 'warp_registration_retry_at_ms';
   DateTime? _warpQuickFailedAt;
   DateTime? _warpRegistrationCooldownUntil;
   bool _warpMayTryAlternateRoute = true;
@@ -1020,6 +1021,15 @@ class VpnController extends ChangeNotifier {
   /// device even when its response is lost. Only an explicit 403 or a connection failure may use fallback.
   Future<bool> ensureWarp({bool quick = false}) async {
     if (WarpAccount.fromJsonString(settings.warpAccount) != null) return true;
+    final prefs = await SharedPreferences.getInstance();
+    final storedCooldown = prefs.getInt(_warpRegistrationCooldownKey);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (storedCooldown != null && storedCooldown > nowMs) {
+      _warpRegistrationCooldownUntil = DateTime.fromMillisecondsSinceEpoch(storedCooldown);
+    } else if (storedCooldown != null) {
+      await prefs.remove(_warpRegistrationCooldownKey);
+      _warpRegistrationCooldownUntil = null;
+    }
     final cooldown = _warpRegistrationCooldownUntil;
     if (cooldown != null && DateTime.now().isBefore(cooldown)) {
       AppLog.add('warp: registration cooldown active; not creating another Cloudflare identity');
@@ -1071,6 +1081,12 @@ class VpnController extends ChangeNotifier {
         _warpMayTryAlternateRoute = e.statusCode == 403;
         if (e.statusCode == 429) {
           _warpRegistrationCooldownUntil = DateTime.now().add(e.retryAfter ?? const Duration(minutes: 5));
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt(_warpRegistrationCooldownKey, _warpRegistrationCooldownUntil!.millisecondsSinceEpoch);
+          } catch (_) {
+            // The in-memory cooldown still protects this process if preferences are unavailable.
+          }
         }
       } else {
         _warpMayTryAlternateRoute = true; // connection-level failure; alternate route is useful
@@ -1083,6 +1099,10 @@ class VpnController extends ChangeNotifier {
   Future<void> _saveWarp(WarpAccount account) async {
     WarpRegistry.account = account;
     _warpQuickFailedAt = null;
+    _warpRegistrationCooldownUntil = null;
+    try {
+      await (await SharedPreferences.getInstance()).remove(_warpRegistrationCooldownKey);
+    } catch (_) {}
     await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
     AppLog.add('warp: identity registered and saved');
   }
