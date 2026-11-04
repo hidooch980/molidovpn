@@ -98,32 +98,38 @@ class AiRouter {
   final int maxOutputChars;
 
   Future<AiResult> run(AiRequest request) async {
+    final providerRequest = _sanitizeForProvider(request);
     final ordered = _providers.toList()
       ..sort((a, b) => _priority(a.kind).compareTo(_priority(b.kind)));
     final stopwatch = Stopwatch()..start();
 
-    for (final provider in ordered) {
+    // If no allowlisted, non-sensitive network features remain, do not send
+    // anything to an external/local provider. The deterministic local policy
+    // still receives the original request.
+    if (providerRequest != null) {
+      for (final provider in ordered) {
       final remaining = providerBudget - stopwatch.elapsed;
       if (remaining <= Duration.zero) break;
-      if (!policy.permits(provider.kind, provider.eligibility) ||
-          !provider.isAvailable) {
-        continue;
-      }
+        if (!policy.permits(provider.kind, provider.eligibility) ||
+            !provider.isAvailable) {
+          continue;
+        }
 
-      try {
-        final output = await provider.complete(request).timeout(remaining);
+        try {
+          final output = await provider.complete(providerRequest).timeout(remaining);
         if (output != null &&
             output.trim().isNotEmpty &&
             output.length <= maxOutputChars) {
-          return AiResult(
-            output: output,
-            providerId: provider.id,
-            usedOfflineFallback: false,
-          );
+            return AiResult(
+              output: output,
+              providerId: provider.id,
+              usedOfflineFallback: false,
+            );
+          }
+        } catch (_) {
+          // Timeout, malformed adapter behaviour, and provider errors are isolated.
+          // The adapter should cancel its own underlying request when possible.
         }
-      } catch (_) {
-        // Timeout, malformed adapter behaviour, and provider errors are isolated.
-        // The adapter should cancel its own underlying request when possible.
       }
     }
 
@@ -132,6 +138,49 @@ class AiRouter {
       providerId: 'offline-policy',
       usedOfflineFallback: true,
     );
+  }
+
+  /// Strict provider boundary: only low-risk network measurements are allowed.
+  /// Unknown keys, free text, addresses, identifiers, and credentials are dropped.
+  AiRequest? _sanitizeForProvider(AiRequest request) {
+    const numericRanges = <String, (double, double)>{
+      'latency_ms': (0, 120000),
+      'jitter_ms': (0, 120000),
+      'packet_loss_percent': (0, 100),
+      'throughput_mbps': (0, 100000),
+      'success_rate_percent': (0, 100),
+      'consecutive_failures': (0, 100),
+      'energy_cost': (0, 1),
+    };
+    const enumValues = <String, Set<String>>{
+      'network_type': {'wifi', 'mobile', 'ethernet', 'none', 'unknown'},
+      'transport_kind': {'wireguard', 'proxy', 'relay', 'unknown'},
+      'use_case': {'balanced', 'interactive', 'streaming', 'low_power'},
+    };
+    if (!const {'route-health', 'network-quality'}.contains(request.task)) {
+      return null;
+    }
+
+    final safe = <String, Object?>{};
+    for (final entry in request.input.entries) {
+      final range = numericRanges[entry.key];
+      if (range != null && entry.value is num) {
+        final value = (entry.value as num).toDouble();
+        if (value.isFinite && value >= range.$1 && value <= range.$2) {
+          safe[entry.key] = value;
+        }
+        continue;
+      }
+
+      final allowed = enumValues[entry.key];
+      if (allowed != null &&
+          entry.value is String &&
+          allowed.contains((entry.value as String).toLowerCase())) {
+        safe[entry.key] = (entry.value as String).toLowerCase();
+      }
+    }
+    if (safe.isEmpty) return null;
+    return AiRequest(task: request.task, input: Map.unmodifiable(safe));
   }
 
   int _priority(AiProviderKind kind) => switch (kind) {
