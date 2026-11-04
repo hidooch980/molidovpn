@@ -1,4 +1,4 @@
-# MolidoVPN architecture
+# Molido Mesh AI architecture
 
 [Back to README](../README.md) · No secrets are stored in this document or in any repository.
 
