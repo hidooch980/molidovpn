@@ -13,8 +13,8 @@ void main() {
     expect(ranked.first.score, inInclusiveRange(0, 100));
   });
   test('streaming profile gives greater weight to throughput', () {
-    final lowLatency = probe('low-latency', latency: 15, throughput: 2);
-    final highCapacity = probe('high-capacity', latency: 75, throughput: 90);
+    final lowLatency = probe('low-latency', latency: 15, throughput: 15);
+    final highCapacity = probe('high-capacity', latency: 75, throughput: 30);
     expect(scorer.rank([lowLatency, highCapacity]).first.probe.id, 'low-latency');
     expect(scorer.rank([lowLatency, highCapacity], useCase: NetworkUseCase.streaming).first.probe.id, 'high-capacity');
   });
