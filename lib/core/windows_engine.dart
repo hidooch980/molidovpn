@@ -130,6 +130,7 @@ class WindowsEngine implements VpnEngine {
         // Try another V2Ray egress only after a definitive address refusal.
         // Quota/server responses are not replayed as they may create extra devices.
         if (e is WarpRegistrationRejected && e.statusCode != 403) break;
+        if (e is! WarpRegistrationRejected && e is! SocketException) break;
       } finally {
         await _warpHelper.stop();
       }
