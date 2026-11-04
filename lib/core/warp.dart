@@ -140,7 +140,7 @@ class WarpAccount {
       final retryAfterSeconds = int.tryParse(retryAfterRaw ?? '');
       final retryAfter = retryAfterSeconds == null || retryAfterSeconds < 1
           ? null
-          : Duration(seconds: retryAfterSeconds.clamp(1, 3600));
+          : Duration(seconds: retryAfterSeconds.clamp(1, 3600).toInt());
       final body = await res.transform(utf8.decoder).join();
       if (res.statusCode != 200) {
         throw WarpRegistrationRejected(res.statusCode, body, retryAfter);
