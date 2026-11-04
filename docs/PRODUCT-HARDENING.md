@@ -95,3 +95,13 @@ controller only after platform-specific failover and leak tests pass. The
 existing Android application ID `com.mobin.mobin_vpn` is intentionally retained
 to avoid breaking upgrades; only the visible product label is being migrated.
 Build, physical-device, and leak-test results must be recorded before release.
+
+## Canonical Android release source
+
+The production Android APK is built from the separate repository
+`hidooch980/molidovpn-android`, pinned by the main repository's
+`.github/workflows/release.yml`. The `android-app/` tree in this repository is
+a mirror/legacy copy and must not be treated as the production APK source.
+Android branding or tunnel changes are not shipped until the canonical Android
+repository is updated, its Android unit/build validation passes, and the main
+repository's pinned source commit is advanced deliberately.
