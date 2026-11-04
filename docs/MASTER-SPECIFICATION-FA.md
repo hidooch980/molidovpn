@@ -188,7 +188,8 @@ AI باید local-first و provider-neutral باشد. نبود اینترنت ی
 - رتبه‌بندی مسیر و اولویت‌دهی provider-neutral در مخزن اصلی وجود دارد، اما scorer هنوز به انتخاب زندهٔ tunnel متصل نشده است.
 - PR اندروید شامل hardening امتیازدهی Smart Connect و یادگیری UCB1 و اصلاحات CI/Cloudflare است؛ وضعیت نهایی CI باید در GitHub بررسی شود.
 - PRها تا زمان merge و انتشار جداگانه، نسخهٔ production نیستند.
-- Mesh Gateway عمومی، اتصال سریع end-to-end با اندازه‌گیری کامل دستگاه، پروفایل جامع per-device، Bluetooth/Wi-Fi Direct و اجرای production مدل AI را نباید فعال/کامل اعلام کرد مگر کد و تست آن تأیید شود.
+- در Android شاخهٔ `molido-mesh-ai-android-rebrand-2026-11`، پروفایل اولیهٔ per-device/per-network به Smart Connect متصل شده است: انتخاب uplink فیزیکی با حذف VPN interface، خواندن validated/metered/roaming و bandwidth hints، محدودسازی probe برای شبکه‌های حساس، و ذخیرهٔ محلی RTT/jitter/loss/throughput با EWMA. وضعیت این بخش **Partial** است؛ رتبه‌بندی بر اساس پروفایل تاریخی، تست handover روی دستگاه واقعی و معیار زمان تا اولین بستهٔ موفق هنوز نیازمند تکمیل و تأیید مستقل‌اند. کد در PR Android #27 است: https://github.com/hidooch980/molidovpn-android/pull/27 .
+- Mesh Gateway عمومی، اتصال سریع end-to-end با اندازه‌گیری کامل دستگاه، Bluetooth/Wi-Fi Direct و اجرای production مدل AI را نباید فعال/کامل اعلام کرد مگر کد و تست آن تأیید شود.
 - هیچ ادعای سرعت، پایداری، ضدنشت یا سازگاری نباید بدون شواهد تست واقعی مطرح شود.
 
 ## 19. چک‌لیست اجباری پیش از هر تغییر
