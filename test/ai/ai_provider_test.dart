@@ -21,6 +21,7 @@ class FakeProvider implements AiProviderAdapter {
   final String? output;
   final bool available;
   int calls = 0;
+  AiRequest? lastRequest;
 
   @override
   bool get isAvailable => available;
@@ -28,8 +29,67 @@ class FakeProvider implements AiProviderAdapter {
   @override
   Future<String?> complete(AiRequest request) async {
     calls++;
+    lastRequest = request;
     return output;
   }
+
+  test('provider receives only allowlisted network features', () async {
+    final local = FakeProvider(
+      id: 'local',
+      kind: AiProviderKind.onDevice,
+      eligibility: AiProviderEligibility.allowed,
+    );
+    final router = AiRouter(
+      policy: const AiProviderPolicy(),
+      offlinePolicy: FakeOfflinePolicy(),
+      providers: [local],
+    );
+    const privateRequest = AiRequest(
+      task: 'network-quality',
+      input: {
+        'latency_ms': 42,
+        'network_type': 'WIFI',
+        'ip_address': '203.0.113.7',
+        'api_token': 'must-not-leak',
+        'message': 'private text',
+        'packet_loss_percent': 0.5,
+      },
+    );
+
+    final result = await router.run(privateRequest);
+
+    expect(result.usedOfflineFallback, isFalse);
+    expect(local.lastRequest!.input, {
+      'latency_ms': 42.0,
+      'network_type': 'wifi',
+      'packet_loss_percent': 0.5,
+    });
+  });
+
+  test('unknown task or empty safe feature set never reaches provider', () async {
+    final local = FakeProvider(
+      id: 'local',
+      kind: AiProviderKind.onDevice,
+      eligibility: AiProviderEligibility.allowed,
+    );
+    final router = AiRouter(
+      policy: const AiProviderPolicy(),
+      offlinePolicy: FakeOfflinePolicy(),
+      providers: [local],
+    );
+
+    final unknownTask = await router.run(
+      const AiRequest(task: 'free-form-user-text', input: {'latency_ms': 20}),
+    );
+    final privateOnly = await router.run(
+      const AiRequest(task: 'route-health', input: {'api_token': 'secret'}),
+    );
+
+    expect(unknownTask.usedOfflineFallback, isTrue);
+    expect(privateOnly.usedOfflineFallback, isTrue);
+    expect(local.calls, 0);
+  });
+
 }
 
 class HangingProvider implements AiProviderAdapter {
@@ -55,7 +115,7 @@ class FakeOfflinePolicy implements OfflineAiPolicy {
 }
 
 void main() {
-  const request = AiRequest(task: 'route-health', input: {'loss': 0.0});
+  const request = AiRequest(task: 'route-health', input: {'packet_loss_percent': 0.0});
 
   test('unknown managed provider is never called', () async {
     final managed = FakeProvider(
