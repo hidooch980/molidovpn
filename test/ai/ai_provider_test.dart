@@ -30,67 +30,6 @@ class FakeProvider implements AiProviderAdapter {
     calls++;
     return output;
   }
-  test('provider timeout uses one total budget and falls back', () async {
-    final later = FakeProvider(
-      id: 'self-hosted',
-      kind: AiProviderKind.selfHosted,
-      eligibility: AiProviderEligibility.allowed,
-    );
-    final router = AiRouter(
-      policy: const AiProviderPolicy(allowSelfHosted: true),
-      offlinePolicy: FakeOfflinePolicy(),
-      providers: [HangingProvider(), later],
-      providerBudget: const Duration(milliseconds: 20),
-    );
-
-    final result = await router.run(request);
-
-    expect(result.usedOfflineFallback, isTrue);
-    expect(result.output, 'offline-safe');
-    expect(later.calls, 0);
-  });
-
-  test('oversized provider output is rejected', () async {
-    final oversized = FakeProvider(
-      id: 'local',
-      kind: AiProviderKind.onDevice,
-      eligibility: AiProviderEligibility.allowed,
-      output: 'x' * 20,
-    );
-    final router = AiRouter(
-      policy: const AiProviderPolicy(),
-      offlinePolicy: FakeOfflinePolicy(),
-      providers: [oversized],
-      maxOutputChars: 10,
-    );
-
-    final result = await router.run(request);
-
-    expect(result.usedOfflineFallback, isTrue);
-    expect(result.output, 'offline-safe');
-  });
-
-  test('invalid provider budget and output cap are rejected', () {
-    expect(
-      () => AiRouter(
-        policy: const AiProviderPolicy(),
-        offlinePolicy: FakeOfflinePolicy(),
-        providers: const [],
-        providerBudget: Duration.zero,
-      ),
-      throwsArgumentError,
-    );
-    expect(
-      () => AiRouter(
-        policy: const AiProviderPolicy(),
-        offlinePolicy: FakeOfflinePolicy(),
-        providers: const [],
-        maxOutputChars: 0,
-      ),
-      throwsArgumentError,
-    );
-  });
-
 }
 
 class HangingProvider implements AiProviderAdapter {
@@ -178,5 +117,66 @@ void main() {
 
     expect(result.usedOfflineFallback, isTrue);
     expect(result.output, 'offline-safe');
+  });
+
+  test('provider timeout uses one total budget and falls back', () async {
+    final later = FakeProvider(
+      id: 'self-hosted',
+      kind: AiProviderKind.selfHosted,
+      eligibility: AiProviderEligibility.allowed,
+    );
+    final router = AiRouter(
+      policy: const AiProviderPolicy(allowSelfHosted: true),
+      offlinePolicy: FakeOfflinePolicy(),
+      providers: [HangingProvider(), later],
+      providerBudget: const Duration(milliseconds: 20),
+    );
+
+    final result = await router.run(request);
+
+    expect(result.usedOfflineFallback, isTrue);
+    expect(result.output, 'offline-safe');
+    expect(later.calls, 0);
+  });
+
+  test('oversized provider output is rejected', () async {
+    final oversized = FakeProvider(
+      id: 'local',
+      kind: AiProviderKind.onDevice,
+      eligibility: AiProviderEligibility.allowed,
+      output: 'x' * 20,
+    );
+    final router = AiRouter(
+      policy: const AiProviderPolicy(),
+      offlinePolicy: FakeOfflinePolicy(),
+      providers: [oversized],
+      maxOutputChars: 10,
+    );
+
+    final result = await router.run(request);
+
+    expect(result.usedOfflineFallback, isTrue);
+    expect(result.output, 'offline-safe');
+  });
+
+  test('invalid provider budget and output cap are rejected', () {
+    expect(
+      () => AiRouter(
+        policy: const AiProviderPolicy(),
+        offlinePolicy: FakeOfflinePolicy(),
+        providers: const [],
+        providerBudget: Duration.zero,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => AiRouter(
+        policy: const AiProviderPolicy(),
+        offlinePolicy: FakeOfflinePolicy(),
+        providers: const [],
+        maxOutputChars: 0,
+      ),
+      throwsArgumentError,
+    );
   });
 }
