@@ -1040,12 +1040,12 @@ class VpnController extends ChangeNotifier {
       if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 30)) return false;
     }
     _warpMayTryAlternateRoute = true;
-    if (await _registerWarp(null, const Duration(seconds: 3))) return true;
+    if (await _registerWarp(null, const Duration(seconds: 15))) return true;
     if (!_warpMayTryAlternateRoute) {
       if (quick) _warpQuickFailedAt = DateTime.now();
       return false;
     }
-    if (await _registerWarp(null, const Duration(seconds: 8), url: WarpAccount.relayUrl)) return true;
+    if (await _registerWarp(null, const Duration(seconds: 15), url: WarpAccount.relayUrl)) return true;
     if (!_warpMayTryAlternateRoute) {
       if (quick) _warpQuickFailedAt = DateTime.now();
       return false;
@@ -1089,7 +1089,9 @@ class VpnController extends ChangeNotifier {
           }
         }
       } else {
-        _warpMayTryAlternateRoute = true; // connection-level failure; alternate route is useful
+        // Only a definite socket-connect failure proves the POST did not reach Cloudflare.
+        // A timeout/read/parse failure is ambiguous: the registration may already exist.
+        _warpMayTryAlternateRoute = e is SocketException;
       }
       AppLog.add('warp: registration $how failed ($e)');
       return false;
@@ -1097,13 +1099,14 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> _saveWarp(WarpAccount account) async {
+    // Persist the newly issued identity before clearing its rate-limit marker.
+    await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
     WarpRegistry.account = account;
     _warpQuickFailedAt = null;
     _warpRegistrationCooldownUntil = null;
     try {
       await (await SharedPreferences.getInstance()).remove(_warpRegistrationCooldownKey);
     } catch (_) {}
-    await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
     AppLog.add('warp: identity registered and saved');
   }
 
