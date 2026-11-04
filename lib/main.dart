@@ -106,7 +106,7 @@ class _MobinAppState extends State<MobinApp> with WidgetsBindingObserver {
             // Palette values are read directly by widgets, so a theme switch rebuilds the whole tree.
             key: ValueKey('$brightness-${settings.reduceMotion}-${settings.language}'),
             navigatorKey: appNavigatorKey,
-            title: 'MolidoVPN',
+            title: 'Molido Mesh AI',
             debugShowCheckedModeBanner: false,
             locale: L10n.locale,
             supportedLocales: AppLocalizationDelegates.supportedLocales,
