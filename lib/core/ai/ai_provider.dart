@@ -75,25 +75,46 @@ class AiRouter {
     required this.policy,
     required this.offlinePolicy,
     required List<AiProviderAdapter> providers,
-  }) : _providers = List.unmodifiable(providers);
+    this.providerBudget = const Duration(seconds: 2),
+    this.maxOutputChars = 4096,
+  }) : _providers = List.unmodifiable(providers) {
+    if (providerBudget <= Duration.zero) {
+      throw ArgumentError.value(providerBudget, 'providerBudget', 'Must be positive.');
+    }
+    if (maxOutputChars < 1) {
+      throw ArgumentError.value(maxOutputChars, 'maxOutputChars', 'Must be positive.');
+    }
+  }
 
   final AiProviderPolicy policy;
   final OfflineAiPolicy offlinePolicy;
   final List<AiProviderAdapter> _providers;
 
+  /// One total time budget for all providers, not a fresh timeout per provider.
+  /// This keeps advisory AI from delaying network decisions indefinitely.
+  final Duration providerBudget;
+
+  /// Reject unexpectedly large provider responses before passing them onward.
+  final int maxOutputChars;
+
   Future<AiResult> run(AiRequest request) async {
     final ordered = _providers.toList()
       ..sort((a, b) => _priority(a.kind).compareTo(_priority(b.kind)));
+    final stopwatch = Stopwatch()..start();
 
     for (final provider in ordered) {
+      final remaining = providerBudget - stopwatch.elapsed;
+      if (remaining <= Duration.zero) break;
       if (!policy.permits(provider.kind, provider.eligibility) ||
           !provider.isAvailable) {
         continue;
       }
 
       try {
-        final output = await provider.complete(request);
-        if (output != null && output.trim().isNotEmpty) {
+        final output = await provider.complete(request).timeout(remaining);
+        if (output != null &&
+            output.trim().isNotEmpty &&
+            output.length <= maxOutputChars) {
           return AiResult(
             output: output,
             providerId: provider.id,
@@ -101,7 +122,8 @@ class AiRouter {
           );
         }
       } catch (_) {
-        // Provider failures are isolated. Never interrupt VPN operation.
+        // Timeout, malformed adapter behaviour, and provider errors are isolated.
+        // The adapter should cancel its own underlying request when possible.
       }
     }
 
