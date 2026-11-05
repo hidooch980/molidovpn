@@ -70,7 +70,7 @@ test('legacy Android APK download names resolve to canonical signed Android rele
     throw new Error('Unexpected upstream URL: ' + url);
   };
   try {
-    const response = await worker.fetch(request('/app/MolinoVPN-android-arm64.apk'.replace('MolinoVPN', 'MolidoVPN')), {}, ctx);
+    const response = await worker.fetch(request('/app/MolidoVPN-android-arm64.apk'), {}, ctx);
     assert.equal(response.status, 200);
     assert.equal(await response.text(), 'signed-apk-fixture');
     assert.ok(calls.includes('https://github.com/hidooch980/molidovpn-android/releases/latest'));
