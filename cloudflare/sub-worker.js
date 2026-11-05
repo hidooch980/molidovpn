@@ -6,6 +6,7 @@ const LITE = 'https://raw.githubusercontent.com/hidooch980/vpn-sub/sub/lite_base
 const MIRROR = (file) => `https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/${file}`;
 
 const REPO = 'hidooch980/molidovpn';
+const ANDROID_REPO = 'hidooch980/molidovpn-android';
 
 // App updates through this worker, for networks where github.com / api.github.com are slow or filtered.
 // /app/latest.json — same shape as the GitHub "latest release" API, with download URLs pointing back here.
@@ -13,7 +14,7 @@ const REPO = 'hidooch980/molidovpn';
 async function appRoute(url, request, ctx) {
   const name = url.pathname.slice('/app/'.length);
   if (name === 'latest.json') {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+    const res = await fetch(`https://api.github.com/repos/${ANDROID_REPO}/releases/latest`, {
       headers: { 'user-agent': 'MolidoVPN-worker', accept: 'application/vnd.github+json' },
       cf: { cacheTtl: 300, cacheEverything: true },
     });
@@ -29,7 +30,8 @@ async function appRoute(url, request, ctx) {
         // digest/sha256: the app checks the downloaded APK against it (mirror copies included).
         const sha = /^sha256:[0-9a-f]{64}$/.test(a.digest || '') ? a.digest.slice(7) : undefined;
         const one = (n) => ({ name: n, size: a.size, digest: a.digest, sha256: sha, browser_download_url: `${url.origin}/app/${n}` });
-        return a.name.startsWith('MolidoVPN-') ? [one(a.name), one(a.name.replace(/^MolidoVPN-/, 'MobinVPN-'))] : [one(a.name)];
+        const legacy = a.name.match(/^MolidoMeshAI-(android-(?:arm64|armv7|universal))\.apk$/i);
+        return legacy ? [one(a.name), one('MolidoVPN-' + legacy[1] + '.apk'), one('MobinVPN-' + legacy[1] + '.apk')] : [one(a.name)];
       }),
     };
     return new Response(JSON.stringify(body), {
@@ -54,14 +56,21 @@ async function appRoute(url, request, ctx) {
 // Release downloads through Cloudflare's edge: cached per release tag in caches.default (object max 512 MB on
 // the free plan; our largest asset is ~150 MB), streamed (no worker memory limit hit), Range → 206 for resume.
 // Old names (MobinVPN-*) map to the renamed MolidoVPN-* assets so already-installed apps still update.
-async function latestTag() {
-  const res = await fetch(`https://github.com/${REPO}/releases/latest`, { redirect: 'manual', cf: { cacheTtl: 120, cacheEverything: true } });
+async function latestTag(repo = REPO) {
+  const res = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: 'manual', cf: { cacheTtl: 120, cacheEverything: true } });
   return (res.headers.get('location') || '').match(/\/tag\/([^/?#]+)/)?.[1] || null;
 }
 
+function canonicalAndroidAsset(name) {
+  const legacy = name.match(/^(?:MolidoVPN|MobinVPN)-(android-(?:arm64|armv7|universal))\.apk$/i);
+  return legacy ? 'MolidoMeshAI-' + legacy[1] + '.apk' : name;
+}
+
 async function appAsset(name, request, ctx) {
-  const file = name.replace(/^MobinVPN-/, 'MolidoVPN-');
-  const tag = await latestTag();
+  const isAndroidApk = name.toLowerCase().endsWith('.apk');
+  const repo = isAndroidApk ? ANDROID_REPO : REPO;
+  const file = isAndroidApk ? canonicalAndroidAsset(name) : name.replace(/^MobinVPN-/, 'MolidoVPN-');
+  const tag = await latestTag(repo);
   const headers = {
     'content-type': file.endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/octet-stream',
     'content-disposition': `attachment; filename="${file}"`,
@@ -75,7 +84,7 @@ async function appAsset(name, request, ctx) {
   };
   const range = request.headers.get('range');
   const cache = caches.default;
-  const key = tag ? `https://molido-cache.invalid/app/${tag}/${file}` : null;
+  const key = tag ? `https://molido-cache.invalid/app/${repo}/${tag}/${file}` : null;
   if (key && request.method === 'GET') {
     const hit = await cache.match(new Request(key, { headers: range ? { range } : {} }));
     if (hit) {
@@ -85,7 +94,7 @@ async function appAsset(name, request, ctx) {
       return new Response(hit.body, { status: hit.status, headers: h });
     }
   }
-  const src = (n) => tag ? `https://github.com/${REPO}/releases/download/${tag}/${n}` : `https://github.com/${REPO}/releases/latest/download/${n}`;
+  const src = (n) => tag ? `https://github.com/${repo}/releases/download/${tag}/${n}` : `https://github.com/${repo}/releases/latest/download/${n}`;
   const get = async (h) => {
     let r = await fetch(src(file), { redirect: 'follow', headers: h });
     if (r.status === 404 && file !== name) r = await fetch(src(name), { redirect: 'follow', headers: h });
