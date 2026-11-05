@@ -1,6 +1,6 @@
 <div dir="rtl">
 
-# راهنمای مدیر MolidoVPN
+# راهنمای مدیر Molido Mesh AI
 
 [بازگشت به صفحهٔ اصلی](../README.md)
 

@@ -8,6 +8,19 @@ class WarpRegistry {
   static WarpAccount? account;
 }
 
+/// A definitive Cloudflare registration response. The caller uses the status to
+/// avoid replaying device-creating requests after quota/server responses.
+class WarpRegistrationRejected implements Exception {
+  const WarpRegistrationRejected(this.statusCode, this.responseBody, this.retryAfter);
+
+  final int statusCode;
+  final String responseBody;
+  final Duration? retryAfter;
+
+  @override
+  String toString() => 'WARP HTTP $statusCode: $responseBody';
+}
+
 /// A free Cloudflare WARP identity: used on its own as the free "WARP" route (no server needed),
 /// or chained behind a VPN server so sites that block datacenter IPs see a Cloudflare IP instead.
 class WarpAccount {
@@ -105,7 +118,7 @@ class WarpAccount {
     final privateKey = base64.encode(await keyPair.extractPrivateKeyBytes());
     final publicKey = base64.encode((await keyPair.extractPublicKey()).bytes);
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
       final req = await client.postUrl(Uri.parse(url));
@@ -122,9 +135,16 @@ class WarpAccount {
         'serial_number': '',
         'locale': 'en_US',
       }));
-      final res = await req.close().timeout(const Duration(seconds: 20));
-      final body = await res.transform(utf8.decoder).join();
-      if (res.statusCode != 200) throw HttpException('WARP HTTP ${res.statusCode}');
+      final res = await req.close().timeout(const Duration(seconds: 12));
+      final retryAfterRaw = res.headers.value('retry-after');
+      final retryAfterSeconds = int.tryParse(retryAfterRaw ?? '');
+      final retryAfter = retryAfterSeconds == null || retryAfterSeconds < 1
+          ? null
+          : Duration(seconds: retryAfterSeconds.clamp(1, 3600).toInt());
+      final body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) {
+        throw WarpRegistrationRejected(res.statusCode, body, retryAfter);
+      }
       final result = (jsonDecode(body) as Map<String, dynamic>)['result'] as Map<String, dynamic>;
       final config = result['config'] as Map<String, dynamic>;
       final peer = (config['peers'] as List).first as Map<String, dynamic>;

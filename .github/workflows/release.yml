@@ -68,6 +68,19 @@ jobs:
       - name: Offline emergency configs (Android; never fails the build)
         working-directory: native
         run: '[ -f tools/refresh-emergency-configs.py ] && python3 tools/refresh-emergency-configs.py || true'
+      - name: Validate preserved Android signing key
+        working-directory: native
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          AETHERY_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          AETHERY_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Android signing keystore secret is missing"; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          test -s release.keystore || { echo "::error::Android signing keystore is empty"; exit 1; }
+          keytool -list -keystore release.keystore -storepass "$AETHERY_KEYSTORE_PASSWORD" -alias "$AETHERY_KEY_ALIAS" >/dev/null
+          echo "Existing Android signing keystore and alias are readable."
       - name: Build APKs
         working-directory: native
         env:
@@ -88,6 +101,47 @@ jobs:
             esac
           done
           ls -la ../dist
+      - name: Verify Android package, signing identity and upgrade version
+        working-directory: native
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
+          test -x "$APKSIGNER" && test -x "$AAPT"
+          PREVIOUS_TAG=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
+          test -n "$PREVIOUS_TAG" || { echo "::error::No previous Android release is available for signer comparison"; exit 1; }
+          OLD_APK="$RUNNER_TEMP/previous-universal.apk"
+          gh release download "$PREVIOUS_TAG" -R "$GITHUB_REPOSITORY" -p 'MolidoVPN-android-universal.apk' -O "$OLD_APK" \\
+            || gh release download "$PREVIOUS_TAG" -R "$GITHUB_REPOSITORY" -p 'MobinVPN-android-universal.apk' -O "$OLD_APK"
+          cert_digest() {
+            "$APKSIGNER" verify --verbose "$1" >/dev/null
+            "$APKSIGNER" verify --print-certs "$1" | sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]'
+          }
+          apk_meta() {
+            local line package version
+            line=$("$AAPT" dump badging "$1" | head -n 1)
+            package=$(printf '%s' "$line" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p")
+            version=$(printf '%s' "$line" | sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p")
+            printf '%s %s\n' "$package" "$version"
+          }
+          read -r old_package old_version < <(apk_meta "$OLD_APK")
+          old_cert=$(cert_digest "$OLD_APK")
+          test "$old_package" = "com.mobin.mobin_vpn" || { echo "::error::Previous release package ID mismatch"; exit 1; }
+          test -n "$old_cert" && test -n "$old_version"
+          count=0
+          for apk in ../dist/MolidoVPN-android-*.apk; do
+            test -f "$apk" || continue
+            count=$((count + 1))
+            read -r package version < <(apk_meta "$apk")
+            cert=$(cert_digest "$apk")
+            test "$package" = "$old_package" || { echo "::error::Package ID changed in $apk"; exit 1; }
+            test "$cert" = "$old_cert" || { echo "::error::Signing certificate changed in $apk"; exit 1; }
+            test "$version" -gt "$old_version" || { echo "::error::Version code did not increase in $apk"; exit 1; }
+            echo "Verified $(basename "$apk"): package=$package versionCode=$version signer=$cert"
+          done
+          test "$count" -eq 3 || { echo "::error::Expected 3 Android APK variants, found $count"; exit 1; }
       - uses: actions/upload-artifact@v6
         with:
           name: android

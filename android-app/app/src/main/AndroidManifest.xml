@@ -47,7 +47,7 @@
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="MolidoVPN"
+        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Molido">
         <activity
@@ -137,7 +137,7 @@
         <receiver
             android:name=".MolidoWidget"
             android:exported="true"
-            android:label="MolidoVPN">
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

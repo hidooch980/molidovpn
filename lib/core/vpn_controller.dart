@@ -1011,26 +1011,52 @@ class VpnController extends ChangeNotifier {
       'مسیر «V2Ray» یا «Psiphon» را انتخاب کنید؛ پس از یک اتصال موفق، WARP خودکار از داخل تونل ثبت می‌شود.';
 
   /// Last failed quick registration: automatic mode does not wait for WARP again for 30 minutes.
+  static const _warpRegistrationCooldownKey = 'warp_registration_retry_at_ms';
   DateTime? _warpQuickFailedAt;
+  DateTime? _warpRegistrationCooldownUntil;
+  bool _warpMayTryAlternateRoute = true;
 
   /// Creates the WARP identity once and keeps it permanently in settings (later connects never need the API).
-  /// Order: Cloudflare API directly (3 s), the MolidoVPN worker relay (8 s), then — full mode only — through
-  /// the active tunnel, or (Windows, not connected) a temporary relay over the best V2Ray servers.
-  /// [quick] (automatic mode): only the first two steps, and not again for 30 minutes after a failure.
+  /// Quota/server responses are not replayed through another route: a registration POST can create a new
+  /// device even when its response is lost. Only an explicit 403 or a connection failure may use fallback.
   Future<bool> ensureWarp({bool quick = false}) async {
     if (WarpAccount.fromJsonString(settings.warpAccount) != null) return true;
+    final prefs = await SharedPreferences.getInstance();
+    final storedCooldown = prefs.getInt(_warpRegistrationCooldownKey);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (storedCooldown != null && storedCooldown > nowMs) {
+      _warpRegistrationCooldownUntil = DateTime.fromMillisecondsSinceEpoch(storedCooldown);
+    } else if (storedCooldown != null) {
+      await prefs.remove(_warpRegistrationCooldownKey);
+      _warpRegistrationCooldownUntil = null;
+    }
+    final cooldown = _warpRegistrationCooldownUntil;
+    if (cooldown != null && DateTime.now().isBefore(cooldown)) {
+      AppLog.add('warp: registration cooldown active; not creating another Cloudflare identity');
+      return false;
+    }
     if (quick) {
       final failed = _warpQuickFailedAt;
       if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 30)) return false;
     }
-    if (await _registerWarp(null, const Duration(seconds: 3))) return true;
-    if (await _registerWarp(null, const Duration(seconds: 8), url: WarpAccount.relayUrl)) return true;
+    _warpMayTryAlternateRoute = true;
+    if (await _registerWarp(null, const Duration(seconds: 15))) return true;
+    if (!_warpMayTryAlternateRoute) {
+      if (quick) _warpQuickFailedAt = DateTime.now();
+      return false;
+    }
+    if (await _registerWarp(null, const Duration(seconds: 15), url: WarpAccount.relayUrl)) return true;
+    if (!_warpMayTryAlternateRoute) {
+      if (quick) _warpQuickFailedAt = DateTime.now();
+      return false;
+    }
     if (quick) {
       _warpQuickFailedAt = DateTime.now();
       return false;
     }
     final tunnel = engine.httpProxy;
     if (tunnel != null && await _registerWarp(tunnel, const Duration(seconds: 25))) return true;
+    if (!_warpMayTryAlternateRoute) return false;
     final eng = engine;
     if (eng is WindowsEngine && state != VpnState.connected) {
       final account = await eng.registerWarpVia(_warpRelayCandidates());
@@ -1049,15 +1075,38 @@ class VpnController extends ChangeNotifier {
       AppLog.add('warp: registered $how');
       return true;
     } catch (e) {
+      if (e is WarpRegistrationRejected) {
+        // 403 explicitly rejects this egress address, so one different route may help.
+        // 429, 5xx and other responses are not replayed: doing so can burn registrations.
+        _warpMayTryAlternateRoute = e.statusCode == 403;
+        if (e.statusCode == 429) {
+          _warpRegistrationCooldownUntil = DateTime.now().add(e.retryAfter ?? const Duration(minutes: 5));
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt(_warpRegistrationCooldownKey, _warpRegistrationCooldownUntil!.millisecondsSinceEpoch);
+          } catch (_) {
+            // The in-memory cooldown still protects this process if preferences are unavailable.
+          }
+        }
+      } else {
+        // Only a definite socket-connect failure proves the POST did not reach Cloudflare.
+        // A timeout/read/parse failure is ambiguous: the registration may already exist.
+        _warpMayTryAlternateRoute = e is SocketException;
+      }
       AppLog.add('warp: registration $how failed ($e)');
       return false;
     }
   }
 
   Future<void> _saveWarp(WarpAccount account) async {
+    // Persist the newly issued identity before clearing its rate-limit marker.
+    await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
     WarpRegistry.account = account;
     _warpQuickFailedAt = null;
-    await settings.update((x) => x.warpAccount = jsonEncode(account.toJson()));
+    _warpRegistrationCooldownUntil = null;
+    try {
+      await (await SharedPreferences.getInstance()).remove(_warpRegistrationCooldownKey);
+    } catch (_) {}
     AppLog.add('warp: identity registered and saved');
   }
 
