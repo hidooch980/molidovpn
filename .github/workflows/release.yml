@@ -517,9 +517,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PREV=$(gh release list -R "$GITHUB_REPOSITORY" -L 2 --json tagName -q '.[1].tagName')
-          echo "previous release: $PREV"
-          gh release download "$PREV" -R "$GITHUB_REPOSITORY" -p 'MolidoVPN-android-universal.apk' -O old.apk             || gh release download "$PREV" -R "$GITHUB_REPOSITORY" -p 'MobinVPN-android-universal.apk' -O old.apk
+          # Compare candidate APKs with the just-published APK. The immediately previous
+          # desktop release may already mirror the same canonical Android binary.
+          gh release download "v$VERSION" -R "$GITHUB_REPOSITORY" \
+            -p 'MolidoVPN-android-universal.apk' -O current.apk
+          mapfile -t RELEASE_TAGS < <(gh release list -R "$GITHUB_REPOSITORY" -L 100 --json tagName --jq '.[].tagName')
+          PREV=''
+          for candidate in "${RELEASE_TAGS[@]}"; do
+            [ "$candidate" = "v$VERSION" ] && continue
+            rm -f candidate.apk
+            if gh release download "$candidate" -R "$GITHUB_REPOSITORY" \
+              -p 'MolidoVPN-android-universal.apk' -O candidate.apk 2>/dev/null \
+              || gh release download "$candidate" -R "$GITHUB_REPOSITORY" \
+              -p 'MobinVPN-android-universal.apk' -O candidate.apk 2>/dev/null; then
+              if ! cmp -s candidate.apk current.apk; then
+                mv candidate.apk old.apk
+                PREV="$candidate"
+                break
+              fi
+            fi
+          done
+          [ -s old.apk ] || { echo "::error::No older Android APK found for the update test"; exit 1; }
+          echo "selected older Android baseline: $PREV"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
