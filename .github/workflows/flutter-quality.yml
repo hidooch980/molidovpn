@@ -10,7 +10,7 @@ on:
       - "analysis_options.yaml"
       - ".github/workflows/flutter-quality.yml"
   push:
-    branches: [main]
+    branches: [main, security/redacted-diagnostics-20261105]
     paths:
       - "lib/**"
       - "test/**"
