@@ -60,7 +60,7 @@ jobs:
           repo='hidooch980/molidovpn-android'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
           version=${tag#v}
-          [[ "$version" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || { echo "::error::Invalid canonical Android tag: $tag"; exit 1; }
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid canonical Android tag: $tag"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "VERSION=$version" >> "$GITHUB_ENV"
       - name: Download and verify canonical signed Android release
@@ -201,7 +201,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $release = gh release view -R hidooch980/molidovpn-android --json tagName,assets | ConvertFrom-Json
-          if ($release.tagName -notmatch '^v(\\d+\\.\\d+\\.\\d+)
+          if ($release.tagName -notmatch '^v(\d+\.\d+\.\d+)
       - name: Load core pins (tools/core-pins.json, rewritten by core-updates)
         shell: pwsh
         run: |
