@@ -46,7 +46,17 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-pub
       - name: Unit tests
+        env:
+          MOLIDO_SCREENS: ${{ runner.temp }}/molido-screens
         run: flutter test --no-pub --reporter expanded
+      - name: Keep UI regression screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: molido-ui-regression-screenshots
+          path: ${{ runner.temp }}/molido-screens/
+          if-no-files-found: warn
+          retention-days: 14
   windows-build:
     runs-on: windows-latest
     timeout-minutes: 35
