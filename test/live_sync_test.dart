@@ -32,9 +32,29 @@ void main() {
     expect(Updater.parseRelease(json, 'other.exe'), isNull);
   });
 
-  test('update sources: GitHub copies before the Worker', () {
+  test('update sources are public GitHub endpoints and do not require Cloudflare', () {
     expect(Updater.sources.first, startsWith('https://raw.githubusercontent.com/'));
-    expect(Updater.sources.last, contains('workers.dev'));
+    expect(Updater.sources[1], contains('cdn.jsdelivr.net'));
+    expect(Updater.sources[2], 'https://api.github.com/repos/hidooch980/molidovpn-android/releases/latest');
+    expect(Updater.sources.any((source) => source.contains('workers.dev')), isFalse);
+  });
+
+  test('canonical Android release asset and digest are accepted', () {
+    final json = {
+      'tag_name': 'v4.0.2',
+      'assets': [
+        {
+          'name': 'MolidoMeshAI-android-arm64.apk',
+          'size': 61539006,
+          'browser_download_url': 'https://github.com/hidooch980/molidovpn-android/releases/download/v4.0.2/MolidoMeshAI-android-arm64.apk',
+          'digest': 'sha256:NaN',
+        },
+      ],
+    };
+    final u = Updater.parseRelease(json, 'MolidoMeshAI-android-arm64.apk')!;
+    expect(u.version, '4.0.2');
+    expect(u.sha256, 'f' * 64);
+    expect(u.url, contains('molidovpn-android/releases/download/v4.0.2/'));
   });
   test('an older CDN copy never steps back', () {
     const now = LiveVersion(v: '2', flags: 'f2', release: 'v3.2.158', at: 200);
