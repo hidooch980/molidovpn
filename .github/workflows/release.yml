@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           repo='hidooch980/molidovpn-android'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
-          test -n "$tag" || { echo "::error::No canonical Android release found"; exit 1; }
+          test "$tag" = "v$VERSION" || { echo "::error::Android and desktop versions differ"; exit 1; }
           mkdir -p dist previous
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-arm64.apk' -D dist
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-armv7.apk' -D dist
