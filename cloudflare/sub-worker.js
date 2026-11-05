@@ -620,7 +620,7 @@ async function reportScores(env, ctx) {
 // domains; a no-op on workers.dev) and per isolate for a minute.
 // ---------------------------------------------------------------------------------------------------
 const SNAP_KEY = 'snapshot';
-const SNAP_STALE_MS = 40 * 60000; // older than this (cron missed twice): recompute live
+const SNAP_STALE_MS = 90 * 60000; // hourly cron plus a 30-minute grace window; stale snapshots remain usable
 const SNAP_CACHE_KEY = 'https://molido-cache.invalid/snapshot/v1';
 const SNAP_CACHE_TTL = 600; // seconds
 const SNAP_MEM_MS = 60000;
@@ -1981,7 +1981,7 @@ function loadOnline(){api('GET','/online').then(function(j){var box=$('online');
   var parts=[];Object.keys(OPN).forEach(function(o){var n=(j.byOperator||{})[o]||0;if(n)parts.push(OPN[o]+': '+n.toLocaleString('fa-IR'))});
   if(parts.length)box.append(el('span',' · '+parts.join(' · '),'mute'));
 }).catch(function(){})}
-function startOnline(){loadOnline();if(onlineTimer)clearInterval(onlineTimer);onlineTimer=setInterval(loadOnline,17000)}
+function startOnline(){loadOnline();if(onlineTimer)clearInterval(onlineTimer);onlineTimer=setInterval(loadOnline,60000)}
 function tsFa(s){return s?new Date(s*1000).toLocaleString('fa-IR'):'—'}
 function tbl(rows,cols){var t=document.createElement('table');var h=document.createElement('tr');cols.forEach(function(c){h.append(el('th',c[1]))});t.append(h);
   rows.forEach(function(r){var tr=document.createElement('tr');cols.forEach(function(c){var v=c[2]?c[2](r[c[0]],r):r[c[0]];var td=el('td',v==null?'':String(v));if(c[0]==='install_id'){td.style.cursor='pointer';td.onclick=function(){$('dId').value=r.install_id;loadDiag()}}tr.append(td)});t.append(tr)});return t}
@@ -2097,7 +2097,7 @@ export default {
   // run): schema check and the old daily cleanup.
   async scheduled(event, env, ctx) {
     const t = new Date(event.scheduledTime || Date.now());
-    const daily = event.cron === '17 3 * * *' || (t.getUTCHours() === 3 && t.getUTCMinutes() < 15);
+    const daily = t.getUTCHours() === 3 && t.getUTCMinutes() === 17;
     if (daily) await ensureAllSchemas(env).catch(() => {});
     ctx.waitUntil(refreshSnapshot(env, ctx).catch(() => {}));
     ctx.waitUntil(
