@@ -110,7 +110,7 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
           test -x "$APKSIGNER" && test -x "$AAPT"
-          PREVIOUS_TAG=$(gh release list -R "$GITHUB_REPOSITORY" --limit 2 --json tagName --jq '.[1].tagName')
+          PREVIOUS_TAG=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
           test -n "$PREVIOUS_TAG" || { echo "::error::No previous Android release is available for signer comparison"; exit 1; }
           OLD_APK="$RUNNER_TEMP/previous-universal.apk"
           gh release download "$PREVIOUS_TAG" -R "$GITHUB_REPOSITORY" -p 'MolidoVPN-android-universal.apk' -O "$OLD_APK" \\
