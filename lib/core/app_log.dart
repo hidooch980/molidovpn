@@ -27,7 +27,7 @@ class AppLog {
   static String _redact(String message) {
     var safe = message.replaceAllMapped(
       _secretField,
-      (match) => (match.group(1) ?? '') + '[redacted]',
+      (match) => '${match.group(1) ?? ''}[redacted]',
     );
     safe = safe.replaceAll(_configUri, '[vpn-profile]');
     safe = safe.replaceAll(_email, '[email]');
@@ -40,9 +40,9 @@ class AppLog {
     final safe = _redact(message);
     final t = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
-    _lines.add(two(t.hour) + ':' + two(t.minute) + ':' + two(t.second) + '  ' + safe);
+    _lines.add('${two(t.hour)}:${two(t.minute)}:${two(t.second)}  $safe');
     if (_lines.length > _max) _lines.removeRange(0, _lines.length - _max);
-    debugPrint('[mobin] ' + safe);
+    debugPrint('[mobin] $safe');
   }
 
   static String dump() => _lines.join('\n');
