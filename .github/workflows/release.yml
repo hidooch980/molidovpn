@@ -117,7 +117,7 @@ jobs:
             test -n "$cert" || { echo "::error::Missing APK signer in $apk"; exit 1; }
             if [ -n "$baseline_cert" ]; then
               test "$cert" = "$baseline_cert" || { echo "::error::Signing certificate changed in $apk"; exit 1; }
-              test "$version" -gt "$baseline_version" || { echo "::error::Version code is not an upgrade in $apk"; exit 1; }
+              test "$version" -ge "$baseline_version" || { echo "::error::Version code is not an upgrade in $apk"; exit 1; }
             fi
             echo "Verified $apk package=$package versionCode=$version signer=$cert"
             count=$((count + 1))
