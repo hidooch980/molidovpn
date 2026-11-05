@@ -1,0 +1,22 @@
+name: Release workflow validation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-workflow-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Validate GitHub Actions workflow syntax
+        run: actionlint -color .github/workflows/release.yml
