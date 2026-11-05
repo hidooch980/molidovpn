@@ -123,6 +123,9 @@ jobs:
             count=$((count + 1))
           done
           test "$count" -eq 3
+          if [ "$baseline_version" -gt 0 ] && [ "$version" -eq "$baseline_version" ]; then
+            cmp -s dist/MolidoMeshAI-android-universal.apk previous/MolidoVPN-android-universal.apk || { echo "::error::Same-version Android mirror is not byte-identical"; exit 1; }
+          fi
           cp dist/MolidoMeshAI-android-arm64.apk dist/MobInVPN-android-arm64.apk
           cp dist/MolidoMeshAI-android-armv7.apk dist/MobInVPN-android-armv7.apk
           cp dist/MolidoMeshAI-android-universal.apk dist/MobInVPN-android-universal.apk
