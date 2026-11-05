@@ -16,7 +16,7 @@ async function appRoute(url, request, ctx) {
   if (name === 'latest.json') {
     const res = await fetch(`https://api.github.com/repos/${ANDROID_REPO}/releases/latest`, {
       headers: { 'user-agent': 'MolidoVPN-worker', accept: 'application/vnd.github+json' },
-      cf: { cacheTtl: 300, cacheEverything: true },
+      cf: { cacheTtl: 60, cacheEverything: true },
     });
     if (!res.ok) return new Response('release info unavailable', { status: 502 });
     const r = await res.json();
@@ -35,7 +35,7 @@ async function appRoute(url, request, ctx) {
       }),
     };
     return new Response(JSON.stringify(body), {
-      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' },
+      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=60', 'access-control-allow-origin': '*' },
     });
   }
   if (name === 'changelog.json') {
@@ -57,7 +57,7 @@ async function appRoute(url, request, ctx) {
 // the free plan; our largest asset is ~150 MB), streamed (no worker memory limit hit), Range → 206 for resume.
 // Old names (MobinVPN-*) map to the renamed MolidoVPN-* assets so already-installed apps still update.
 async function latestTag(repo = REPO) {
-  const res = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: 'manual', cf: { cacheTtl: 120, cacheEverything: true } });
+  const res = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: 'manual', cf: { cacheTtl: 60, cacheEverything: true } });
   return (res.headers.get('location') || '').match(/\/tag\/([^/?#]+)/)?.[1] || null;
 }
 
