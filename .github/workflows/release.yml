@@ -50,6 +50,8 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
+      - name: Install stable Android build tools for APK verification
+        run: sdkmanager "build-tools;36.0.0"
       - name: Download and verify canonical signed Android release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,8 +79,19 @@ jobs:
               || gh release download "$previous_tag" -R "$GITHUB_REPOSITORY" -p 'MobinVPN-android-universal.apk' -D previous
           fi
           cert_digest() {
+            local output digest
             "$apksigner" verify --verbose "$1" >/dev/null
-            "$apksigner" verify --print-certs "$1" | sed -n 's/.*Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]'
+            # apksigner versions differ in whether certificate details are written to stdout or stderr.
+            output=$("$apksigner" verify --print-certs "$1" 2>&1)
+            digest=$(printf '%s\\n' "$output" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {
+              gsub(/[[:space:]]/, "", $2); print tolower($2); exit
+            }')
+            if [[ ! "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::Could not extract a valid APK signer SHA-256 for $1"
+              printf '%s\\n' "$output" >&2
+              return 1
+            fi
+            printf '%s\\n' "$digest"
           }
           apk_meta() {
             local line package version
