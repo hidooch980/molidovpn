@@ -57,6 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC2153
           repo='hidooch980/molidovpn-android'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
           test "$tag" = "v$VERSION" || { echo "::error::Android and desktop versions differ"; exit 1; }
