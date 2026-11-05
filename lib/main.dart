@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/account.dart';
+import 'core/app_log.dart';
 import 'core/native_bridge.dart';
 import 'core/single_instance.dart';
 import 'core/tray.dart';
@@ -42,7 +43,7 @@ Future<void> _setupUpdateNotifications() async {
     await UpdateNotifier.requestPermission();
     await UpdateNotifier.scheduleBackgroundChecks();
   } catch (e) {
-    debugPrint('update notifications unavailable: $e');
+    AppLog.add('update notifications unavailable: $e');
   }
 }
 
