@@ -33,10 +33,10 @@ jobs:
       - name: Test Worker routes
         run: node --test cloudflare/app-update.test.mjs cloudflare/catalog-cache.test.mjs cloudflare/live.test.mjs
 
-      - name: Check deployment credentials
+      - name: Deploy Worker when credentials are configured (optional)
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID repository secret"; exit 1; }
-
-      - name: Deploy Worker
-        run: npx --yes wrangler@4 deploy --config cloudflare/wrangler.toml
+          if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "::notice::Cloudflare deployment skipped: credentials are not configured. GitHub-hosted Android updates do not require this Worker."
+            exit 0
+          fi
+          npx --yes wrangler@4 deploy --config cloudflare/wrangler.toml
