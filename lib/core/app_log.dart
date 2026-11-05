@@ -8,13 +8,16 @@ class AppLog {
   // The support log is user-shareable. Keep useful failure context while
   // removing credentials, account identifiers, profile links and IP addresses.
   static final _secretField = RegExp(
-    r"""(?i)(?<![A-Za-z0-9_])(["']?(?:authorization|proxy-authorization|password|passwd|passphrase|token|access[_-]?token|refresh[_-]?token|api[_-]?key|secret|client[_-]?secret|private[_-]?key|credential)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|(?:bearer|basic)\s+\S+|\S+)""",
+    r"""(?<![A-Za-z0-9_])(["']?(?:authorization|proxy-authorization|password|passwd|passphrase|token|access[_-]?token|refresh[_-]?token|api[_-]?key|secret|client[_-]?secret|private[_-]?key|credential)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|(?:bearer|basic)\s+\S+|\S+)""",
+    caseSensitive: false,
   );
   static final _email = RegExp(
-    r'(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b',
+    r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b',
+    caseSensitive: false,
   );
   static final _configUri = RegExp(
-    r"""(?i)\b(?:vmess|vless|trojan|ss|ssr|hysteria2|tuic|wireguard)://[^\s"'<>]+""",
+    r"""\b(?:vmess|vless|trojan|ss|ssr|hysteria2|tuic|wireguard)://[^\s"'<>]+""",
+    caseSensitive: false,
   );
   static final _ipv4 = RegExp(
     r'\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b',
