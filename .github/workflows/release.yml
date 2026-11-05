@@ -83,15 +83,15 @@ jobs:
             "$apksigner" verify --verbose "$1" >/dev/null
             # apksigner versions differ in whether certificate details are written to stdout or stderr.
             output=$("$apksigner" verify --print-certs "$1" 2>&1)
-            digest=$(printf '%s\\n' "$output" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {
+            digest=$(printf '%s\n' "$output" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {
               gsub(/[[:space:]]/, "", $2); print tolower($2); exit
             }')
             if [[ ! "$digest" =~ ^[0-9a-f]{64}$ ]]; then
               echo "::error::Could not extract a valid APK signer SHA-256 for $1"
-              printf '%s\\n' "$output" >&2
+              printf '%s\n' "$output" >&2
               return 1
             fi
-            printf '%s\\n' "$digest"
+            printf '%s\n' "$digest"
           }
           apk_meta() {
             local line package version
