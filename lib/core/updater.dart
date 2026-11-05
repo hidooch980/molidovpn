@@ -36,7 +36,9 @@ class UpdateInfo {
 /// In-app updates from this repo's latest GitHub Release.
 class Updater {
   static const _repo = 'hidooch980/molidovpn';
+  static const _androidRepo = 'hidooch980/molidovpn-android';
   static const releasesPage = 'https://github.com/$_repo/releases/latest';
+  static const androidReleasesPage = 'https://github.com/$_androidRepo/releases/latest';
 
   /// Per-ABI APK (~50 MB) matching the running build; universal (~140 MB) only for other CPUs.
   static String get _assetName {
@@ -44,9 +46,9 @@ class Updater {
     // service) before copying, so an update upgrades in place instead of failing on locked files.
     if (Platform.isWindows) return 'MolidoVPN-windows-setup.exe';
     return switch (Abi.current()) {
-      Abi.androidArm64 => 'MolidoVPN-android-arm64.apk',
-      Abi.androidArm => 'MolidoVPN-android-armv7.apk',
-      _ => 'MolidoVPN-android-universal.apk',
+      Abi.androidArm64 => 'MolidoMeshAI-android-arm64.apk',
+      Abi.androidArm => 'MolidoMeshAI-android-armv7.apk',
+      _ => 'MolidoMeshAI-android-universal.apk',
     };
   }
 
@@ -62,7 +64,7 @@ class Updater {
   Future<UpdateInfo?> check({String? proxy}) async {
     final installed = await installedVersion();
     UpdateInfo? latest;
-    // Static GitHub copies first (no Cloudflare request), the GitHub API, the Worker, then the page redirect.
+    // Static GitHub metadata first, then the canonical Android GitHub API; no Worker or Cloudflare dependency.
     for (final url in sources) {
       try {
         latest = await _fromApi(installed, proxy, url);
@@ -86,14 +88,12 @@ class Updater {
     return newer ? latest : null;
   }
 
-  /// Our Cloudflare worker: same JSON as the GitHub API, download links served through the worker.
-  static const _mirrorApi = 'https://molido-sub.hidooch980.workers.dev/app/latest.json';
-
+  /// Public, credential-free release metadata sources. Android assets are read from the canonical
+  /// Android repository; Windows installers continue to use the legacy desktop repository.
   static const sources = [
     'https://raw.githubusercontent.com/hidooch980/vpn-sub/live/latest.json',
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@live/latest.json',
-    'https://api.github.com/repos/$_repo/releases/latest',
-    _mirrorApi,
+    'https://api.github.com/repos/$_androidRepo/releases/latest',
   ];
 
   /// Release JSON (GitHub shape, or our mirrors' with `sha256`/`critical`) → the asset for this build.
@@ -141,9 +141,10 @@ class Updater {
       final location = res.headers.value(HttpHeaders.locationHeader) ?? '';
       final tag = RegExp(r'/tag/(v?[\d.]+)').firstMatch(location)?.group(1);
       if (tag == null) return null;
+      final repo = Platform.isAndroid ? _androidRepo : _repo;
       return UpdateInfo(
         version: tag.replaceFirst(RegExp('^v'), ''),
-        url: 'https://github.com/$_repo/releases/download/$tag/$_assetName',
+        url: 'https://github.com/$repo/releases/download/$tag/$_assetName',
         assetName: _assetName,
         size: 0,
       );
@@ -325,7 +326,7 @@ Stop-Transcript | Out-Null
       if (Platform.isWindows) {
         await Process.start('explorer', [releasesPage], mode: ProcessStartMode.detached);
       } else if (Platform.isAndroid) {
-        await const AndroidIntent(action: 'action_view', data: releasesPage).launch();
+        await AndroidIntent(action: 'action_view', data: androidReleasesPage).launch();
       }
     } catch (e) {
       AppLog.add('update: could not open releases page: $e');
