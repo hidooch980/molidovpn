@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: 3.2.${{ github.run_number }}
+  VERSION: 4.0.2
 
 jobs:
   test:
@@ -57,9 +57,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC2153
           repo='hidooch980/molidovpn-android'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
-          test -n "$tag" || { echo "::error::No canonical Android release found"; exit 1; }
+          test "$tag" = "v4.0.2" || { echo "::error::Android and desktop versions differ"; exit 1; }
           mkdir -p dist previous
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-arm64.apk' -D dist
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-armv7.apk' -D dist
@@ -116,12 +117,15 @@ jobs:
             test -n "$cert" || { echo "::error::Missing APK signer in $apk"; exit 1; }
             if [ -n "$baseline_cert" ]; then
               test "$cert" = "$baseline_cert" || { echo "::error::Signing certificate changed in $apk"; exit 1; }
-              test "$version" -gt "$baseline_version" || { echo "::error::Version code is not an upgrade in $apk"; exit 1; }
+              test "$version" -ge "$baseline_version" || { echo "::error::Version code is not an upgrade in $apk"; exit 1; }
             fi
             echo "Verified $apk package=$package versionCode=$version signer=$cert"
             count=$((count + 1))
           done
           test "$count" -eq 3
+          if [ "$baseline_version" -gt 0 ] && [ "$version" -eq "$baseline_version" ]; then
+            cmp -s dist/MolidoMeshAI-android-universal.apk previous/MolidoVPN-android-universal.apk || { echo "::error::Same-version Android mirror is not byte-identical"; exit 1; }
+          fi
           cp dist/MolidoMeshAI-android-arm64.apk dist/MobInVPN-android-arm64.apk
           cp dist/MolidoMeshAI-android-armv7.apk dist/MobInVPN-android-armv7.apk
           cp dist/MolidoMeshAI-android-universal.apk dist/MobInVPN-android-universal.apk
