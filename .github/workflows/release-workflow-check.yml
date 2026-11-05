@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - ".github/workflows/release-workflow-check.yml"
+      - ".github/workflows/deploy-worker.yml"
 
 permissions:
   contents: read
@@ -19,4 +20,4 @@ jobs:
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Validate GitHub Actions workflow syntax
-        run: actionlint -color .github/workflows/release.yml
+        run: actionlint -color .github/workflows/release.yml .github/workflows/deploy-worker.yml
