@@ -223,13 +223,14 @@ footer a{color:var(--muted)}
         <li><span class="num">۱</span><div>
           <h3>دانلود و نصب</h3>
           <p>فایل را باز کنید و «نصب» را بزنید. اگر گفت «منبع ناشناس»، اجازه دهید.</p>
-          <a class="btn primary" data-app="MolidoVPN-android-arm64.apk" href="#">دانلود برای اندروید</a>
+          <a class="btn primary" href="https://github.com/hidooch980/molidovpn-android/releases/download/v4.0.2/MolidoMeshAI-android-arm64.apk" rel="noopener">دانلود نسخه جدید اندروید ۴.۰.۲ (ARM64)</a>
         </div></li>
         <li><span class="num">۲</span><div><h3>برنامه را باز کنید و دکمه‌ی بزرگ را بزنید</h3></div></li>
         <li><span class="num">۳</span><div><h3>اجازه‌ی VPN را بدهید</h3></div></li>
       </ol>
       <p class="done">تمام ✓</p>
-      <p class="small">گوشی قدیمی؟ <a data-app="MolidoVPN-android-armv7.apk" href="#">دانلود نسخه‌ی گوشی‌های قدیمی</a> · <a data-gh="MolidoVPN-android-arm64.apk" href="#">لینک دوم (GitHub)</a></p>
+      <p class="small">گوشی قدیمی؟ <a href="https://github.com/hidooch980/molidovpn-android/releases/download/v4.0.2/MolidoMeshAI-android-armv7.apk" rel="noopener">نسخه جدید ARMv7</a> · <a href="https://github.com/hidooch980/molidovpn/releases/tag/v3.2.162" rel="noopener">نسخه قدیمی ۳.۲.۱۶۲ (برای سازگاری)</a></p>
+      <p class="small">کد منبع و همه نسخه‌های جدید: <a href="https://github.com/hidooch980/molidovpn-android/releases" rel="noopener">انتشارهای اندروید جدید</a> · <a href="https://github.com/hidooch980/molidovpn/releases" rel="noopener">انتشارهای قدیمی و سایر دستگاه‌ها</a></p>
     </section>
 
     <section class="panel" id="windows" role="tabpanel" aria-labelledby="tab-windows">
@@ -408,7 +409,7 @@ footer a{color:var(--muted)}
 
   <footer>
     <div class="brand"><img src="logo-mark.svg" alt="" width="22" height="25">مولیدو · اینترنت آزاد با یک دکمه</div>
-    <div><a href="https://t.me/Molido_Vpn" rel="noopener">تلگرام <bdi dir="ltr">@Molido_Vpn</bdi></a> · <a href="https://reymit.ir/molido" rel="noopener">حمایت مالی</a> · <a href="status.html">وضعیت سرویس</a> · <a href="https://github.com/hidooch980/molidovpn/releases" rel="noopener">همه‌ی نسخه‌ها</a></div>
+    <div><a href="https://t.me/Molido_Vpn" rel="noopener">تلگرام <bdi dir="ltr">@Molido_Vpn</bdi></a> · <a href="https://reymit.ir/molido" rel="noopener">حمایت مالی</a> · <a href="status.html">وضعیت سرویس</a> · <a href="https://github.com/hidooch980/molidovpn-android/releases" rel="noopener">نسخه‌های جدید اندروید</a> · <a href="https://github.com/hidooch980/molidovpn/releases" rel="noopener">نسخه‌های قدیمی و سایر دستگاه‌ها</a></div>
     <div>رایگان و متن‌باز · <a href="https://github.com/hidooch980/molidovpn-android" rel="noopener" title="کد منبع برنامه‌ی اندروید (AGPL-3.0): github.com/hidooch980/molidovpn-android">مجوزها / Licenses</a>: برنامه‌ی اندروید متن‌باز (AGPL-3.0)</div>
   </footer>
 </div>
@@ -422,7 +423,7 @@ const LITE = WORKER + '/ios';        // iPhone list: CDN + TLS/Reality/QUIC node
 const HIDDIFY = WORKER + '/hiddify'; // same + warp:// tunnels (Hiddify only)
 const NAME = 'MolidoVPN';
 const MIRROR = WORKER + '/app/';
-const GH = 'https://github.com/hidooch980/molidovpn/releases/latest/download/';
+const GH = 'https://github.com/hidooch980/molidovpn/releases/download/v3.2.162/';
 const fa = n => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
 
 // ---- device detection + tabs
@@ -447,7 +448,7 @@ show(start);
 
 // ---- hero primary button
 const mainBtn = document.getElementById('main-btn');
-if (start === 'android') { mainBtn.textContent = 'دانلود برای اندروید'; mainBtn.href = MIRROR + 'MolidoVPN-android-arm64.apk'; }
+if (start === 'android') { mainBtn.textContent = 'دانلود نسخه جدید اندروید ۴.۰.۲'; mainBtn.href = 'https://github.com/hidooch980/molidovpn-android/releases/download/v4.0.2/MolidoMeshAI-android-arm64.apk'; }
 else if (start === 'windows') { mainBtn.textContent = 'دانلود برای ویندوز'; mainBtn.href = MIRROR + 'MolidoVPN-windows-setup.exe'; }
 else { mainBtn.textContent = 'راه‌اندازی روی آیفون'; mainBtn.href = '#steps'; }
 // downloads: also reveal the steps for that device
