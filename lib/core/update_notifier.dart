@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'app_log.dart';
 import 'updater.dart';
 
 /// System notification when a new release is out: checked on launch, every few hours while the app runs,
@@ -78,7 +78,7 @@ void updateCheckCallback() {
       final update = await Updater().check();
       if (update != null) await UpdateNotifier.notifyIfNew(update);
     } catch (e) {
-      debugPrint('background update check failed: $e');
+      AppLog.add('background update check failed: $e');
     }
     return true;
   });
