@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""End-to-end test for Android's browser-based update hand-off.
+"""End-to-end test for the Android in-app update flow.
 
-The Android app intentionally opens the signed APK URL in the user's browser.
-It does not download/install APKs itself (to avoid REQUEST_INSTALL_PACKAGES and
-Play Protect dropper heuristics). This test installs the previous release,
-waits for the in-app update notice, taps Update, and verifies that Android
-hands the request to the resolved HTTPS browser/chooser instead of expecting
-the app version to change automatically.
+Installs the previous signed APK, waits for the current home-screen update
+banner, follows its confirmation, and verifies the Android package-installer
+handoff and resulting installed version. Older releases that still use a
+browser hand-off remain supported.
 
 usage: android-update-e2e.py <old.apk> <new-version>
-"""
+
 import re
 import subprocess
 import sys
