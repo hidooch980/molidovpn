@@ -16,7 +16,6 @@ import 'location_sheet.dart';
 import 'onboarding.dart';
 import 'servers_screen.dart';
 import 'settings_screen.dart';
-import 'smart_panel.dart';
 import 'strings.dart';
 import 'style.dart';
 import 'support.dart';
@@ -169,17 +168,14 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     if (c.update != null) _UpdateLine(controller: c),
                     const SizedBox(height: 8),
                     Center(child: _Squircle(controller: c)),
-                    SmartConnectPanel(run: c.smart, state: c.state),
+                    // Keep diagnostics and route-racing details out of the default home.
+                    // Automatic route discovery still runs in the controller; details live in
+                    // the Servers and Settings pages instead of occupying the main screen.
                     _SimpleStatus(controller: c),
                     const SizedBox(height: 8),
-                    // Unified home: live IP and all connection controls stay together.
                     _ExitCard(controller: c, network: network, latency: _latency),
                     const SizedBox(height: 8),
                     _LocationCard(controller: c),
-                    const SizedBox(height: 8),
-                    _ModeChips(controller: c),
-                    const SizedBox(height: 6),
-                    _DnsChip(controller: c),
                     const SizedBox(height: 8),
                     CardGroup(children: [
                       NavSettingRow(
@@ -188,13 +184,14 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                         value: '${digits(c.servers.length)} · ${serversUpdatedAgo(c.updatedAt)}',
                         onTap: _openServers,
                       ),
+                      NavSettingRow(
+                        icon: Icons.tune_rounded,
+                        title: tr('تنظیمات و امکانات پیشرفته', 'Advanced settings'),
+                        value: tr('پروتکل‌ها، DNS و ابزارهای اتصال', 'Protocols, DNS and connection tools'),
+                        onTap: _openSettings,
+                      ),
                       const TelegramSupportRow(),
-                      const ShareFriendsRow(),
                     ]),
-                    const SizedBox(height: 12),
-                    _Tiles(controller: c),
-                    SectionHeader(tr('شبکه', 'Network')),
-                    _Facts(controller: c, network: network, latency: _latency),
                   ],
                 ),
               ),
