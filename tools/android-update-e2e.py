@@ -22,6 +22,7 @@ UPDATE_LABELS = {
     "update", "download", "install", "به‌روزرسانی", "بروزرسانی",
     "به روزرسانی", "نصب", "دانلود",
 }
+ONBOARDING_NEXT_LABELS = {"بعدی", "بعد", "next", "continue", "ادامه"}
 BROWSER_OR_CHOOSER = (
     "chrome", "browser", "firefox", "intentresolver", "resolver",
     "chooser", "opera", "brave", "edge",
@@ -100,7 +101,9 @@ def resolve_https_handler():
 
 def normalized_text(node):
     raw = (node.get("text") or "") + " " + (node.get("content-desc") or "")
-    return raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")).strip()
+    raw = raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+    raw = raw.replace("\u200c", " ").replace("\u200f", "").replace("\u200e", "")
+    return " ".join(raw.split()).strip()
 
 
 def main():
@@ -156,7 +159,25 @@ def main():
             if dismiss:
                 tap(dismiss[0])
                 print(f"dismissed first-run sheet: {normalized_text(dismiss[0])!r}")
-            elif new_version in texts:
+            else:
+                # The first-run coach mark overlays the update banner. Advance
+                # all onboarding pages (for example "1/3" + "بعدی") first.
+                page_marker = re.search(r"\\b(\\d+)\\s*/\\s*(\\d+)\\b", texts)
+                next_buttons = [
+                    node for node in nodes
+                    if node.get("clickable") == "true"
+                    and normalized_text(node).lower() in ONBOARDING_NEXT_LABELS
+                ]
+                if page_marker and next_buttons:
+                    shot(f"onboarding-{page_marker.group(1)}")
+                    tap(next_buttons[0])
+                    print(
+                        f"advanced onboarding page {page_marker.group(1)}/"
+                        f"{page_marker.group(2)} before update detection"
+                    )
+                    time.sleep(1)
+                    continue
+            if not dismiss and new_version in texts:
                 buttons = [
                     node for node in nodes
                     if node.get("clickable") == "true"
