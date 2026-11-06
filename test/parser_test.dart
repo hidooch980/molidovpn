@@ -78,6 +78,12 @@ void main() {
     await expectLater(PublicProfileSources.fetch('http://127.0.0.1/feed'), throwsA(isA<FormatException>()));
     await expectLater(PublicProfileSources.fetch('http://10.0.0.1/feed'), throwsA(isA<FormatException>()));
     await expectLater(PublicProfileSources.fetch('http://169.254.169.254/latest/meta-data'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://localhost/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://192.88.99.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://198.51.100.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://[2001:db8::1]/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://[2001:1::1]/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://[3fff::1]/feed'), throwsA(isA<FormatException>()));
   });
 
   test('real published subscription parses', () {
