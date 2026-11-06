@@ -140,6 +140,8 @@ class ImportScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       _SubscriptionBox(controller: controller),
+                      const SizedBox(height: 10),
+                      _PublicSourceBox(controller: controller),
                       const SizedBox(height: 14),
                       if (mine.isNotEmpty)
                         Align(
@@ -346,6 +348,87 @@ class _SubscriptionBoxState extends State<_SubscriptionBox> {
               onPressed: () => c.removeUserSubscription(url),
               icon: Icon(Icons.delete_outline_rounded, color: Palette.danger, size: 20),
             ),
+          ]),
+      ]),
+    );
+  }
+}
+
+/// Public profile feeds are managed independently from personal/private subscriptions.
+class _PublicSourceBox extends StatefulWidget {
+  const _PublicSourceBox({required this.controller});
+  final VpnController controller;
+  @override
+  State<_PublicSourceBox> createState() => _PublicSourceBoxState();
+}
+
+class _PublicSourceBoxState extends State<_PublicSourceBox> {
+  final _url = TextEditingController();
+  bool _busy = false;
+  @override
+  void dispose() { _url.dispose(); super.dispose(); }
+
+  Future<void> _add() async {
+    final url = _url.text.trim();
+    if (url.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    final count = await widget.controller.addPublicSource(url);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (count > 0) _url.clear();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      content: Text(count > 0
+          ? tr('${digits(count)} پروفایل از منبع عمومی اضافه شد', '$count profiles added from public source')
+          : tr('منبع در دسترس نبود یا پروفایل معتبری نداشت', 'Source unavailable or contained no supported profiles')),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    return Glass(
+      radius: 18,
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: Text(tr('منابع عمومی سرور', 'Public server sources'),
+              style: TextStyle(fontWeight: FontWeight.w800, color: Palette.text))),
+          TextButton.icon(
+            onPressed: _busy ? null : () => c.refreshPublicSources(),
+            icon: const Icon(Icons.refresh_rounded, size: 17),
+            label: Text(tr('به‌روزرسانی', 'Refresh')),
+          ),
+        ]),
+        Text(tr('فیدهای عمومی HTTP(S) را اضافه کنید. منابع هر ساعت به‌روزرسانی می‌شوند؛ نسخه سالم قبلی هنگام خطا حفظ می‌شود.',
+            'Add public HTTP(S) feeds. Sources refresh hourly; the last good copy is kept if a source fails.'),
+            style: TextStyle(fontSize: 11.5, color: Palette.muted, height: 1.5)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: TextField(
+            controller: _url,
+            textDirection: TextDirection.ltr,
+            style: TextStyle(color: Palette.text, fontSize: 13),
+            onSubmitted: (_) => _add(),
+            decoration: InputDecoration(
+              isDense: true, hintText: 'https://…', hintStyle: TextStyle(color: Palette.muted),
+              filled: true, fillColor: Palette.fill,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Palette.pillRadius), borderSide: BorderSide.none),
+            ),
+          )),
+          const SizedBox(width: 8),
+          _busy
+              ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+              : IconButton(tooltip: tr('افزودن منبع', 'Add source'), onPressed: _add, icon: Icon(Icons.add_link_rounded, color: Palette.accent)),
+        ]),
+        for (final url in c.settings.publicSources)
+          Row(children: [
+            Expanded(child: Text(url, maxLines: 1, overflow: TextOverflow.ellipsis, textDirection: TextDirection.ltr,
+                style: TextStyle(fontSize: 12, color: Palette.text))),
+            Text(tr('${digits(c.publicSourceCount(url))} پروفایل', '${c.publicSourceCount(url)} profiles'),
+                style: TextStyle(fontSize: 11.5, color: Palette.muted)),
+            IconButton(tooltip: tr('حذف منبع', 'Remove source'), onPressed: () => c.removePublicSource(url),
+                icon: Icon(Icons.delete_outline_rounded, color: Palette.danger, size: 20)),
           ]),
       ]),
     );
