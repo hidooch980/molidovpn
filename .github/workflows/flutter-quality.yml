@@ -123,4 +123,5 @@ jobs:
           }
           GRADLE
           chmod +x android-app/gradlew
+          chmod +x android-app/gradlew
           android-app/gradlew --no-daemon -p "$root" compileKotlin
