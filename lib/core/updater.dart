@@ -156,7 +156,7 @@ class Updater {
   /// Rejects other hosts and paths so an untrusted redirect cannot supply a tag.
   static String? parseRedirectTag(String location) {
     final uri = Uri.tryParse(location);
-    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') return null;
+    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') { return null; }
     final segments = uri.pathSegments;
     if (segments.length != 5 ||
         segments[0] != 'hidooch980' ||
