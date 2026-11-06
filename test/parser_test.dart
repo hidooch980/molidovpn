@@ -70,6 +70,15 @@ void main() {
     expect(parseOutbound('wireguard://k@h.com:51820?address=10.0.0.2'), isNull);
   });
 
+  test('native IKEv2 is recognized but never parsed as a sing-box outbound', () {
+    final server = Server.fromUri('ikev2://vpn.example.com#MolidoVPN%20Germany');
+    expect(server, isNotNull);
+    expect(server!.protocol, Protocol.ikev2);
+    expect(server.protocolLabel, 'IKEV2');
+    expect(server.displayName, 'Germany');
+    expect(parseOutbound(server.uri), isNull);
+  });
+
   test('real published subscription parses', () {
     final path = Platform.environment['SUB_FILE'];
     if (path == null || !File(path).existsSync()) return;
