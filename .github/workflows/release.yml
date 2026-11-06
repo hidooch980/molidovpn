@@ -22,9 +22,31 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: ${{ inputs.version || '4.0.2' }}
+  VERSION: ${{ inputs.version || '' }}
 
 jobs:
+  resolve-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Resolve canonical Android release version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
+          else
+            tag=$(gh release view -R hidooch980/molidovpn-android --json tagName --jq .tagName)
+            version="${tag#v}"
+          fi
+          [[ "$version" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || { echo "::error::Invalid release version: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Using canonical Android release v$version"
+
   test:
     runs-on: ubuntu-24.04
     steps:
@@ -43,7 +65,9 @@ jobs:
   android:
     # Android binaries are built and signed only in the canonical Android repository.
     # Root releases mirror those exact signed artifacts; they never rebuild an old pinned Android commit.
-    needs: test
+    needs: [test, resolve-version]
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -187,7 +211,9 @@ jobs:
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews-android
 
   windows:
-    needs: test
+    needs: [test, resolve-version]
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -437,8 +463,10 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, android-smoke, windows]
+    needs: [android, android-smoke, windows, resolve-version]
     runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
     steps:
       - uses: actions/download-artifact@v7
         with:
@@ -513,8 +541,10 @@ jobs:
   android-update-e2e:
     # After publishing: install the PREVIOUS release on an emulator and let its in-app updater
     # download and install the release that was just published, exactly like a user would.
-    needs: release
+    needs: [release, resolve-version]
     runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
     timeout-minutes: 40
     continue-on-error: true
     steps:
