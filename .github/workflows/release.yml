@@ -85,10 +85,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # shellcheck disable=SC2153
           set -euo pipefail
           repo='hidooch980/molidovpn-android'
-          release_version="$VERSION"
+          release_version='${{ needs.resolve-version.outputs.version }}'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
           test "$tag" = "v$release_version" || { echo "::error::Android release $tag does not match requested desktop version v$release_version"; exit 1; }
           mkdir -p dist previous
