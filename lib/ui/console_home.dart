@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 
 import '../core/engine.dart';
 import '../core/network_info.dart';
-import '../core/settings.dart';
 import '../core/remote_config.dart';
 import '../core/vpn_controller.dart';
 import '../core/whats_new.dart';
