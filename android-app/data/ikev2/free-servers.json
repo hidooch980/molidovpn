@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "source": "https://www.vpnjantit.com/free-ikev2",
+  "generated_at": "2026-11-06T16:20:58.127567+00:00",
+  "servers": [
+    {
+      "country": "Bangladesh",
+      "host": "bd2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=bd2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Cambodia",
+      "host": "kh1.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=kh1&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Canada",
+      "host": "ca1.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=ca1&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Czech Republic",
+      "host": "cz2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=cz2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Finland",
+      "host": "fi2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=fi2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "France",
+      "host": "premifr1.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=premifr1&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Germany",
+      "host": "gr4.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=gr4&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Hong Kong",
+      "host": "hk2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=hk2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "India",
+      "host": "in5.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=in5&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Indonesia",
+      "host": "indo3.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=indo3&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Indonesia",
+      "host": "indo6.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=indo6&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Indonesia",
+      "host": "indo8.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=indo8&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Japan",
+      "host": "jp3.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=jp3&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Kazakhstan",
+      "host": "kz2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=kz2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Malaysia",
+      "host": "my2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=my2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Moldova",
+      "host": "md1.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=md1&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Philippines",
+      "host": "ph5.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=ph5&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Philippines",
+      "host": "ph8.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=ph8&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Poland",
+      "host": "pl2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=pl2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Russia",
+      "host": "ru2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=ru2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Singapore",
+      "host": "sg5.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=sg5&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Singapore",
+      "host": "sg8.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=sg8&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "South Korea",
+      "host": "kr2.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=kr2&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Turkey",
+      "host": "tr5.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=tr5&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Turkey",
+      "host": "tr6.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=tr6&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "Ukraine",
+      "host": "ua3.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=ua3&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "United Kingdom",
+      "host": "uk.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=uk&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "United States",
+      "host": "usa1.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=usa1&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "United States",
+      "host": "usa4.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=usa4&type=IKEV2",
+      "available": true
+    },
+    {
+      "country": "United States",
+      "host": "usa6.vpnjantit.com",
+      "identity": "vpnjantit",
+      "accountUrl": "https://www.vpnjantit.com/create-free-account?server=usa6&type=IKEV2",
+      "available": true
+    }
+  ]
+}

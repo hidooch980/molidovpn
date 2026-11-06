@@ -1,0 +1,56 @@
+name: Refresh Android IKEv2 directory
+
+on:
+  push:
+    paths:
+      - "android-app/scripts/refresh_ikev2_directory.py"
+      - "android-app/scripts/test_refresh_ikev2_directory.py"
+      - ".github/workflows/refresh-ikev2-directory.yml"
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unified-ikev2-directory-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout unified MolidoVPN
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Test IKEv2 directory parser and safety rules
+        working-directory: android-app
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Fetch and validate public provider endpoints
+        working-directory: android-app
+        run: python scripts/refresh_ikev2_directory.py
+      - name: Commit changed mirror on default branch
+        if: github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- android-app/data/ikev2/free-servers.json; then
+            echo "Directory unchanged; no commit required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android-app/data/ikev2/free-servers.json
+          git commit -m "chore: refresh Android IKEv2 directory"
+          git push
+      - name: Keep validation output for non-default branches
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikev2-directory-validation
+          path: android-app/data/ikev2/free-servers.json
+          if-no-files-found: error
+          retention-days: 7
