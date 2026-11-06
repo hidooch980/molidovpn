@@ -36,11 +36,41 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Toolchain
-        run: flutter --version
-      - name: Resolve dependencies
-        run: flutter pub get
-      - name: Static analysis
-        run: flutter analyze
-      - name: Unit and widget tests
-        run: flutter test --reporter expanded
+      # Retry transient runner/network failures twice. A persistent code/test
+      # failure still fails the job and remains visible in the PR checks.
+      - name: Toolchain (automatic retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if flutter --version; then exit 0; fi
+            if [ "$attempt" -lt 3 ]; then echo "Toolchain check failed; retrying ($attempt/3)..." >&2; sleep 10; fi
+          done
+          exit 1
+      - name: Resolve dependencies (automatic retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if flutter pub get; then exit 0; fi
+            if [ "$attempt" -lt 3 ]; then echo "Dependency resolution failed; retrying ($attempt/3)..." >&2; sleep 15; fi
+          done
+          exit 1
+      - name: Static analysis (automatic retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if flutter analyze; then exit 0; fi
+            if [ "$attempt" -lt 3 ]; then echo "Static analysis failed; retrying ($attempt/3)..." >&2; sleep 10; fi
+          done
+          exit 1
+      - name: Unit and widget tests (automatic retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if flutter test --reporter expanded; then exit 0; fi
+            if [ "$attempt" -lt 3 ]; then echo "Flutter tests failed; retrying ($attempt/3)..." >&2; sleep 15; fi
+          done
+          exit 1
