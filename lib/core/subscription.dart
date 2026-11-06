@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,7 +49,7 @@ class UserSubscriptions {
 /// so users can audit, disable, and remove each source independently.
 class PublicProfileSources {
   static const _textPrefix = 'public_feed_text:', _timePrefix = 'public_feed_time:';
-  static const maxBodyChars = 2 * 1024 * 1024;
+  static const maxBodyBytes = 2 * 1024 * 1024;
 
   static Future<Map<String, String>> loadCached(List<String> urls) async {
     final prefs = await SharedPreferences.getInstance();
@@ -67,8 +68,16 @@ class PublicProfileSources {
       req.headers.set(HttpHeaders.acceptHeader, 'text/plain, application/octet-stream, */*');
       final res = await req.close().timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
-      final body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
-      if (body.length > maxBodyChars) throw const FormatException('Source is larger than 2 MB');
+      final declaredLength = res.contentLength;
+      if (declaredLength > maxBodyBytes) throw const FormatException('Source is larger than 2 MB');
+      final bytes = BytesBuilder(copy: false);
+      var received = 0;
+      await for (final chunk in res.timeout(const Duration(seconds: 30))) {
+        received += chunk.length;
+        if (received > maxBodyBytes) throw const FormatException('Source is larger than 2 MB');
+        bytes.add(chunk);
+      }
+      final body = utf8.decode(bytes.takeBytes());
       if (parseSubscription(body).isEmpty) throw const FormatException('No supported profile links found');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('$_textPrefix$url', body);
