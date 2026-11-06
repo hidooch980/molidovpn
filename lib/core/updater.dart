@@ -162,7 +162,7 @@ class Updater {
         segments[0] != 'hidooch980' ||
         segments[1] != 'molidovpn' ||
         segments[2] != 'releases' ||
-        segments[3] != 'tag') return null;
+        segments[3] != 'tag') { return null; }
     final tag = segments[4];
     return RegExp(r'^v?[0-9]+(?:\.[0-9]+)*$').hasMatch(tag) ? tag : null;
   }
