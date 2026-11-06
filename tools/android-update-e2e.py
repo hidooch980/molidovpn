@@ -29,8 +29,13 @@ BROWSER_OR_CHOOSER = (
 )
 
 
-def adb(*args, check=False):
-    result = subprocess.run(["adb", *args], capture_output=True, text=True)
+def adb(*args, check=False, timeout=25):
+    try:
+        result = subprocess.run(
+            ["adb", *args], capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SystemExit(f"adb {' '.join(args)} timed out after {timeout}s") from exc
     if check and result.returncode != 0:
         raise SystemExit(f"adb {' '.join(args)} failed: {result.stderr}")
     return result.stdout
@@ -117,15 +122,24 @@ def main():
 
     browser_handler = resolve_https_handler()
     print(f"resolved HTTPS handler: {browser_handler or 'system chooser / unresolved'}")
-    deadline = time.time() + 12 * 60
+    deadline = time.time() + 7 * 60
     # adb install does not launch the app. Start it before waiting for UI nodes,
     # otherwise the emulator remains on the launcher for the entire timeout.
     adb("shell", "am", "start", "-W", "-n", ACTIVITY)
     last_launch = time.time()
     update_tapped = False
+    last_diagnostic = 0.0
 
     while time.time() < deadline:
         nodes = ui_nodes()
+        if time.time() - last_diagnostic >= 20:
+            print(
+                f"poll: foreground={resumed_package()!r}, "
+                f"version={installed_version()!r}, ui_nodes={len(nodes)}, "
+                f"ui_text={' | '.join(normalized_text(n) for n in nodes)[:500]!r}",
+                flush=True,
+            )
+            last_diagnostic = time.time()
         packages = {node.get("package", "") for node in nodes}
         texts = " ".join(normalized_text(node) for node in nodes)
         if installed_version() != old_version:
