@@ -220,7 +220,8 @@ class SubscriptionRepository {
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub_base64.txt',
     'https://molido-sub.hidooch980.workers.dev/',
   ];
-  static const maxBodyBytes = 2 * 1024 * 1024;\n  static const _textKey = 'sub_text', _timeKey = 'sub_time';
+  static const maxBodyBytes = 2 * 1024 * 1024;
+  static const _textKey = 'sub_text', _timeKey = 'sub_time';
 
   Future<SubscriptionData?> loadCached() async {
     final prefs = await SharedPreferences.getInstance();
