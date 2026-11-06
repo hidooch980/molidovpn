@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show TimeoutException, unawaited;
 import 'dart:convert';
 import 'dart:ffi' show Abi;
 import 'dart:io';
@@ -210,7 +210,7 @@ class Updater {
   /// Rejects other hosts and paths so an untrusted redirect cannot supply a tag.
   static String? parseRedirectTag(String location) {
     final uri = Uri.tryParse(location);
-    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') { return null; }
+    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') {\n      return null;\n    }
     final segments = uri.pathSegments;
     if (segments.length != 5 ||
         segments[0] != 'hidooch980' ||
