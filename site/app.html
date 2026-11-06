@@ -56,8 +56,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin:25px 0}
 <section id="subs"><h2>اشتراک‌ها و سرورها</h2><p class="muted">فهرست‌ها از سرویس رسمی دریافت می‌شوند و اطلاعات زنده در حافظه آفلاین ذخیره نمی‌شوند.</p><div id="subList"><div class="card muted">در حال دریافت فهرست‌ها…</div></div></section>
 <section id="health"><h2>سلامت سرویس</h2><div class="card" id="healthList"><div class="statusline"><span>سرویس اشتراک</span><span>در حال بررسی…</span></div></div><p><a href="./status.html">گزارش کامل سلامت و بروزرسانی سرویس‌ها ←</a></p></section>
 <section id="settings"><h2>تنظیمات برنامه</h2><div class="card">
-<label for="lang">زبان</label><select id="lang" class="field"><option value="fa">فارسی</option><option value="en">English</option></select>
-<p class="muted">پوسته روشن/تیره، انتخاب زبان، نصب روی صفحه اصلی و تازه‌سازی خودکار در این نسخه وب فعال است.</p>
+<p class="muted">پوسته روشن/تیره، نصب روی صفحه اصلی و تازه‌سازی خودکار در این نسخه وب فعال است. رابط فعلی فارسی است.</p>
 <div class="row"><button class="btn" id="clearCache">پاک‌سازی فایل‌های آفلاین</button><a class="btn" href="./ios.html">راهنمای نصب آیفون</a></div>
 </div></section>
 <section id="help"><h2>راهنما و پشتیبانی</h2><div class="card"><div class="statusline"><span>پشتیبانی تلگرام</span><a href="https://t.me/Molido_Vpn">ورود به پشتیبانی ←</a></div><div class="statusline"><span>آخرین نسخه و تغییرات</span><a href="https://github.com/hidooch980/molidovpn/releases">مشاهده انتشارها ←</a></div><div class="statusline"><span>صفحه اصلی پروژه</span><a href="./">MolidoVPN ←</a></div></div></section>
@@ -88,7 +87,7 @@ async function load(){
   ]);
   const n=decodeCount(ios);$('serverCount').textContent=n+' سرور';$('workerState').textContent='فعال';$('workerState').className='ok';
   health('اشتراک iOS',n?'فعال · '+n+' سرور':'فهرست خالی',n?'ok':'bad');
-  health('تنظیمات راه دور',flags?'دریافت شد':'پیش‌فرض','ok');
+  health('تنظیمات راه دور',Object.keys(flags||{}).length?'دریافت شد':'حالت پیش‌فرض','ok');
   health('پروفایل JSON','آماده','ok');
   $('lastCheck').textContent=new Date().toLocaleTimeString('fa-IR');
   if(latest&&latest.tag_name)$('version').textContent=latest.tag_name;
@@ -104,8 +103,6 @@ async function load(){
 $('refresh').onclick=load;
 $('theme').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='light'?'dark':'light';root.dataset.theme=next;localStorage.setItem('molido-theme',next)};
 const saved=localStorage.getItem('molido-theme');if(saved)document.documentElement.dataset.theme=saved;
-$('lang').onchange=e=>{localStorage.setItem('molido-lang',e.target.value);toast(e.target.value==='en'?'English preference saved':'زبان فارسی انتخاب شد')};
-$('lang').value=localStorage.getItem('molido-lang')||'fa';
 $('clearCache').onclick=async()=>{if('caches'in window){for(const k of await caches.keys())await caches.delete(k);toast('فایل‌های آفلاین پاک شدند')}else toast('حافظه آفلاین در دسترس نیست')};
 let installPrompt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('install').hidden=false});
 $('install').onclick=async()=>{if(!installPrompt){toast('در Safari: Share سپس Add to Home Screen');return}installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('install').hidden=true};
