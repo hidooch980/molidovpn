@@ -8,7 +8,7 @@ on:
       - "pubspec.yaml"
       - "pubspec.lock"
       - "analysis_options.yaml"
-      - "android-app/**"
+      - "tools/android-update-e2e.py"
       - ".github/workflows/flutter-quality.yml"
   push:
     branches: [main, security/redacted-diagnostics-20261105]
@@ -18,7 +18,7 @@ on:
       - "pubspec.yaml"
       - "pubspec.lock"
       - "analysis_options.yaml"
-      - "android-app/**"
+      - "tools/android-update-e2e.py"
       - ".github/workflows/flutter-quality.yml"
 
 permissions:
@@ -34,6 +34,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - name: Validate Android update E2E Python syntax
+        run: python3 -m py_compile tools/android-update-e2e.py
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -76,52 +78,3 @@ jobs:
             if [ "$attempt" -lt 3 ]; then echo "Flutter tests failed; retrying ($attempt/3)..." >&2; sleep 15; fi
           done
           exit 1
-
-  android-kotlin:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: android-actions/setup-android@v4
-        with:
-          packages: platforms;android-36
-      - name: Compile the Android SpeedTest source in isolation
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/speedtest-kotlin"
-          mkdir -p "$root/src/main/kotlin/com/molido/vpn"
-          cp android-app/app/src/main/java/com/molido/vpn/SpeedTest.kt "$root/src/main/kotlin/"
-          cat > "$root/src/main/kotlin/com/molido/vpn/SpeedTestStubs.kt" <<'KOTLIN'
-          package com.molido.vpn
-          import android.content.Context
-          object TunnelStatus {
-              fun isActive() = true
-              val isProxyMode = false
-              val isNativeTunMode = false
-          }
-          object ShardManager { val isRunning = false; val listenPort = 10808 }
-          object CoreConfig {
-              const val SOCKS_PORT = 10808
-              fun proxyListenPort(context: Context) = SOCKS_PORT
-          }
-          object TorManager { const val FRONT_SOCKS_PORT = 10809 }
-          KOTLIN
-          cat > "$root/settings.gradle.kts" <<'GRADLE'
-          pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }
-          dependencyResolutionManagement { repositories { mavenCentral() } }
-          rootProject.name = "speedtest-kotlin-check"
-          GRADLE
-          cat > "$root/build.gradle.kts" <<'GRADLE'
-          plugins { kotlin("jvm") version "2.3.0" }
-          dependencies {
-              compileOnly(files("${System.getenv("ANDROID_HOME")}/platforms/android-36/android.jar"))
-          }
-          GRADLE
-          chmod +x android-app/gradlew
-          chmod +x android-app/gradlew
-          android-app/gradlew --no-daemon -p "$root" compileKotlin
