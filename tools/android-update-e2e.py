@@ -19,7 +19,10 @@ import xml.etree.ElementTree as ET
 PKG = "com.mobin.mobin_vpn"
 ACTIVITY = f"{PKG}/com.molido.vpn.MainActivity"
 SHEET_DISMISS = {"ارسال نشود", "Don't send", "Do not send"}
-UPDATE_LABELS = {"update", "به‌روزرسانی", "بروزرسانی", "به روزرسانی"}
+UPDATE_ACTION_LABELS = ("download update", "install update", "update available", "دانلود بروزرسانی", "دریافت بروزرسانی", "نصب بروزرسانی", "به‌روزرسانی")
+UPDATE_CONFIRM_LABELS = {"update", "install", "download", "به‌روزرسانی", "بروزرسانی", "به روزرسانی", "نصب", "دانلود"}
+INSTALL_CONFIRM_LABELS = {"install", "update", "نصب", "به‌روزرسانی", "بروزرسانی"}
+INSTALLER_OR_SETTINGS = ("packageinstaller", "package installer", "permissioncontroller", "installer", "com.android.settings")
 BROWSER_OR_CHOOSER = (
     "chrome", "browser", "firefox", "intentresolver", "resolver",
     "chooser", "opera", "brave", "edge",
@@ -93,15 +96,21 @@ def main():
     adb("uninstall", PKG)
     adb("install", "-r", old_apk, check=True)
     old_version = installed_version()
-    print(f"installed old version {old_version}; expecting browser hand-off for {new_version}")
+    print(f"installed old version {old_version}; expecting update flow for {new_version}")
     if not old_version or old_version == new_version:
         raise SystemExit("old APK version is missing or already equals the target version")
 
-    browser_package = resolve_https_handler()
-    print(f"resolved HTTPS handler: {browser_package or 'system chooser / unresolved'}")
+    # The current Android app uses a home-screen banner, then an in-app download
+    # and the Android package installer. Older builds used a dialog + browser.
+    # Grant the install app-op in the disposable emulator so the test can reach
+    # the installer without a manual Settings detour.
+    adb("shell", "appops", "set", PKG, "REQUEST_INSTALL_PACKAGES", "allow")
+
     deadline = time.time() + 15 * 60
     last_launch = 0.0
-    update_tapped = False
+    banner_tapped = False
+    confirm_tapped = False
+    installer_confirmed = False
 
     while time.time() < deadline:
         nodes = ui_nodes()
@@ -109,19 +118,37 @@ def main():
         texts = " ".join((n.get("text") or "") for n in nodes).translate(
             str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
         )
+        lower_texts = texts.lower()
 
-        if update_tapped:
+        if installed_version() == new_version:
+            shot("4-updated-version")
+            print(f"✅ installed version upgraded to {new_version}")
+            return
+
+        if confirm_tapped:
             foreground = resumed_package()
-            if foreground and foreground != PKG:
-                normalized = foreground.lower()
-                expected = browser_package.lower()
-                is_expected = bool(expected and normalized == expected)
-                is_browser = any(token in normalized for token in BROWSER_OR_CHOOSER)
-                if is_expected or is_browser:
-                    shot("3-browser-handoff")
-                    print(f"✅ update hand-off opened {foreground}; installed version remains {installed_version()} as expected")
-                    return
-            # Give the browser/chooser a little time to become the resumed activity.
+            normalized = foreground.lower()
+            is_browser = any(token in normalized for token in BROWSER_OR_CHOOSER)
+            is_installer = any(token in normalized for token in INSTALLER_OR_SETTINGS)
+            if is_browser:
+                shot("3-browser-handoff")
+                print(f"✅ legacy browser hand-off opened {foreground}")
+                return
+            if is_installer:
+                # Confirm the Android system installer when its confirmation button appears.
+                install_buttons = [
+                    n for n in nodes
+                    if n.get("clickable") == "true"
+                    and (n.get("text") or "").strip().lower() in INSTALL_CONFIRM_LABELS
+                ]
+                if install_buttons and not installer_confirmed:
+                    shot("3-installer-confirm")
+                    tap(install_buttons[0])
+                    installer_confirmed = True
+                    print(f"confirmed Android installer in {foreground}")
+                elif installer_confirmed:
+                    time.sleep(2)
+                    continue
             time.sleep(2)
             continue
 
@@ -131,34 +158,58 @@ def main():
                 tap(sheet[0])
                 print(f"dismissed first-run sheet: {sheet[0].get('text')!r}")
             elif new_version in texts:
-                buttons = [
-                    n for n in nodes
-                    if n.get("clickable") == "true"
-                    and (
-                        n.get("resource-id") == "android:id/button1"
-                        or (n.get("text") or "").strip().lower() in UPDATE_LABELS
-                    )
-                ]
-                if buttons:
-                    shot("1-update-dialog")
-                    tap(buttons[0])
-                    update_tapped = True
-                    print("tapped Update in the app dialog; waiting for HTTPS browser hand-off")
-        if not update_tapped and time.time() - last_launch > 60:
-            adb("shell", "am", "force-stop", PKG)
-            adb("shell", "am", "start", "-W", "-n", ACTIVITY)
-            last_launch = time.time()
-            print("launched app; waiting for the update notice")
+                if not banner_tapped:
+                    # Current home banner CTA: "Download update" / "Install update".
+                    banner_buttons = [
+                        n for n in nodes
+                        if n.get("clickable") == "true"
+                        and any(label in (n.get("text") or "").strip().lower() for label in UPDATE_ACTION_LABELS)
+                    ]
+                    if banner_buttons:
+                        shot("1-update-banner")
+                        tap(banner_buttons[0])
+                        banner_tapped = True
+                        print("tapped the home-screen update banner")
+                else:
+                    # The banner opens a confirmation dialog. Older releases may show
+                    # the update dialog directly, so accept either path.
+                    confirm_buttons = [
+                        n for n in nodes
+                        if n.get("clickable") == "true"
+                        and (
+                            n.get("resource-id") == "android:id/button1"
+                            or (n.get("text") or "").strip().lower() in UPDATE_CONFIRM_LABELS
+                        )
+                    ]
+                    if confirm_buttons:
+                        shot("2-update-confirm")
+                        tap(confirm_buttons[0])
+                        confirm_tapped = True
+                        print("confirmed update; waiting for browser or Android installer")
+            if not confirm_tapped and time.time() - last_launch > 60:
+                adb("shell", "am", "force-stop", PKG)
+                adb("shell", "am", "start", "-W", "-n", ACTIVITY)
+                last_launch = time.time()
+                print("launched app; waiting for update banner")
         time.sleep(4)
 
     shot("fail")
+    print(f"--- installed version: {installed_version()} ---")
+    print(f"--- foreground package: {resumed_package()} ---")
     print("--- foreground activity ---")
     print(adb("shell", "dumpsys", "activity", "activities")[-12000:])
     print("--- app logcat ---")
-    print(adb("logcat", "-d", "-t", "300"))
-    if not update_tapped:
-        raise SystemExit("update notice did not appear; app never offered the target version")
-    raise SystemExit(f"Update was tapped but browser hand-off was not observed (foreground={resumed_package()!r})")
+    print(adb("logcat", "-d", "-t", "500"))
+    if not banner_tapped:
+        raise SystemExit("update banner did not appear or its action was not clickable")
+    if not confirm_tapped:
+        raise SystemExit("update banner opened but its confirmation action was not found")
+    if not installer_confirmed and installed_version() != new_version:
+        raise SystemExit("update was confirmed but neither installer completion nor target version was observed")
+
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
