@@ -61,7 +61,7 @@ test('cache expires, retries the builder and preserves separate formats and rout
     assert.equal(await (await call(request('/ios'), build)).text(), 'generation-1');
     assert.equal(await (await call(request('/ios?format=singbox'), build)).text(), 'generation-2');
     assert.equal(await (await call(request('/ios/singbox?noise=yes'), build)).text(), 'generation-2');
-    time += 60_001;
+    time += 300_001;
     edge.clear(); // model Cache API expiry
     assert.equal(await (await call(request('/ios'), build)).text(), 'generation-3');
   } finally { Date.now = now; }
@@ -103,4 +103,26 @@ test('production subscription route reuses a prepared 2000-node catalog over rep
     }
     assert.equal(fetches, coldFetches, 'warm polls must not rebuild/fetch the upstream catalog');
   } finally { globalThis.fetch = fetchBefore; }
+});
+
+test('Hiddify serves the last known-good profile during transient 429 or upstream failure', async () => {
+  const now = Date.now;
+  let time = now();
+  Date.now = () => time;
+  try {
+    edge.clear();
+    const path = '/hiddify';
+    const good = await call(request(path), async () => new Response('base64-good-profile'));
+    assert.equal(good.status, 200);
+    assert.equal(await good.text(), 'base64-good-profile');
+    time += 300_001;
+    edge.clear(); // expire the edge copy but retain the last-known-good isolate copy
+    const limited = await call(request(path), async () => new Response('rate limited', {
+      status: 429, headers: { 'retry-after': '45' },
+    }));
+    assert.equal(limited.status, 200);
+    assert.equal(await limited.text(), 'base64-good-profile');
+    assert.equal(limited.headers.get('x-molido-catalog-cache'), 'stale-if-error');
+    assert.match(limited.headers.get('warning') || '', /stale/i);
+  } finally { Date.now = now; }
 });
