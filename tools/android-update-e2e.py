@@ -36,7 +36,7 @@ def adb(*args, check=False):
 
 
 def installed_version():
-    match = re.search(r"versionName=(\\S+)", adb("shell", "dumpsys", "package", PKG))
+    match = re.search(r"versionName=(\S+)", adb("shell", "dumpsys", "package", PKG))
     return match.group(1) if match else None
 
 
@@ -60,7 +60,7 @@ def ui_nodes():
 
 
 def node_bounds(node):
-    values = list(map(int, re.findall(r"\\d+", node.get("bounds", ""))))
+    values = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
     return values if len(values) == 4 else None
 
 
@@ -75,8 +75,8 @@ def tap(node):
 def resumed_package():
     dump = adb("shell", "dumpsys", "activity", "activities")
     patterns = (
-        r"mResumedActivity:.*?\\s([\\w.]+)/[\\w.$]+",
-        r"topResumedActivity=ActivityRecord\\{[^}]*\\s([\\w.]+)/[\\w.$]+",
+        r"mResumedActivity:.*?\s([\w.]+)/[\w.$]+",
+        r"topResumedActivity=ActivityRecord\{[^}]*\s([\w.]+)/[\w.$]+",
     )
     for pattern in patterns:
         match = re.search(pattern, dump)
@@ -92,7 +92,7 @@ def resolve_https_handler():
         "https://github.com/hidooch980/molidovpn/releases/latest",
     )
     for line in reversed(output.splitlines()):
-        match = re.search(r"([\\w.]+)/[\\w.$]+", line.strip())
+        match = re.search(r"([\w.]+)/[\w.$]+", line.strip())
         if match:
             return match.group(1)
     return ""
