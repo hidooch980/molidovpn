@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0C1222"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="MolidoVPN">
+<meta name="description" content="داشبورد وب MolidoVPN؛ سرورها، اشتراک‌ها، وضعیت سرویس و راهنمای اتصال آیفون">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./logo-mark.svg">
+<title>MolidoVPN · داشبورد</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1120;--panel:#131d31;--panel2:#192640;--line:#2a3955;--ink:#edf4ff;--muted:#9eacc5;--a:#45d6c1;--bad:#ef7373;--warn:#f4bc62;--shadow:0 12px 34px #0003}
+:root[data-theme=light]{color-scheme:light;--bg:#f3f6fb;--panel:#fff;--panel2:#edf2f8;--line:#dce4ef;--ink:#152238;--muted:#60708a;--a:#087f73;--bad:#c93f4b;--warn:#9a6100;--shadow:0 8px 24px #15223812}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at 90% 0,#15504c55,transparent 38%),var(--bg);color:var(--ink);font:15px/1.7 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;padding-bottom:calc(78px + env(safe-area-inset-bottom))}
+button,a,input,select{font:inherit}a{color:var(--a);text-decoration:none}button{cursor:pointer;color:inherit}.wrap{max-width:880px;margin:auto;padding:18px 16px 35px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0 20px}.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:19px}.brand img{width:38px;height:38px}.actions{display:flex;gap:8px}.iconbtn,.btn{border:1px solid var(--line);background:var(--panel);border-radius:13px;padding:9px 13px;color:var(--ink)}.btn.primary{background:var(--a);color:#06201d;border-color:transparent;font-weight:900}.btn:disabled{opacity:.5}
+.hero{border:1px solid var(--line);border-radius:24px;padding:22px;background:linear-gradient(135deg,#173e47aa,var(--panel) 60%);box-shadow:var(--shadow)}
+.eyebrow{color:var(--a);font-weight:800;font-size:12px;letter-spacing:.04em}.hero h1{font-size:27px;line-height:1.4;margin:7px 0}.hero p{color:var(--muted);margin:0 0 18px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}.stat,.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px}.stat small{color:var(--muted)}.stat strong{display:block;font-size:20px;margin-top:3px}
+section{margin-top:22px;scroll-margin-top:20px}h2{font-size:18px;margin:0 0 10px}.muted{color:var(--muted)}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;color:var(--muted)}.ok{color:var(--a)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.modegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.mode{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;text-align:right;min-height:88px}.mode b{display:block}.mode span{font-size:12px;color:var(--muted)}
+.subcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}.subcard code{display:block;direction:ltr;text-align:left;overflow-wrap:anywhere;background:var(--panel2);border-radius:9px;padding:9px;margin:10px 0;color:var(--muted);font-size:12px}
+.statusline{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.statusline:last-child{border:0}
+.notice{display:none;background:#49361d55;border:1px solid var(--warn);border-radius:14px;padding:12px;margin-top:12px}.notice.show{display:block}
+.field{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px;color:var(--ink);width:100%}
+.bottom{position:fixed;bottom:0;left:0;right:0;padding:9px 12px calc(9px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(18px);border-top:1px solid var(--line);display:flex;justify-content:center;gap:8px;z-index:5}.bottom a{flex:1;max-width:170px;text-align:center;color:var(--muted);font-size:12px;padding:6px}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s}.toast.show{opacity:1}
+footer{text-align:center;color:var(--muted);font-size:12px;margin:25px 0}
+@media(min-width:700px){.wrap{padding-top:28px}.hero{padding:30px}.modegrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:390px){.grid{grid-template-columns:1fr 1fr}.hero h1{font-size:23px}.actions .label{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><a class="brand" href="./"><img src="./logo-mark.svg" alt="">MolidoVPN <span class="pill">PWA</span></a><div class="actions"><button class="iconbtn" id="theme" aria-label="تغییر پوسته">◐</button><button class="iconbtn" id="install" hidden>نصب برنامه</button></div></header>
+<div class="hero">
+<div class="eyebrow">داشبورد هوشمند اتصال</div><h1>اینترنت آزاد، ساده و یکپارچه</h1>
+<p>مدیریت اشتراک‌ها، انتخاب کلاینت، وضعیت سرورها و دسترسی سریع به ابزارهای MolidoVPN.</p>
+<div class="row"><a class="btn primary" id="quick" href="https://molido-sub.hidooch980.workers.dev/ios">اتصال سریع با کلاینت</a><button class="btn" id="refresh">تازه‌سازی اطلاعات</button></div>
+<div class="notice" id="notice"></div>
+</div>
+<div class="grid">
+<div class="stat"><small>سرورهای آماده iOS</small><strong id="serverCount">در حال بررسی…</strong></div>
+<div class="stat"><small>وضعیت سرویس اشتراک</small><strong id="workerState">در حال بررسی…</strong></div>
+<div class="stat"><small>آخرین بررسی</small><strong id="lastCheck">—</strong></div>
+<div class="stat"><small>نسخه برنامه</small><strong id="version">بررسی نسخه…</strong></div>
+</div>
+<section id="connect"><h2>اتصال با یک لمس</h2><p class="muted">PWA تونل سیستم‌عامل را روشن نمی‌کند؛ دکمه‌ها اشتراک را در کلاینت نصب‌شده باز می‌کنند.</p>
+<div class="modegrid">
+<a class="mode" id="hiddify" href="#"><b>Hiddify</b><span>پیشنهادی · فهرست iOS + WARP</span></a>
+<a class="mode" id="streisand" href="#"><b>Streisand</b><span>فهرست سبک مخصوص آیفون</span></a>
+<a class="mode" id="karing" href="#"><b>Karing</b><span>افزودن اشتراک iOS</span></a>
+<a class="mode" id="singbox" href="#"><b>sing-box</b><span>پروفایل JSON با انتخاب خودکار</span></a>
+<a class="mode" href="https://apps.apple.com/search?term=Hiddify"><b>نصب Hiddify</b><span>جست‌وجو در App Store</span></a>
+<a class="mode" href="https://apps.apple.com/search?term=Streisand"><b>نصب Streisand</b><span>جست‌وجو در App Store</span></a>
+</div></section>
+<section id="subs"><h2>اشتراک‌ها و سرورها</h2><p class="muted">فهرست‌ها از سرویس رسمی دریافت می‌شوند و اطلاعات زنده در حافظه آفلاین ذخیره نمی‌شوند.</p><div id="subList"><div class="card muted">در حال دریافت فهرست‌ها…</div></div></section>
+<section id="health"><h2>سلامت سرویس</h2><div class="card" id="healthList"><div class="statusline"><span>سرویس اشتراک</span><span>در حال بررسی…</span></div></div><p><a href="./status.html">گزارش کامل سلامت و بروزرسانی سرویس‌ها ←</a></p></section>
+<section id="settings"><h2>تنظیمات برنامه</h2><div class="card">
+<p class="muted">پوسته روشن/تیره، نصب روی صفحه اصلی و تازه‌سازی خودکار در این نسخه وب فعال است. رابط فعلی فارسی است.</p>
+<div class="row"><button class="btn" id="clearCache">پاک‌سازی فایل‌های آفلاین</button><a class="btn" href="./ios.html">راهنمای نصب آیفون</a></div>
+</div></section>
+<section id="help"><h2>راهنما و پشتیبانی</h2><div class="card"><div class="statusline"><span>پشتیبانی تلگرام</span><a href="https://t.me/Molido_Vpn">ورود به پشتیبانی ←</a></div><div class="statusline"><span>آخرین نسخه و تغییرات</span><a href="https://github.com/hidooch980/molidovpn/releases">مشاهده انتشارها ←</a></div><div class="statusline"><span>صفحه اصلی پروژه</span><a href="./">MolidoVPN ←</a></div></div></section>
+<footer>MolidoVPN · PWA مستقل از App Store · <a href="https://github.com/hidooch980/molidovpn">GitHub</a></footer>
+</div>
+<nav class="bottom"><a href="#connect">اتصال</a><a href="#subs">اشتراک‌ها</a><a href="#health">سلامت</a><a href="#settings">تنظیمات</a><a href="#help">پشتیبانی</a></nav>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const BASE='https://molido-sub.hidooch980.workers.dev';
+const urls={ios:BASE+'/ios',hiddify:BASE+'/hiddify',singbox:BASE+'/ios/singbox',lite:BASE+'/lite'};
+const $=id=>document.getElementById(id);
+const toast=t=>{const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200)};
+const copy=async value=>{try{await navigator.clipboard.writeText(value);toast('لینک کپی شد')}catch{toast('امکان کپی نیست؛ لینک را لمس طولانی کنید')}};
+const deep={hiddify:u=>'hiddify://import/'+u+'#MolidoVPN',streisand:u=>'streisand://import/'+u+'#MolidoVPN',karing:u=>'karing://install-config?url='+encodeURIComponent(u)+'&name=MolidoVPN'};
+$('hiddify').href=deep.hiddify(urls.hiddify);$('streisand').href=deep.streisand(urls.ios);$('karing').href=deep.karing(urls.ios);$('singbox').href=urls.singbox;
+$('quick').href=deep.hiddify(urls.ios);
+function decodeCount(t){let s=t.trim();if(!s.includes('://')){try{s=atob(s.replace(/\s/g,''))}catch{return 0}}return s.split(/\r?\n/).filter(x=>/^[a-z0-9]+:\/\//i.test(x.trim())).length}
+async function fetchText(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(r.status);return r.text()}
+async function fetchJson(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(r.status);return r.json()}
+function addSub(title,url,desc){const el=document.createElement('article');el.className='subcard';const h=document.createElement('b');h.textContent=title;const p=document.createElement('p');p.className='muted';p.textContent=desc;const code=document.createElement('code');code.textContent=url;const row=document.createElement('div');row.className='row';const c=document.createElement('button');c.className='btn';c.textContent='کپی لینک';c.onclick=()=>copy(url);const a=document.createElement('a');a.className='btn primary';a.textContent='افزودن به Hiddify';a.href=deep.hiddify(url);row.append(c,a);el.append(h,p,code,row);$('subList').append(el)}
+async function load(){
+ $('refresh').disabled=true;$('workerState').textContent='در حال بررسی…';
+ $('subList').replaceChildren();$('healthList').replaceChildren();
+ const health=(name,value,cls='ok')=>{const row=document.createElement('div');row.className='statusline';const a=document.createElement('span');a.textContent=name;const b=document.createElement('b');b.className=cls;b.textContent=value;row.append(a,b);$('healthList').append(row)};
+ try{
+  const [ios,flags,notice,latest]=await Promise.all([
+   fetchText(urls.ios),fetchJson(BASE+'/app/flags.json').catch(()=>({})),fetchJson(BASE+'/app/notice.json').catch(()=>({})),fetchJson(BASE+'/app/latest.json').catch(()=>null)
+  ]);
+  const n=decodeCount(ios);$('serverCount').textContent=n+' سرور';$('workerState').textContent='فعال';$('workerState').className='ok';
+  health('اشتراک iOS',n?'فعال · '+n+' سرور':'فهرست خالی',n?'ok':'bad');
+  health('تنظیمات راه دور',Object.keys(flags||{}).length?'دریافت شد':'حالت پیش‌فرض','ok');
+  health('پروفایل JSON','آماده','ok');
+  $('lastCheck').textContent=new Date().toLocaleTimeString('fa-IR');
+  if(latest&&latest.tag_name)$('version').textContent=latest.tag_name;
+  const msg=notice&&(notice.text||notice.message||notice.title);
+  if(msg){$('notice').textContent=msg;$('notice').classList.add('show')}
+  addSub('اشتراک پیشنهادی آیفون',urls.ios,'تا ۸۰ سرور سازگار با iOS، رتبه‌بندی‌شده بر اساس کیفیت گزارش‌شده');
+  addSub('اشتراک Hiddify + WARP',urls.hiddify,'فهرست آیفون به‌همراه مسیرهای WARP');
+  addSub('پروفایل sing-box JSON',urls.singbox,'پروفایل کامل با گروه انتخاب خودکار؛ در کلاینت سازگار وارد کنید');
+  for(let i=1;i<=5;i++)addSub('اشتراک جایگزین '+i,BASE+'/sub/'+i,'فهرست مستقل برای افزایش گزینه‌های پشتیبان');
+ }catch(e){$('serverCount').textContent='نامشخص';$('workerState').textContent='در دسترس نیست';$('workerState').className='bad';health('سرویس اشتراک','خطا در دریافت','bad');const p=document.createElement('p');p.className='muted';p.textContent='ارتباط برقرار نشد. اتصال اینترنت را بررسی و دوباره تلاش کنید.';$('subList').append(p)}
+ finally{$('refresh').disabled=false}
+}
+$('refresh').onclick=load;
+$('theme').onclick=()=>{const root=document.documentElement;const next=root.dataset.theme==='light'?'dark':'light';root.dataset.theme=next;localStorage.setItem('molido-theme',next)};
+const saved=localStorage.getItem('molido-theme');if(saved)document.documentElement.dataset.theme=saved;
+$('clearCache').onclick=async()=>{if('caches'in window){for(const k of await caches.keys())await caches.delete(k);toast('فایل‌های آفلاین پاک شدند')}else toast('حافظه آفلاین در دسترس نیست')};
+let installPrompt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('install').hidden=false});
+$('install').onclick=async()=>{if(!installPrompt){toast('در Safari: Share سپس Add to Home Screen');return}installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('install').hidden=true};
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{}));
+load();setInterval(load,5*60*1000);
+</script>
+</body></html>
