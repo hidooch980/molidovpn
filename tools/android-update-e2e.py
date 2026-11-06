@@ -162,7 +162,7 @@ def main():
             else:
                 # The first-run coach mark overlays the update banner. Advance
                 # all onboarding pages (for example "1/3" + "بعدی") first.
-                page_marker = re.search(r"\\b(\\d+)\\s*/\\s*(\\d+)\\b", texts)
+                page_marker = re.search(r"\b(\d+)\s*/\s*(\d+)\b", texts)
                 next_buttons = [
                     node for node in nodes
                     if node.get("clickable") == "true"
