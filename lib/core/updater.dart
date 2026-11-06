@@ -139,7 +139,7 @@ class Updater {
       final res = await req.close().timeout(const Duration(seconds: 20));
       await res.drain<void>();
       final location = res.headers.value(HttpHeaders.locationHeader) ?? '';
-      final tag = RegExp(r'/tag/(v?[\d.]+)').firstMatch(location)?.group(1);
+      final tag = parseRedirectTag(location);
       if (tag == null) return null;
       return UpdateInfo(
         version: tag.replaceFirst(RegExp('^v'), ''),
@@ -150,6 +150,21 @@ class Updater {
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// Extracts a numeric release tag from GitHub's /releases/latest redirect.
+  /// Rejects other hosts and paths so an untrusted redirect cannot supply a tag.
+  static String? parseRedirectTag(String location) {
+    final uri = Uri.tryParse(location);
+    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') { return null; }
+    final segments = uri.pathSegments;
+    if (segments.length != 5 ||
+        segments[0] != 'hidooch980' ||
+        segments[1] != 'molidovpn' ||
+        segments[2] != 'releases' ||
+        segments[3] != 'tag') { return null; }
+    final tag = segments[4];
+    return RegExp(r'^v?[0-9]+(?:\.[0-9]+)*$').hasMatch(tag) ? tag : null;
   }
 
   static bool isNewer(String candidate, String installed) {
