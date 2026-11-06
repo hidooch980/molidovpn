@@ -1,0 +1,48 @@
+name: Native IKEv2 Windows validation
+
+on:
+  pull_request:
+    paths:
+      - 'lib/core/windows_ikev2.dart'
+      - 'lib/core/windows_engine.dart'
+      - 'lib/core/server.dart'
+      - 'lib/ui/import_screen.dart'
+      - 'windows/ikev2/**'
+      - 'test/**'
+      - '.github/workflows/ikev2-windows-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze
+      - name: Unit tests
+        run: flutter test --reporter expanded
+      - name: Validate PowerShell helper syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'windows/ikev2/Molido-Ikev2.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+      - name: Build Windows release bundle
+        run: flutter build windows --release
