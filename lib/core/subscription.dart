@@ -65,9 +65,11 @@ class PublicProfileSources {
       if (a == 0 || a == 10 || a == 127 || a >= 224) return false;
       if (a == 169 && c == 254) return false;
       if (a == 172 && c >= 16 && c <= 31) return false;
-      if (a == 192 && (c == 0 || c == 2 || c == 168)) return false;
+      if (a == 192 && (c == 0 || c == 2 || c == 88 || c == 168)) {
+        if (c != 88 || b[2] == 99) return false;
+      }
       if (a == 100 && c >= 64 && c <= 127) return false;
-      if (a == 198 && (c == 18 || c == 19 || c == 51)) return false;
+      if (a == 198 && (c == 18 || c == 19 || (c == 51 && b[2] == 100))) return false;
       if (a == 203 && c == 0 && b[2] == 113) return false;
       return true;
     }
@@ -75,13 +77,19 @@ class PublicProfileSources {
     if (b.length == 16 && b.take(10).every((v) => v == 0) && b[10] == 255 && b[11] == 255) {
       return _isPublicAddress(InternetAddress.fromRawAddress(b.sublist(12)));
     }
-    // Permit only global-unicast 2000::/3; reject documentation prefix 2001:db8::/32.
+    // Permit only global-unicast 2000::/3. Reject special-use transition,
+    // documentation and benchmarking ranges conservatively.
     if (b.length != 16 || (b[0] & 0xe0) != 0x20) return false;
-    if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == 0xb8) return false;
+    if (b[0] == 0x20 && b[1] == 0x01) {
+      if (b[2] == 0x0d && b[3] == 0xb8) return false; // 2001:db8::/32
+      if ((b[2] & 0xf8) == 0x00) return false; // 2001::/23
+    }
+    if (b[0] == 0x20 && b[1] == 0x02) return false; // 6to4
+    if (b[0] == 0x3f && (b[1] & 0xf0) == 0xf0) return false; // 3fff::/20 docs
     return true;
   }
 
-  static Future<void> _validatePublicDestination(Uri uri) async {
+  static Future<List<InternetAddress>> _validatePublicDestination(Uri uri) async {
     final literal = InternetAddress.tryParse(uri.host);
     final addresses = literal == null
         ? await InternetAddress.lookup(uri.host).timeout(const Duration(seconds: 10))
@@ -89,9 +97,10 @@ class PublicProfileSources {
     if (addresses.isEmpty || addresses.any((address) => !_isPublicAddress(address))) {
       throw const FormatException('Public source host resolves to a non-public IP address');
     }
+    return List<InternetAddress>.unmodifiable(addresses);
   }
 
-  static Future<String> fetch(String url, {String? proxy}) async {
+  static Future<String> fetch(String url) async {
     final parsed = Uri.tryParse(url.trim());
     if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) ||
         parsed.host.isEmpty || parsed.userInfo.isNotEmpty) {
@@ -100,9 +109,25 @@ class PublicProfileSources {
     if (parsed.hasPort && (parsed.port < 1 || parsed.port > 65535)) {
       throw const FormatException('Invalid public source port');
     }
-    await _validatePublicDestination(parsed);
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
-    if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
+    // Resolve once, reject every non-public answer, and pin the actual TCP
+    // connection to one of those validated addresses. The URI hostname remains
+    // unchanged so HttpClient still sends the correct Host header and verifies
+    // TLS certificates/SNI against the hostname. Proxies are intentionally
+    // disabled because a proxy would perform its own unpinned destination lookup.
+    final addresses = await _validatePublicDestination(parsed);
+    var nextAddress = 0;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10)
+      ..findProxy = (_) => 'DIRECT'
+      ..connectionFactory = (uri, proxyHost, proxyPort) {
+        if (proxyHost != null || proxyPort != null ||
+            uri.host.toLowerCase() != parsed.host.toLowerCase() ||
+            uri.port != parsed.port) {
+          throw const FormatException('Public source connection target changed');
+        }
+        final address = addresses[nextAddress++ % addresses.length];
+        return Socket.startConnect(address, uri.port);
+      };
     try {
       final req = await client.getUrl(parsed);
       req.followRedirects = false;
