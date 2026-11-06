@@ -122,17 +122,17 @@ class PublicProfileSources {
     final addresses = await _validatePublicDestination(parsed);
     var nextAddress = 0;
     final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10)
-      ..findProxy = (_) => 'DIRECT'
-      ..connectionFactory = (uri, proxyHost, proxyPort) {
-        if (proxyHost != null || proxyPort != null ||
-            uri.host.toLowerCase() != parsed.host.toLowerCase() ||
-            uri.port != parsed.port) {
-          throw const FormatException('Public source connection target changed');
-        }
-        final address = addresses[nextAddress++ % addresses.length];
-        return Socket.startConnect(address, uri.port);
-      };
+      ..connectionTimeout = const Duration(seconds: 10);
+    client.findProxy = (_) => 'DIRECT';
+    client.connectionFactory = (uri, proxyHost, proxyPort) {
+      if (proxyHost != null || proxyPort != null ||
+          uri.host.toLowerCase() != parsed.host.toLowerCase() ||
+          uri.port != parsed.port) {
+        throw const FormatException('Public source connection target changed');
+      }
+      final address = addresses[nextAddress++ % addresses.length];
+      return Socket.startConnect(address, uri.port);
+    };
     try {
       final req = await client.getUrl(parsed);
       req.followRedirects = false;
