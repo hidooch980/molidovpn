@@ -9,19 +9,16 @@ import java.net.Socket
 import java.net.URL
 
 /**
- * Settings > Speed test: 10 MB download and 5 MB upload against
- * speed.cloudflare.com, plus a ping (median of 3 tiny requests).
- *
- * Our own package is excluded from the TUN, so a plain request would measure the
- * carrier link. The test therefore goes through the tunnel's local SOCKS port
- * whenever one exists (SHARD/V2Ray, proxy mode, Psiphon, Tor). WireGuard/MASQUE
- * in VPN mode have no local listener; there the result is marked as direct.
+ * Settings speed measurement. Native TUN modes without a local SOCKS listener are
+ * measured directly and MUST be displayed as direct-network results, not VPN speed.
  */
 object SpeedTest {
-
     private const val DOWN_BYTES = 10_000_000
     private const val UP_BYTES = 5_000_000
     private const val BASE = "https://speed.cloudflare.com"
+    private const val TRANSFER_LIMIT_MS = 20_000L
+    private const val PROBE_LIMIT_MS = 4_000L
+    private const val PROBE_COUNT = 5
 
     data class Result(
         val pingMs: Long?,
@@ -29,6 +26,8 @@ object SpeedTest {
         val upMbps: Double?,
         val viaTunnel: Boolean,
         val error: String? = null,
+        val jitterMs: Double? = null,
+        val packetLossPct: Double = 100.0,
     )
 
     private fun accepts(port: Int): Boolean = try {
@@ -51,20 +50,32 @@ object SpeedTest {
         val port = socksPort(context)
         val proxy = port?.let { Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", it)) } ?: Proxy.NO_PROXY
         return try {
-            val pings = (0 until 3).mapNotNull { timed(proxy, "$BASE/__down?bytes=0") }
-            val ping = pings.sorted().getOrNull(pings.size / 2)
+            val probes = (0 until PROBE_COUNT).mapNotNull { timed(proxy, "$BASE/__down?bytes=0") }
+            val sorted = probes.sorted()
+            val ping = when {
+                sorted.isEmpty() -> null
+                sorted.size % 2 == 1 -> sorted[sorted.size / 2]
+                else -> (sorted[sorted.size / 2 - 1] + sorted[sorted.size / 2]) / 2
+            }
+            val jitter = if (probes.size < 2) null else
+                probes.zipWithNext().map { (a, b) -> kotlin.math.abs(b - a).toDouble() }.average()
             val down = download(proxy)
             val up = upload(proxy)
-            Result(ping, down, up, port != null)
+            Result(
+                ping, down, up, port != null,
+                jitterMs = jitter,
+                packetLossPct = (PROBE_COUNT - probes.size) * 100.0 / PROBE_COUNT,
+            )
         } catch (e: Exception) {
-            Result(null, null, null, port != null, e.message ?: e.javaClass.simpleName)
+            Result(null, null, null, port != null, e.message ?: e.javaClass.simpleName,
+                packetLossPct = 100.0)
         }
     }
 
     private fun open(proxy: Proxy, url: String): HttpURLConnection =
         (URL(url).openConnection(proxy) as HttpURLConnection).apply {
             connectTimeout = 10_000
-            readTimeout = 20_000
+            readTimeout = TRANSFER_LIMIT_MS.toInt()
             useCaches = false
         }
 
@@ -72,8 +83,15 @@ object SpeedTest {
         val t0 = SystemClock.elapsedRealtime()
         val c = open(proxy, url)
         try {
-            c.inputStream.use { it.readBytes() }
-            SystemClock.elapsedRealtime() - t0
+            c.readTimeout = PROBE_LIMIT_MS.toInt()
+            if (c.responseCode != HttpURLConnection.HTTP_OK) return null
+            c.inputStream.use { input ->
+                val buf = ByteArray(1024)
+                while (input.read(buf) >= 0) {
+                    if (SystemClock.elapsedRealtime() - t0 > PROBE_LIMIT_MS) return null
+                }
+            }
+            (SystemClock.elapsedRealtime() - t0).takeIf { it <= PROBE_LIMIT_MS }
         } finally {
             c.disconnect()
         }
@@ -81,23 +99,31 @@ object SpeedTest {
         null
     }
 
-    private fun mbps(bytes: Long, ms: Long): Double = if (ms <= 0) 0.0 else bytes * 8.0 / 1_000_000.0 / (ms / 1000.0)
+    private fun mbps(bytes: Long, ms: Long): Double =
+        if (ms <= 0) 0.0 else bytes * 8.0 / 1_000_000.0 / (ms / 1000.0)
 
     private fun download(proxy: Proxy): Double? {
+        val t0 = SystemClock.elapsedRealtime()
         val c = open(proxy, "$BASE/__down?bytes=$DOWN_BYTES")
         try {
-            val t0 = SystemClock.elapsedRealtime()
+            if (c.responseCode != HttpURLConnection.HTTP_OK) return null
+            if (c.contentLengthLong >= 0 && c.contentLengthLong != DOWN_BYTES.toLong()) return null
+            if (SystemClock.elapsedRealtime() - t0 >= TRANSFER_LIMIT_MS) return null
             var total = 0L
             c.inputStream.use { input ->
                 val buf = ByteArray(64 * 1024)
                 while (true) {
+                    val elapsed = SystemClock.elapsedRealtime() - t0
+                    if (elapsed >= TRANSFER_LIMIT_MS) return null
+                    c.readTimeout = (TRANSFER_LIMIT_MS - elapsed).coerceAtLeast(1).toInt()
                     val n = input.read(buf)
                     if (n < 0) break
                     total += n
+                    if (total > DOWN_BYTES) return null
                 }
             }
             val ms = SystemClock.elapsedRealtime() - t0
-            return if (total > 0) mbps(total, ms) else null
+            return if (total == DOWN_BYTES.toLong() && ms <= TRANSFER_LIMIT_MS) mbps(total, ms) else null
         } finally {
             c.disconnect()
         }
@@ -115,14 +141,23 @@ object SpeedTest {
             c.outputStream.use { out ->
                 var left = UP_BYTES
                 while (left > 0) {
+                    if (SystemClock.elapsedRealtime() - t0 >= TRANSFER_LIMIT_MS) return null
                     val n = minOf(left, chunk.size)
                     out.write(chunk, 0, n)
                     left -= n
                 }
             }
-            c.responseCode
+            val status = c.responseCode
+            if (status !in 200..299) return null
+            val response = if (status >= 400) c.errorStream else c.inputStream
+            response?.use { input ->
+                val buf = ByteArray(1024)
+                while (input.read(buf) >= 0) {
+                    if (SystemClock.elapsedRealtime() - t0 >= TRANSFER_LIMIT_MS) return null
+                }
+            }
             val ms = SystemClock.elapsedRealtime() - t0
-            return mbps(UP_BYTES.toLong(), ms)
+            return if (ms <= TRANSFER_LIMIT_MS) mbps(UP_BYTES.toLong(), ms) else null
         } finally {
             c.disconnect()
         }

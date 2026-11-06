@@ -589,7 +589,14 @@ class SettingsScreen extends StatelessWidget {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: Text(tr('نتیجه‌ی تست سرعت', 'Speed test result')),
-                        content: Text('${tr('دانلود', 'Download')}: ${fmt(r.down)}\n${tr('آپلود', 'Upload')}: ${fmt(r.up)}'),
+                        content: Text(
+                          '${tr('دانلود', 'Download')}: ${fmt(r.down)}\n'
+                          '${tr('آپلود', 'Upload')}: ${fmt(r.up)}\n'
+                          '${tr('پینگ میانه', 'Median ping')}: ${r.pingMs == null ? tr('ناموفق', 'failed') : '${r.pingMs!.toStringAsFixed(1)} ms'}\n'
+                          '${tr('نوسان پینگ', 'Jitter')}: ${r.jitterMs == null ? tr('نامشخص', 'n/a') : '${r.jitterMs!.toStringAsFixed(1)} ms'}\n'
+                          '${tr('از دست‌رفتن درخواست‌ها', 'Probe packet loss')}: ${r.packetLossPct.toStringAsFixed(0)}%\n'
+                          '${tr('مسیر', 'Route')}: ${tr('پروکسی محلی VPN', 'VPN local proxy')}',
+                        ),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('باشه', 'OK'))),
                         ],
