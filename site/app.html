@@ -20,6 +20,7 @@ section{margin-top:22px;scroll-margin-top:20px}h2{font-size:18px;margin:0 0 10px
 .modegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.mode{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;text-align:right;min-height:88px}.mode b{display:block}.mode span{font-size:12px;color:var(--muted)}
 .subcard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}.subcard code{display:block;direction:ltr;text-align:left;overflow-wrap:anywhere;background:var(--panel2);border-radius:9px;padding:9px;margin:10px 0;color:var(--muted);font-size:12px}
 .statusline{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.statusline:last-child{border:0}
+.backups{margin-top:12px;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:12px 14px}.backups summary{cursor:pointer;font-weight:800;color:var(--muted)}
 .notice{display:none;background:#49361d55;border:1px solid var(--warn);border-radius:14px;padding:12px;margin-top:12px}.notice.show{display:block}
 .field{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px;color:var(--ink);width:100%}
 .bottom{position:fixed;bottom:0;left:0;right:0;padding:9px 12px calc(9px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(18px);border-top:1px solid var(--line);display:flex;justify-content:center;gap:8px;z-index:5}.bottom a{flex:1;max-width:170px;text-align:center;color:var(--muted);font-size:12px;padding:6px}
@@ -34,7 +35,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin:25px 0}
 <header><a class="brand" href="./"><img src="./logo-mark.svg" alt="">MolidoVPN <span class="pill">PWA</span></a><div class="actions"><button class="iconbtn" id="theme" aria-label="تغییر پوسته">◐</button><button class="iconbtn" id="install" hidden>نصب برنامه</button></div></header>
 <div class="hero">
 <div class="eyebrow">داشبورد هوشمند اتصال</div><h1>اینترنت آزاد، ساده و یکپارچه</h1>
-<p>مدیریت اشتراک‌ها، انتخاب کلاینت، وضعیت سرورها و دسترسی سریع به ابزارهای MolidoVPN.</p>
+<p>اتصال، اشتراک‌ها و وضعیت سرویس؛ همه در یک داشبورد ساده.</p>
 <div class="row"><a class="btn primary" id="quick" href="https://molido-sub.hidooch980.workers.dev/ios">اتصال سریع با کلاینت</a><button class="btn" id="refresh">تازه‌سازی اطلاعات</button></div>
 <div class="notice" id="notice"></div>
 </div>
@@ -53,10 +54,10 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin:25px 0}
 <a class="mode" href="https://apps.apple.com/search?term=Hiddify"><b>نصب Hiddify</b><span>جست‌وجو در App Store</span></a>
 <a class="mode" href="https://apps.apple.com/search?term=Streisand"><b>نصب Streisand</b><span>جست‌وجو در App Store</span></a>
 </div></section>
-<section id="subs"><h2>اشتراک‌ها و سرورها</h2><p class="muted">فهرست‌ها از سرویس رسمی دریافت می‌شوند و اطلاعات زنده در حافظه آفلاین ذخیره نمی‌شوند.</p><div id="subList"><div class="card muted">در حال دریافت فهرست‌ها…</div></div></section>
+<section id="subs"><h2>اشتراک‌ها و سرورها</h2><p class="muted">اشتراک‌های اصلی در دسترس‌اند؛ گزینه‌های پشتیبان در بخش جداگانه قرار دارند.</p><div id="subList"><div class="card muted">در حال دریافت فهرست‌ها…</div></div><details class="backups"><summary>اشتراک‌های پشتیبان (۵ مورد)</summary><div id="backupList"></div></details></section>
 <section id="health"><h2>سلامت سرویس</h2><div class="card" id="healthList"><div class="statusline"><span>سرویس اشتراک</span><span>در حال بررسی…</span></div></div><p><a href="./status.html">گزارش کامل سلامت و بروزرسانی سرویس‌ها ←</a></p></section>
 <section id="settings"><h2>تنظیمات برنامه</h2><div class="card">
-<p class="muted">پوسته روشن/تیره، نصب روی صفحه اصلی و تازه‌سازی خودکار در این نسخه وب فعال است. رابط فعلی فارسی است.</p>
+<p class="muted">پوسته روشن/تیره، نصب روی صفحه اصلی و تازه‌سازی خودکار.</p>
 <div class="row"><button class="btn" id="clearCache">پاک‌سازی فایل‌های آفلاین</button><a class="btn" href="./ios.html">راهنمای نصب آیفون</a></div>
 </div></section>
 <section id="help"><h2>راهنما و پشتیبانی</h2><div class="card"><div class="statusline"><span>پشتیبانی تلگرام</span><a href="https://t.me/Molido_Vpn">ورود به پشتیبانی ←</a></div><div class="statusline"><span>آخرین نسخه و تغییرات</span><a href="https://github.com/hidooch980/molidovpn/releases">مشاهده انتشارها ←</a></div><div class="statusline"><span>صفحه اصلی پروژه</span><a href="./">MolidoVPN ←</a></div></div></section>
@@ -76,7 +77,7 @@ $('quick').href=deep.hiddify(urls.ios);
 function decodeCount(t){let s=t.trim();if(!s.includes('://')){try{s=atob(s.replace(/\s/g,''))}catch{return 0}}return s.split(/\r?\n/).filter(x=>/^[a-z0-9]+:\/\//i.test(x.trim())).length}
 async function fetchText(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(r.status);return r.text()}
 async function fetchJson(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(r.status);return r.json()}
-function addSub(title,url,desc){const el=document.createElement('article');el.className='subcard';const h=document.createElement('b');h.textContent=title;const p=document.createElement('p');p.className='muted';p.textContent=desc;const code=document.createElement('code');code.textContent=url;const row=document.createElement('div');row.className='row';const c=document.createElement('button');c.className='btn';c.textContent='کپی لینک';c.onclick=()=>copy(url);const a=document.createElement('a');a.className='btn primary';a.textContent='افزودن به Hiddify';a.href=deep.hiddify(url);row.append(c,a);el.append(h,p,code,row);$('subList').append(el)}
+function addSub(title,url,desc,target='subList'){const el=document.createElement('article');el.className='subcard';const h=document.createElement('b');h.textContent=title;const p=document.createElement('p');p.className='muted';p.textContent=desc;const code=document.createElement('code');code.textContent=url;const row=document.createElement('div');row.className='row';const c=document.createElement('button');c.className='btn';c.textContent='کپی لینک';c.onclick=()=>copy(url);const a=document.createElement('a');a.className='btn primary';a.textContent='افزودن به Hiddify';a.href=deep.hiddify(url);row.append(c,a);el.append(h,p,code,row);$(target).append(el)}
 async function load(){
  $('refresh').disabled=true;$('workerState').textContent='در حال بررسی…';
  $('subList').replaceChildren();$('healthList').replaceChildren();
@@ -93,10 +94,10 @@ async function load(){
   if(latest&&latest.tag_name)$('version').textContent=latest.tag_name;
   const msg=notice&&(notice.text||notice.message||notice.title);
   if(msg){$('notice').textContent=msg;$('notice').classList.add('show')}
-  addSub('اشتراک پیشنهادی آیفون',urls.ios,'تا ۸۰ سرور سازگار با iOS، رتبه‌بندی‌شده بر اساس کیفیت گزارش‌شده');
+  addSub('اشتراک iOS',urls.ios,'اشتراک اصلی برای کلاینت‌های سازگار iPhone و iPad');
   addSub('اشتراک Hiddify + WARP',urls.hiddify,'فهرست آیفون به‌همراه مسیرهای WARP');
   addSub('پروفایل sing-box JSON',urls.singbox,'پروفایل کامل با گروه انتخاب خودکار؛ در کلاینت سازگار وارد کنید');
-  for(let i=1;i<=5;i++)addSub('اشتراک جایگزین '+i,BASE+'/sub/'+i,'فهرست مستقل برای افزایش گزینه‌های پشتیبان');
+  for(let i=1;i<=5;i++)addSub('اشتراک پشتیبان '+i,BASE+'/sub/'+i,'گزینه جایگزین در صورت اختلال اشتراک اصلی','backupList');
  }catch(e){$('serverCount').textContent='نامشخص';$('workerState').textContent='در دسترس نیست';$('workerState').className='bad';health('سرویس اشتراک','خطا در دریافت','bad');const p=document.createElement('p');p.className='muted';p.textContent='ارتباط برقرار نشد. اتصال اینترنت را بررسی و دوباره تلاش کنید.';$('subList').append(p)}
  finally{$('refresh').disabled=false}
 }
