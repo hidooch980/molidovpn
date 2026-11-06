@@ -18,7 +18,7 @@ class SpeedTest {
     double? up,
     double? pingMs,
     double? jitterMs,
-    double? packetLossPct,
+    double packetLossPct,
   })> run(String proxy) async {
     final client = HttpClient()
       ..findProxy = ((_) => 'PROXY $proxy')
