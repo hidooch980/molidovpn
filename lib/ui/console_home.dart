@@ -160,38 +160,39 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         listenable: Listenable.merge([c, network, c.settings]),
         builder: (context, _) {
           return SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: kContentWidth),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 16),
-                  children: [
-                    _Header(controller: c, onSettings: _openSettings),
-                    if (_whatsNew case final w?) _WhatsNewCard(info: w, onClose: () => setState(() => _whatsNew = null)),
-                    if (c.notice case final notice?) _NoticeBanner(notice: notice, onClose: c.dismissNotice),
-                    if (c.update != null) _UpdateLine(controller: c),
-                    const SizedBox(height: 8),
-                    Center(child: _Squircle(controller: c)),
-                    // Keep diagnostics and route-racing details out of the default home.
-                    // Automatic route discovery still runs in the controller; details live in
-                    // the Servers and Settings pages instead of occupying the main screen.
-                    _SimpleStatus(controller: c),
-                    const SizedBox(height: 8),
-                    _ExitCard(controller: c, network: network, latency: _latency),
-                    const SizedBox(height: 8),
-                    _LocationCard(controller: c),
-                    const SizedBox(height: 8),
-                    _ServerQuickCard(controller: c, onTap: _openServers),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: AlignmentDirectional.center,
-                      child: TextButton.icon(
-                        onPressed: () => openLink(telegramUrl),
-                        icon: const Icon(Icons.support_agent_rounded, size: 18),
-                        label: Text(tr('پشتیبانی و راهنما', 'Support & help')),
-                      ),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: math.min(kContentWidth, constraints.maxWidth),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        _Header(controller: c, onSettings: _openSettings),
+                        if (_whatsNew case final w?)
+                          _WhatsNewCard(info: w, onClose: () => setState(() => _whatsNew = null)),
+                        if (c.notice case final notice?)
+                          _NoticeBanner(notice: notice, onClose: c.dismissNotice),
+                        if (c.update != null) _UpdateLine(controller: c),
+                        const SizedBox(height: 6),
+                        Center(child: _Squircle(controller: c)),
+                        _SimpleStatus(controller: c),
+                        const SizedBox(height: 6),
+                        _ExitCard(controller: c, network: network, latency: _latency),
+                        const SizedBox(height: 6),
+                        _LocationCard(controller: c),
+                        const SizedBox(height: 6),
+                        _ServerQuickCard(controller: c, onTap: _openServers),
+                        TextButton.icon(
+                          onPressed: () => openLink(telegramUrl),
+                          icon: const Icon(Icons.support_agent_rounded, size: 17),
+                          label: Text(tr('پشتیبانی و راهنما', 'Support & help')),
+                        ),
+                      ]),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
