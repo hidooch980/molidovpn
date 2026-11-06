@@ -545,7 +545,6 @@ jobs:
     env:
       VERSION: ${{ needs.resolve-version.outputs.version }}
     timeout-minutes: 40
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - name: Previous release APK
