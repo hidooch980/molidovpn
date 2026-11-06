@@ -156,7 +156,7 @@ def main():
             if sheet:
                 tap(sheet[0])
                 print(f"dismissed first-run sheet: {sheet[0].get('text')!r}")
-            elif new_version in texts:
+            elif banner_tapped or new_version in texts:
                 if not banner_tapped:
                     # Current home banner CTA: "Download update" / "Install update".
                     banner_buttons = [
@@ -203,12 +203,8 @@ def main():
         raise SystemExit("update banner did not appear or its action was not clickable")
     if not confirm_tapped:
         raise SystemExit("update banner opened but its confirmation action was not found")
-    if not installer_confirmed and installed_version() != new_version:
-        raise SystemExit("update was confirmed but neither installer completion nor target version was observed")
-
-
-if __name__ == "__main__":
-    main()
+    if installed_version() != new_version:
+        raise SystemExit("installer handoff was observed, but the target version was not installed")
 
 
 if __name__ == "__main__":
