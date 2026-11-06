@@ -22,9 +22,8 @@ import 'style.dart';
 import 'support.dart';
 import 'widgets.dart';
 
-/// Single scrolling home. Simple view (default): header, connect squircle, one plain status line (or a friendly
-/// error with a retry button), location card and support. Advanced view ("حالت پیشرفته", remembered): status
-/// details, exit card, mode chips, DNS chip, servers row, stats and network facts. Settings and Servers open as pages.
+/// Single unified scrolling home: connection status, live IP, location, route/DNS controls,
+/// servers, traffic stats, network facts and support. Settings and Servers open as pages.
 class ConsoleHome extends StatefulWidget {
   const ConsoleHome({super.key, required this.controller});
 
@@ -62,11 +61,10 @@ class _ConsoleHomeState extends State<ConsoleHome> {
     unawaited(_firstRun());
   }
 
-  /// Once settings are loaded: simple view always uses automatic mode, first-launch steps, then the reports question.
+  /// First-launch steps, then the anonymous reports consent question.
   Future<void> _firstRun() async {
     await c.ready.future;
     final s = c.settings;
-    if (!s.homeAdvanced && s.transport != 'auto') await s.update((x) => x.transport = 'auto');
     if (mounted && !s.onboarded) {
       await showOnboarding(context);
       await s.update((x) => x.onboarded = true);
@@ -174,21 +172,12 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     const SizedBox(height: 14),
                     Center(child: _Squircle(controller: c)),
                     SmartConnectPanel(run: c.smart, state: c.state),
-                    if (!advanced) ...[
-                      _SimpleStatus(controller: c),
-                      const SizedBox(height: 12),
-                      // Keep the live IP visible in the default home view; the same
-                      // card labels the address as device IP or VPN exit according
-                      // to the verified connection state.
-                      _ExitCard(controller: c, network: network, latency: _latency),
-                      const SizedBox(height: 12),
-                      _LocationCard(controller: c),
-                      const SizedBox(height: 12),
-                      const CardGroup(children: [TelegramSupportRow(), ShareFriendsRow()]),
-                    ] else ...[
-                    _Status(controller: c, latency: lastMs),
+                    _SimpleStatus(controller: c),
                     const SizedBox(height: 12),
+                    // Unified home: live IP and all connection controls stay together.
                     _ExitCard(controller: c, network: network, latency: _latency),
+                    const SizedBox(height: 12),
+                    _LocationCard(controller: c),
                     const SizedBox(height: 12),
                     _ModeChips(controller: c),
                     const SizedBox(height: 8),
@@ -202,14 +191,12 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                         onTap: _openServers,
                       ),
                       const TelegramSupportRow(),
+                      const ShareFriendsRow(),
                     ]),
                     const SizedBox(height: 12),
                     _Tiles(controller: c),
                     SectionHeader(tr('شبکه', 'Network')),
                     _Facts(controller: c, network: network, latency: _latency),
-                    ],
-                    const SizedBox(height: 12),
-                    _AdvancedToggle(controller: c),
                   ],
                 ),
               ),
