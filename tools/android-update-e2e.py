@@ -115,7 +115,10 @@ def main():
     browser_handler = resolve_https_handler()
     print(f"resolved HTTPS handler: {browser_handler or 'system chooser / unresolved'}")
     deadline = time.time() + 12 * 60
-    last_launch = 0.0
+    # adb install does not launch the app. Start it before waiting for UI nodes,
+    # otherwise the emulator remains on the launcher for the entire timeout.
+    adb("shell", "am", "start", "-W", "-n", ACTIVITY)
+    last_launch = time.time()
     update_tapped = False
 
     while time.time() < deadline:
@@ -188,11 +191,12 @@ def main():
                                 tap(min(parents, key=lambda item: item[0])[1])
                                 update_tapped = True
                                 print("tapped version update card; waiting for HTTPS browser/chooser")
-            if not update_tapped and time.time() - last_launch > 60:
-                adb("shell", "am", "force-stop", PKG)
-                adb("shell", "am", "start", "-W", "-n", ACTIVITY)
-                last_launch = time.time()
-                print("launched app; waiting for update notice")
+        if not update_tapped and time.time() - last_launch > 60:
+            # Recover if the app crashed or left the foreground while polling.
+            adb("shell", "am", "force-stop", PKG)
+            adb("shell", "am", "start", "-W", "-n", ACTIVITY)
+            last_launch = time.time()
+            print("re-launched app; waiting for update notice")
         time.sleep(3)
 
     shot("fail")
