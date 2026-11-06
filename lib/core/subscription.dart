@@ -65,6 +65,8 @@ class PublicProfileSources {
       if (a == 0 || a == 10 || a == 127 || a >= 224) return false;
       if (a == 169 && c == 254) return false;
       if (a == 172 && c >= 16 && c <= 31) return false;
+      // Exact special-use blocks: 192.0.0/24, 192.0.2/24,
+      // 192.88.99/24 (6to4 relay anycast), and private 192.168/16.
       if (a == 192 && (
           (c == 0 && (b[2] == 0 || b[2] == 2)) ||
           (c == 88 && b[2] == 99) ||
