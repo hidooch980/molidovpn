@@ -1,0 +1,61 @@
+name: Sync Android release to Windows build
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: android-windows-release-sync
+  cancel-in-progress: false
+
+jobs:
+  dispatch-desktop-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compare latest stable Android and desktop releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          android_tag=$(gh release view --repo hidooch980/molidovpn-android --json tagName,isPrerelease \
+            --jq 'select(.isPrerelease == false) | .tagName')
+          desktop_tag=$(gh release view --repo hidooch980/molidovpn --json tagName \
+            --jq '.tagName' 2>/dev/null || true)
+
+          [[ "$android_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || {
+            echo "::error::Latest Android stable release tag is not a semantic vX.Y.Z tag: $android_tag"
+            exit 1
+          }
+          android_version="${BASH_REMATCH[1]}"
+
+          if [[ -n "$desktop_tag" ]]; then
+            [[ "$desktop_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || {
+              echo "::error::Latest desktop release tag is not a semantic vX.Y.Z tag: $desktop_tag"
+              exit 1
+            }
+            desktop_version="${BASH_REMATCH[1]}"
+            if [[ "$(printf '%s\n' "$android_version" "$desktop_version" | sort -V | tail -n1)" != "$android_version" ]] \
+              || [[ "$android_version" == "$desktop_version" ]]; then
+              echo "No newer Android release (Android=$android_tag, desktop=$desktop_tag)."
+              exit 0
+            fi
+          fi
+
+          active=$(gh run list --repo hidooch980/molidovpn --workflow release.yml \
+            --status in_progress --json databaseId --jq 'length')
+          queued=$(gh run list --repo hidooch980/molidovpn --workflow release.yml \
+            --status queued --json databaseId --jq 'length')
+          if (( active > 0 || queued > 0 )); then
+            echo "Desktop release workflow already active; will check again on the next schedule."
+            exit 0
+          fi
+
+          echo "Dispatching Windows + desktop release for Android v$android_version."
+          gh workflow run release.yml --repo hidooch980/molidovpn --ref main \
+            -f version="$android_version"
