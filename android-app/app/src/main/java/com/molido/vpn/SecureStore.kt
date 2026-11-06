@@ -201,7 +201,10 @@ class Ikev2Activity : android.app.Activity() {
             android.widget.Toast.makeText(this, "Enter server, remote identity, username and password.", android.widget.Toast.LENGTH_LONG).show()
             return
         }
-        if (!server.matches(Regex("(?i)^[a-z0-9.-]+$")) || server.startsWith(".") || server.endsWith(".")) {
+        val validHostname = server.length <= 253 &&
+            android.util.Patterns.DOMAIN_NAME.matcher(server).matches()
+        val validIpv4 = android.util.Patterns.IP_ADDRESS.matcher(server).matches()
+        if (!validHostname && !validIpv4) {
             serverField.error = "Enter a valid hostname or IPv4 address"
             return
         }
@@ -214,7 +217,19 @@ class Ikev2Activity : android.app.Activity() {
                 .setAuthUsernamePassword(username, password, null)
                 .setBypassable(false)
                 .build()
-            startActivityForResult(manager.provisionVpnProfile(profile), REQUEST_PROVISION)
+            val consentIntent = manager.provisionVpnProfile(profile)
+            if (consentIntent == null) {
+                // Android returns null when this app already has VPN consent.
+                // In that case there is no system activity to launch.
+                manager.startProvisionedVpnProfile()
+                android.widget.Toast.makeText(
+                    this,
+                    "IKEv2 connection requested. Android is establishing the tunnel.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            } else {
+                startActivityForResult(consentIntent, REQUEST_PROVISION)
+            }
         } catch (e: Exception) { showError(e) }
     }
 
