@@ -114,7 +114,7 @@ def normalized_text(node):
 def main():
     old_apk, new_version = sys.argv[1], sys.argv[2]
     adb("uninstall", PKG)
-    adb("install", "-r", old_apk, check=True)
+    adb("install", "-r", old_apk, check=True, timeout=120)
     old_version = installed_version()
     print(f"installed old version {old_version}; expecting browser hand-off for {new_version}")
     if not old_version or old_version == new_version:
