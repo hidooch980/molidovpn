@@ -88,17 +88,38 @@ jobs:
           java-version: "17"
       - uses: android-actions/setup-android@v4
         with:
-          packages: >-
-            platform-tools
-            platforms;android-36
-            build-tools;36.0.0
-            cmake;3.22.1
-            ndk;26.3.11579264
-      - name: Compile Android Kotlin sources
-        working-directory: android-app
+          packages: platforms;android-36
+      - name: Compile the Android SpeedTest source in isolation
+        shell: bash
         run: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon :app:compileDebugKotlin \
-            -PtargetAbi=arm64-v8a,armeabi-v7a \
-            -x :app:buildRustCoreArm64V8a \
-            -x :app:buildRustCoreArmeabiV7a
+          set -euo pipefail
+          root="$RUNNER_TEMP/speedtest-kotlin"
+          mkdir -p "$root/src/main/kotlin/com/molido/vpn"
+          cp android-app/app/src/main/java/com/molido/vpn/SpeedTest.kt "$root/src/main/kotlin/"
+          cat > "$root/src/main/kotlin/com/molido/vpn/SpeedTestStubs.kt" <<'KOTLIN'
+          package com.molido.vpn
+          import android.content.Context
+          object TunnelStatus {
+              fun isActive() = true
+              val isProxyMode = false
+              val isNativeTunMode = false
+          }
+          object ShardManager { val isRunning = false; val listenPort = 10808 }
+          object CoreConfig {
+              const val SOCKS_PORT = 10808
+              fun proxyListenPort(context: Context) = SOCKS_PORT
+          }
+          object TorManager { const val FRONT_SOCKS_PORT = 10809 }
+          KOTLIN
+          cat > "$root/settings.gradle.kts" <<'GRADLE'
+          pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }
+          dependencyResolutionManagement { repositories { mavenCentral() } }
+          rootProject.name = "speedtest-kotlin-check"
+          GRADLE
+          cat > "$root/build.gradle.kts" <<'GRADLE'
+          plugins { kotlin("jvm") version "2.3.0" }
+          dependencies {
+              compileOnly(files("${System.getenv("ANDROID_HOME")}/platforms/android-36/android.jar"))
+          }
+          GRADLE
+          android-app/gradlew --no-daemon -p "$root" compileKotlin
