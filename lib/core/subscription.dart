@@ -44,6 +44,48 @@ class UserSubscriptions {
   }
 }
 
+/// Additional public profile feeds. They are deliberately separate from personal subscriptions
+/// so users can audit, disable, and remove each source independently.
+class PublicProfileSources {
+  static const _textPrefix = 'public_feed_text:', _timePrefix = 'public_feed_time:';
+  static const maxBodyChars = 2 * 1024 * 1024;
+
+  static Future<Map<String, String>> loadCached(List<String> urls) async {
+    final prefs = await SharedPreferences.getInstance();
+    return {for (final url in urls) url: ?prefs.getString('$_textPrefix$url')};
+  }
+
+  static Future<String> fetch(String url, {String? proxy}) async {
+    final parsed = Uri.tryParse(url.trim());
+    if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) || parsed.host.isEmpty || parsed.userInfo.isNotEmpty) {
+      throw const FormatException('Public source must be an HTTP(S) URL without embedded credentials');
+    }
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
+    try {
+      final req = await client.getUrl(parsed);
+      req.headers.set(HttpHeaders.acceptHeader, 'text/plain, application/octet-stream, */*');
+      final res = await req.close().timeout(const Duration(seconds: 20));
+      if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
+      final body = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
+      if (body.length > maxBodyChars) throw const FormatException('Source is larger than 2 MB');
+      if (parseSubscription(body).isEmpty) throw const FormatException('No supported profile links found');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_textPrefix$url', body);
+      await prefs.setInt('$_timePrefix$url', DateTime.now().millisecondsSinceEpoch);
+      return body;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Future<void> forget(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_textPrefix$url');
+    await prefs.remove('$_timePrefix$url');
+  }
+}
+
 class SubscriptionData {
   const SubscriptionData(this.servers, this.updatedAt);
 
