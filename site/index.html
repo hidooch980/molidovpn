@@ -161,6 +161,12 @@ footer a{color:var(--muted)}
   .band{padding:28px 22px;border-radius:24px}
 }
 </style>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MolidoVPN">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="./manifest.webmanifest">
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js",{scope:"./"}).catch(()=>{}));}</script>
 </head>
 <body>
 <div class="wrap">
@@ -175,6 +181,7 @@ footer a{color:var(--muted)}
     </ul>
     <a class="btn outline sm nav-cta" href="https://t.me/Molido_Vpn" rel="noopener">پشتیبانی تلگرام</a>
   </nav>
+<a class="btn outline sm" href="./ios.html">نسخه آیفون</a>
 
   <!-- 1. Hero -->
   <header class="hero">
