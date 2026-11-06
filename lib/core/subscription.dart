@@ -69,7 +69,9 @@ class PublicProfileSources {
           (c == 0 && (b[2] == 0 || b[2] == 2)) ||
           (c == 88 && b[2] == 99) ||
           c == 168
-      )) return false;
+      )) {
+        return false;
+      }
       if (a == 100 && c >= 64 && c <= 127) return false;
       if (a == 198 && (c == 18 || c == 19 || (c == 51 && b[2] == 100))) return false;
       if (a == 203 && c == 0 && b[2] == 113) return false;
