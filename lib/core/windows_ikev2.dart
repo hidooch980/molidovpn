@@ -70,3 +70,4 @@ class WindowsIkev2 {
     await disconnect(host);
     await _powershell("Remove-VpnConnection -Name $name -Force -ErrorAction SilentlyContinue");
   }
+}
