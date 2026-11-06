@@ -174,7 +174,12 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     SmartConnectPanel(run: c.smart, state: c.state),
                     if (!advanced) ...[
                       _SimpleStatus(controller: c),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
+                      // Keep the live IP visible in the default home view; the same
+                      // card labels the address as device IP or VPN exit according
+                      // to the verified connection state.
+                      _ExitCard(controller: c, network: network, latency: _latency),
+                      const SizedBox(height: 12),
                       _LocationCard(controller: c),
                       const SizedBox(height: 12),
                       const CardGroup(children: [TelegramSupportRow(), ShareFriendsRow()]),
