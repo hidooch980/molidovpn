@@ -161,6 +161,29 @@ def main():
                     f"version {old_version} remains installed as designed"
                 )
                 return
+            # The release notice first opens an in-app confirmation dialog.
+            # Confirm that explicit second step before expecting the browser.
+            confirm_text = " ".join(normalized_text(node).lower() for node in nodes)
+            confirm_buttons = [
+                node for node in nodes
+                if node.get("clickable") == "true"
+                and normalized_text(node).lower() in {"نصب", "install", "download", "open"}
+            ]
+            is_update_confirmation = (
+                PKG in packages
+                and ("آماده نصب" in confirm_text or "همین حالا نصب شود" in confirm_text
+                     or "ready to install" in confirm_text)
+            )
+            if is_update_confirmation and confirm_buttons:
+                shot("2-update-confirmation")
+                tap(confirm_buttons[0])
+                print(
+                    f"confirmed update dialog with {normalized_text(confirm_buttons[0])!r}; "
+                    "waiting for HTTPS browser/chooser hand-off",
+                    flush=True,
+                )
+                time.sleep(2)
+                continue
             time.sleep(2)
             continue
 
