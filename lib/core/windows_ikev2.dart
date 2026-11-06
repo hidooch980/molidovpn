@@ -5,7 +5,19 @@ import 'dart:io';
 /// Windows' built-in IKEv2 client. Credentials are entered by rasphone's native
 /// UI and are never passed to PowerShell or stored by MolidoVPN.
 class WindowsIkev2 {
-  String profileNameFor(String host) { final safe = host.toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '_'); return 'MolidoVPN IKEv2 ${safe.substring(0, safe.length > 32 ? 32 : safe.length)}'; }
+  // Keep the Windows profile name stable and collision-resistant even when
+  // two long hostnames share the same first 32 characters.
+  String profileNameFor(String host) {
+    final normalized = host.toLowerCase();
+    var hash = 0x811c9dc5;
+    for (final unit in normalized.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    final safe = normalized.replaceAll(RegExp(r'[^a-z0-9-]'), '_');
+    final prefix = safe.substring(0, safe.length > 24 ? 24 : safe.length);
+    final suffix = hash.toRadixString(16).padLeft(8, '0');
+    return 'MolidoVPN IKEv2 $prefix-$suffix';
+  }
 
   String _quote(String value) => "'${value.replaceAll("'", "''")}'";
 
@@ -75,10 +87,13 @@ class WindowsIkev2 {
       if (await isConnected(host)) return true;
       await Future<void>.delayed(const Duration(seconds: 2));
     }
+    await disconnect(host);
     return false;
     } on TimeoutException {
+      await disconnect(host);
       return false;
     } on ProcessException {
+      await disconnect(host);
       return false;
     }
   }
