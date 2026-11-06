@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:ffi' show Abi;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:cryptography/cryptography.dart' show Sha256;
