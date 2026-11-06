@@ -1,5 +1,5 @@
-const CACHE_NAME = "molido-ios-shell-v1";
-const APP_SHELL = ["./", "./index.html", "./ios.html", "./manifest.webmanifest", "./logo-mark.svg"];
+const CACHE_NAME = "molido-pwa-shell-v2";
+const APP_SHELL = ["./", "./index.html", "./ios.html", "./app.html", "./manifest.webmanifest", "./logo-mark.svg"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
 });
