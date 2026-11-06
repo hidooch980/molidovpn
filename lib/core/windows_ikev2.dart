@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 /// Windows' built-in IKEv2 client. Credentials are entered by rasphone's native
@@ -7,11 +9,40 @@ class WindowsIkev2 {
 
   String _quote(String value) => "'${value.replaceAll("'", "''")}'";
 
-  Future<ProcessResult> _powershell(String script) => Process.run(
+  /// Runs a child with a hard deadline. Future.timeout alone leaves the OS process alive;
+  /// kill it on timeout so repeated VPN status checks cannot accumulate orphan processes.
+  Future<ProcessResult> _runBounded(
+    String executable,
+    List<String> arguments, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final process = await Process.start(
+      executable,
+      arguments,
+      runInShell: false,
+    ).timeout(timeout);
+    try {
+      final values = await Future.wait<Object>([
+        process.exitCode,
+        process.stdout.transform(utf8.decoder).join(),
+        process.stderr.transform(utf8.decoder).join(),
+      ]).timeout(timeout);
+      return ProcessResult(
+        process.pid,
+        values[0] as int,
+        values[1] as String,
+        values[2] as String,
+      );
+    } on TimeoutException {
+      process.kill();
+      rethrow;
+    }
+  }
+
+  Future<ProcessResult> _powershell(String script) => _runBounded(
         'powershell.exe',
         ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-        runInShell: false,
-      ).timeout(const Duration(seconds: 20));
+      );
 
   bool validHost(String host) {
     if (host.isEmpty || host.length > 253 || host.contains(RegExp(r'\s')) || host.contains('/') || host.contains('\\')) return false;
@@ -70,11 +101,7 @@ class WindowsIkev2 {
   Future<void> disconnect(String host) async {
     if (!Platform.isWindows || !validHost(host)) return;
     try {
-      await Process.run(
-        'rasdial.exe',
-        [profileNameFor(host), '/disconnect'],
-        runInShell: false,
-      ).timeout(const Duration(seconds: 20));
+      await _runBounded('rasdial.exe', [profileNameFor(host), '/disconnect']);
     } on TimeoutException {
       // A hung rasdial process must not block app shutdown or profile cleanup.
     } on ProcessException {
