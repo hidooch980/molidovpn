@@ -215,6 +215,8 @@ class VpnController extends ChangeNotifier {
     }
     _userSubBodies = await UserSubscriptions.loadCached(settings.userSubscriptions);
     _parseUserSubs();
+    _publicSourceBodies = await PublicProfileSources.loadCached(settings.publicSources);
+    _parsePublicSources();
     final cached = await repository.loadCached();
     if (cached != null) _apply(cached);
     await refresh();
@@ -241,9 +243,11 @@ class VpnController extends ChangeNotifier {
     // Server lists stay fresh while the app runs (the built-in list every 30 min; Connect refreshes a stale one).
     Timer.periodic(const Duration(minutes: 30), (_) => refresh());
     unawaited(refreshUserSubscriptions());
+    unawaited(refreshPublicSources());
     unawaited(_resolveOutline());
     Timer.periodic(const Duration(hours: 1), (_) {
       refreshUserSubscriptions();
+      refreshPublicSources();
       _resolveOutline();
     });
     // Pre-warm: keep delays of the top servers fresh while idle, so Connect starts with the fastest ones.
@@ -632,6 +636,9 @@ class VpnController extends ChangeNotifier {
       for (final url in settings.userSubscriptions)
         for (final s in _userSubServers[url] ?? const <Server>[])
           Server(uri: s.uri, remark: s.remark, countryCode: manualCode, protocol: s.protocol),
+      for (final url in settings.publicSources)
+        for (final s in _publicSourceServers[url] ?? const <Server>[])
+          Server(uri: s.uri, remark: s.remark, countryCode: manualCode, protocol: s.protocol),
     ].where((s) => seen.add(s.uri) && engine.supports(s));
     servers = [
       ...manual,
@@ -995,6 +1002,70 @@ class VpnController extends ChangeNotifier {
     _userSubServers.remove(url);
     await UserSubscriptions.forget(url);
     await settings.update((x) => x.userSubscriptions = x.userSubscriptions.where((u) => u != url).toList());
+  }
+
+  /// Cached and parsed public feeds, kept separate from private user subscriptions.
+  Map<String, String> _publicSourceBodies = {};
+  final Map<String, List<Server>> _publicSourceServers = {};
+  bool _publicSourcesBusy = false;
+
+  void _parsePublicSources() {
+    _publicSourceServers
+      ..clear()
+      ..addAll({for (final e in _publicSourceBodies.entries) e.key: parseSubscription(e.value)});
+  }
+
+  int publicSourceCount(String url) => _publicSourceServers[url]?.length ?? 0;
+
+  /// Refreshes every public feed; a failed source keeps its last known-good cached profiles.
+  Future<void> refreshPublicSources() async {
+    if (_publicSourcesBusy || settings.publicSources.isEmpty) return;
+    _publicSourcesBusy = true;
+    try {
+      for (final url in settings.publicSources) {
+        try {
+          _publicSourceBodies[url] = await PublicProfileSources.fetch(url, proxy: engine.httpProxy);
+        } catch (e) {
+          AppLog.add('public profile source: refresh failed (${Uri.tryParse(url)?.host ?? 'invalid host'})');
+        }
+      }
+      _parsePublicSources();
+      final data = _data;
+      if (data != null) _apply(data);
+    } finally {
+      _publicSourcesBusy = false;
+    }
+  }
+
+  /// Adds a public feed only after a successful fetch and supported-profile validation.
+  Future<int> addPublicSource(String url) async {
+    final parsed = Uri.tryParse(url.trim());
+    if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) || parsed.host.isEmpty || parsed.userInfo.isNotEmpty) return 0;
+    final key = parsed.toString();
+    try {
+      final body = await PublicProfileSources.fetch(key, proxy: engine.httpProxy);
+      _publicSourceBodies[key] = body;
+      _parsePublicSources();
+    } catch (e) {
+      AppLog.add('public profile source: add failed (${parsed.host})');
+      return 0;
+    }
+    if (!settings.publicSources.contains(key)) {
+      await settings.update((x) => x.publicSources = [...x.publicSources, key]);
+    } else {
+      final data = _data;
+      if (data != null) _apply(data);
+    }
+    return publicSourceCount(key);
+  }
+
+  Future<void> removePublicSource(String url) async {
+    _publicSourceBodies.remove(url);
+    _publicSourceServers.remove(url);
+    await PublicProfileSources.forget(url);
+    await settings.update((x) => x.publicSources = x.publicSources.where((u) => u != url).toList());
+    final data = _data;
+    if (data != null) _apply(data);
   }
 
   /// Real probe of the user's configs (Windows: HTTP 204 through each server; Android: core delay test).

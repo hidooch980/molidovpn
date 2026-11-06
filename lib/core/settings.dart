@@ -71,7 +71,8 @@ class AppSettings extends ChangeNotifier {
   String scheduleFrom = '08:00', scheduleTo = '23:00'; // HH:MM, local time; may cross midnight
   Set<String> favorites = {}; // server uris
   List<String> manualConfigs = []; // user-imported share links
-  List<String> userSubscriptions = []; // user's own subscription URLs ("کانفیگ‌های من"), refreshed hourly
+  List<String> userSubscriptions = []; // private/personal subscription URLs, refreshed hourly
+  List<String> publicSources = []; // additional public profile feeds, refreshed hourly
 
   // Server selection
   int poolSize = 40;
@@ -133,6 +134,7 @@ class AppSettings extends ChangeNotifier {
     favorites = (p.getStringList('s_favorites') ?? const []).toSet();
     manualConfigs = p.getStringList('s_manualConfigs') ?? [];
     userSubscriptions = p.getStringList('s_userSubs') ?? [];
+    publicSources = p.getStringList('s_publicSources') ?? [];
     poolSize = p.getInt('s_poolSize') ?? poolSize;
     timeoutSeconds = p.getInt('s_timeout') ?? timeoutSeconds;
     testUrl = p.getString('s_testUrl') ?? testUrl;
@@ -188,6 +190,7 @@ class AppSettings extends ChangeNotifier {
       p.setStringList('s_favorites', favorites.toList()),
       p.setStringList('s_manualConfigs', manualConfigs),
       p.setStringList('s_userSubs', userSubscriptions),
+      p.setStringList('s_publicSources', publicSources),
       p.setInt('s_poolSize', poolSize),
       p.setInt('s_timeout', timeoutSeconds),
       p.setString('s_testUrl', testUrl),

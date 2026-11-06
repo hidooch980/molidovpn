@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobin_vpn/core/countries.dart';
 import 'package:mobin_vpn/core/server.dart';
+import 'package:mobin_vpn/core/subscription.dart';
 import 'package:mobin_vpn/core/singbox_outbound.dart';
 import 'package:mobin_vpn/core/updater.dart';
 
@@ -68,6 +69,27 @@ void main() {
     expect([h['type'], h['username'], h['tls']['enabled']], ['http', 'u', true]);
     expect(Server.fromUri('wg://k@h.com:1')!.protocol, Protocol.wireguard);
     expect(parseOutbound('wireguard://k@h.com:51820?address=10.0.0.2'), isNull);
+  });
+
+  test('public profile feeds reject unsafe URL forms before network access', () async {
+    await expectLater(PublicProfileSources.fetch('file:///etc/passwd'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('https://user:password@example.com/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('not-a-url'), throwsA(isA<FormatException>()));
+    await expectLater(
+      PublicProfileSources.fetch('https://example.com/feed', proxy: '127.0.0.1:8080'),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(PublicProfileSources.fetch('http://127.0.0.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://10.0.0.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://169.254.169.254/latest/meta-data'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://localhost/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://192.0.0.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://192.0.2.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://192.88.99.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://198.51.100.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://[2001:db8::1]/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://[2001:1::1]/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://[3fff::1]/feed'), throwsA(isA<FormatException>()));
   });
 
   test('real published subscription parses', () {
