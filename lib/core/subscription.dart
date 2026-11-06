@@ -9,6 +9,7 @@ import 'server.dart';
 
 /// The user's own subscription URLs: each body is cached in preferences and refreshed in the background.
 class UserSubscriptions {
+  static const maxBodyBytes = 2 * 1024 * 1024;
   static const _textPrefix = 'usub_text:', _timePrefix = 'usub_time:';
 
   /// Cached body per URL (URLs never fetched are missing).
@@ -27,7 +28,15 @@ class UserSubscriptions {
       final req = await client.getUrl(Uri.parse(url));
       final res = await req.close().timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
-      final text = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
+      if (res.contentLength > maxBodyBytes) throw const FormatException('Subscription is larger than 2 MB');
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in res.timeout(const Duration(seconds: 30))) {
+        if (bytes.length + chunk.length > maxBodyBytes) {
+          throw const FormatException('Subscription is larger than 2 MB');
+        }
+        bytes.add(chunk);
+      }
+      final text = utf8.decode(bytes.takeBytes());
       if (parseSubscription(text).isEmpty) throw const FormatException('no valid links');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('$_textPrefix$url', text);
@@ -211,7 +220,7 @@ class SubscriptionRepository {
     'https://cdn.jsdelivr.net/gh/hidooch980/vpn-sub@sub/sub_base64.txt',
     'https://molido-sub.hidooch980.workers.dev/',
   ];
-  static const _textKey = 'sub_text', _timeKey = 'sub_time';
+  static const maxBodyBytes = 2 * 1024 * 1024;\n  static const _textKey = 'sub_text', _timeKey = 'sub_time';
 
   Future<SubscriptionData?> loadCached() async {
     final prefs = await SharedPreferences.getInstance();
@@ -253,10 +262,20 @@ class SubscriptionRepository {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final bust = DateTime.now().millisecondsSinceEpoch ~/ 60000;
-      final req = await client.getUrl(Uri.parse('$url?t=$bust'));
+      final parsed = Uri.parse(url);
+      final requestUri = parsed.replace(queryParameters: {...parsed.queryParameters, 't': '$bust'});
+      final req = await client.getUrl(requestUri).timeout(const Duration(seconds: 10));
       final res = await req.close().timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
-      return await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
+      if (res.contentLength > maxBodyBytes) throw const FormatException('Subscription is larger than 2 MB');
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in res.timeout(const Duration(seconds: 30))) {
+        if (bytes.length + chunk.length > maxBodyBytes) {
+          throw const FormatException('Subscription is larger than 2 MB');
+        }
+        bytes.add(chunk);
+      }
+      return utf8.decode(bytes.takeBytes());
     } finally {
       client.close(force: true);
     }
