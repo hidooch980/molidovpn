@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""End-to-end test of the Android in-app updater on the CI emulator.
+"""End-to-end test for Android's browser-based update hand-off.
 
-Installs the PREVIOUS release's APK, opens the app and lets it find the release that was just published,
-then walks through what a real user does: "Update" in the app dialog, in-app download, the system
-installer's "Install/Update" button. Passes only when the installed versionName becomes the new version.
+The Android app intentionally opens the signed APK URL in the user's browser.
+It does not download/install APKs itself (to avoid REQUEST_INSTALL_PACKAGES and
+Play Protect dropper heuristics). This test installs the previous release,
+waits for the in-app update notice, taps Update, and verifies that Android
+hands the request to the resolved HTTPS browser/chooser instead of expecting
+the app version to change automatically.
 
 usage: android-update-e2e.py <old.apk> <new-version>
 """
@@ -16,7 +19,11 @@ import xml.etree.ElementTree as ET
 PKG = "com.mobin.mobin_vpn"
 ACTIVITY = f"{PKG}/com.molido.vpn.MainActivity"
 SHEET_DISMISS = {"ارسال نشود", "Don't send", "Do not send"}
-INSTALLER_BUTTONS = re.compile(r"^(install|update|نصب|به‌روزرسانی|بروزرسانی)$", re.I)
+UPDATE_LABELS = {"update", "به‌روزرسانی", "بروزرسانی", "به روزرسانی"}
+BROWSER_OR_CHOOSER = (
+    "chrome", "browser", "firefox", "intentresolver", "resolver",
+    "chooser", "opera", "brave", "edge",
+)
 
 
 def adb(*args, check=False):
@@ -32,7 +39,7 @@ def installed_version():
 
 
 def shot(name):
-    subprocess.run(f"mkdir -p shots && adb exec-out screencap -p > shots/update-{name}.png", shell=True)
+    subprocess.run("mkdir -p shots && adb exec-out screencap -p > shots/update-" + name + ".png", shell=True, check=False)
 
 
 def ui_nodes():
@@ -48,8 +55,37 @@ def ui_nodes():
 
 
 def tap(node):
-    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds", "[0,0][0,0]")))
+    values = list(map(int, re.findall(r"\d+", node.get("bounds", "[0,0][0,0]"))))
+    if len(values) != 4:
+        return
+    x1, y1, x2, y2 = values
     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+
+
+def resumed_package():
+    dump = adb("shell", "dumpsys", "activity", "activities")
+    patterns = (
+        r"mResumedActivity:.*?\s([\w.]+)/[\w.$]+",
+        r"topResumedActivity=ActivityRecord\{[^}]*\s([\w.]+)/[\w.$]+",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, dump)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def resolve_https_handler():
+    out = adb(
+        "shell", "cmd", "package", "resolve-activity", "--brief",
+        "-a", "android.intent.action.VIEW", "-d",
+        "https://github.com/hidooch980/molidovpn/releases/latest",
+    )
+    for line in reversed(out.splitlines()):
+        match = re.search(r"([\w.]+)/[\w.$]+", line.strip())
+        if match:
+            return match.group(1)
+    return ""
 
 
 def main():
@@ -57,73 +93,72 @@ def main():
     adb("uninstall", PKG)
     adb("install", "-r", old_apk, check=True)
     old_version = installed_version()
-    print(f"installed old version {old_version}, waiting for update to {new_version}")
-    if old_version == new_version:
-        raise SystemExit("old APK already is the new version")
-    # Same as the user tapping "Allow" on the one-time "install unknown apps" screen.
-    adb("shell", "appops", "set", PKG, "REQUEST_INSTALL_PACKAGES", "allow")
-    adb("shell", "appops", "set", PKG, "ACTIVATE_VPN", "allow")
+    print(f"installed old version {old_version}; expecting browser hand-off for {new_version}")
+    if not old_version or old_version == new_version:
+        raise SystemExit("old APK version is missing or already equals the target version")
 
+    browser_package = resolve_https_handler()
+    print(f"resolved HTTPS handler: {browser_package or 'system chooser / unresolved'}")
     deadline = time.time() + 15 * 60
     last_launch = 0.0
-    stage = "launch"
+    update_tapped = False
+
     while time.time() < deadline:
-        version = installed_version()
-        if version == new_version:
-            time.sleep(3)
-            adb("shell", "am", "start", "-W", "-n", ACTIVITY)
-            time.sleep(6)
-            shot("4-updated")
-            print(f"✅ in-app update worked: {old_version} → {version}")
-            return
         nodes = ui_nodes()
         packages = {n.get("package", "") for n in nodes}
-        texts = " ".join((n.get("text") or "") for n in nodes).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
-        if any("packageinstaller" in p for p in packages):
-            if stage != "installer":
-                stage = "installer"
-                shot("3-system-installer")
-                print("system installer is showing")
-            for n in nodes:
-                if INSTALLER_BUTTONS.match((n.get("text") or "").strip()) and n.get("clickable") == "true":
-                    tap(n)
-                    print(f"tapped installer button '{n.get('text')}'")
-                    break
-        elif not (packages & {PKG, "com.google.android.apps.nexuslauncher", "com.android.launcher3", "com.android.systemui"}) and packages:
-            # Any other system dialog in the way (VPN consent, permission prompts): accept it.
-            ok = [n for n in nodes if n.get("resource-id") == "android:id/button1"] or                  [n for n in nodes if (n.get("text") or "").strip().upper() in ("OK", "ALLOW", "ALLOW ALL THE TIME")]
-            if ok:
-                tap(ok[0])
-                print(f"accepted system dialog from {sorted(packages)}")
-        elif PKG in packages:
-            positive = [n for n in nodes if n.get("resource-id") == "android:id/button1"]
-            # The first-run reports bottom sheet sits on top of the update dialog: answer it like a user would.
+        texts = " ".join((n.get("text") or "") for n in nodes).translate(
+            str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+        )
+
+        if update_tapped:
+            foreground = resumed_package()
+            if foreground and foreground != PKG:
+                normalized = foreground.lower()
+                expected = browser_package.lower()
+                is_expected = bool(expected and normalized == expected)
+                is_browser = any(token in normalized for token in BROWSER_OR_CHOOSER)
+                if is_expected or is_browser:
+                    shot("3-browser-handoff")
+                    print(f"✅ update hand-off opened {foreground}; installed version remains {installed_version()} as expected")
+                    return
+            # Give the browser/chooser a little time to become the resumed activity.
+            time.sleep(2)
+            continue
+
+        if PKG in packages:
             sheet = [n for n in nodes if (n.get("text") or "").strip() in SHEET_DISMISS]
             if sheet:
                 tap(sheet[0])
-                print(f"answered the first-run sheet: {sheet[0].get('text')!r}")
-            elif positive and new_version in texts:
-                shot("1-update-dialog")
-                tap(positive[0])
-                stage = "downloading"
-                print("tapped Update in the app dialog")
-            elif positive and stage != "downloading":
-                tap(positive[0])  # first-run dialogs (consent, notices)
-                print(f"dismissed a dialog: {texts[:80]!r}")
-            elif stage == "downloading" and "%" in texts:
-                shot("2-downloading")
-        # Worker caches release info for a few minutes: relaunch until the app sees the new version.
-        if stage == "launch" and time.time() - last_launch > 60:
+                print(f"dismissed first-run sheet: {sheet[0].get('text')!r}")
+            elif new_version in texts:
+                buttons = [
+                    n for n in nodes
+                    if n.get("clickable") == "true"
+                    and (
+                        n.get("resource-id") == "android:id/button1"
+                        or (n.get("text") or "").strip().lower() in UPDATE_LABELS
+                    )
+                ]
+                if buttons:
+                    shot("1-update-dialog")
+                    tap(buttons[0])
+                    update_tapped = True
+                    print("tapped Update in the app dialog; waiting for HTTPS browser hand-off")
+        if not update_tapped and time.time() - last_launch > 60:
             adb("shell", "am", "force-stop", PKG)
             adb("shell", "am", "start", "-W", "-n", ACTIVITY)
             last_launch = time.time()
-            print("launched app, waiting for the update dialog")
+            print("launched app; waiting for the update notice")
         time.sleep(4)
 
     shot("fail")
-    print("--- logcat ---")
+    print("--- foreground activity ---")
+    print(adb("shell", "dumpsys", "activity", "activities")[-12000:])
+    print("--- app logcat ---")
     print(adb("logcat", "-d", "-t", "300"))
-    raise SystemExit(f"❌ still on {installed_version()} after 15 min, expected {new_version}")
+    if not update_tapped:
+        raise SystemExit("update notice did not appear; app never offered the target version")
+    raise SystemExit(f"Update was tapped but browser hand-off was not observed (foreground={resumed_package()!r})")
 
 
 if __name__ == "__main__":

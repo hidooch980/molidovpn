@@ -519,7 +519,7 @@ jobs:
             ## استفاده
             - دکمه‌ی بزرگ را بزنید. در حالت **هوشمند** برنامه سرورها را با اینترنت خودتان می‌سنجد و به سریع‌ترین وصل می‌شود.
             - کارت «موقعیت» برای انتخاب کشور، دکمه‌ی 🖧 برای همه‌ی سرورها و تست پینگ، دکمه‌ی ⚙ برای تنظیمات پیشرفته.
-            - برنامه خودش نسخه‌ی جدید را پیدا و نصب می‌کند.
+            - برنامه نسخه‌ی جدید را پیدا می‌کند و لینک APK را در مرورگر باز می‌کند؛ پس از دانلود، فایل را باز کنید و نصب را تأیید کنید.
 
       - name: Mirror upload (S3-compatible; skipped without MIRROR_S3_* secrets)
         continue-on-error: true
@@ -545,7 +545,6 @@ jobs:
     env:
       VERSION: ${{ needs.resolve-version.outputs.version }}
     timeout-minutes: 40
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - name: Previous release APK
