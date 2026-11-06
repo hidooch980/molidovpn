@@ -88,6 +88,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Fetch pinned Android runtime binaries (SHA-256 verified)
+        run: bash tools/fetch-binaries.sh
       - name: Compile Android Kotlin sources (native Rust core excluded)
         run: |
           chmod +x ./gradlew
