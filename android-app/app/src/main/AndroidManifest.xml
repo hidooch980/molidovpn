@@ -173,5 +173,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_file_paths" />
        </provider>
-   </application>
+           <activity android:name=".Ikev2Activity" android:exported="false" />
+    </application>
 </manifest>
