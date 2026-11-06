@@ -22,7 +22,7 @@ UPDATE_LABELS = {
     "update", "download", "install", "به‌روزرسانی", "بروزرسانی",
     "به روزرسانی", "نصب", "دانلود",
 }
-ONBOARDING_NEXT_LABELS = {"بعدی", "بعد", "next", "continue", "ادامه"}
+ONBOARDING_NEXT_LABELS = {"بعدی", "بعد", "next", "continue", "ادامه", "اجازه vpn", "vpn اجازه", "allow vpn", "vpn permission"}
 BROWSER_OR_CHOOSER = (
     "chrome", "browser", "firefox", "intentresolver", "resolver",
     "chooser", "opera", "brave", "edge",
@@ -148,6 +148,20 @@ def main():
                 )
                 return
             time.sleep(2)
+            continue
+
+        # The final onboarding page requests Android's VPN consent. Tapping it
+        # opens a system-owned confirmation dialog; accept that explicit OS
+        # consent in the emulator so the test can reach the update banner.
+        system_allow = [
+            node for node in nodes
+            if node.get("clickable") == "true"
+            and normalized_text(node).lower() in {"ok", "allow", "اجازه", "تأیید", "تایید"}
+        ]
+        if PKG not in packages and system_allow:
+            tap(system_allow[0])
+            print(f"accepted emulator VPN consent: {normalized_text(system_allow[0])!r}")
+            time.sleep(1)
             continue
 
         if PKG in packages:
