@@ -19,8 +19,8 @@ PKG = "com.mobin.mobin_vpn"
 ACTIVITY = f"{PKG}/com.molido.vpn.MainActivity"
 SHEET_DISMISS = {"ارسال نشود", "Don't send", "Do not send"}
 UPDATE_LABELS = {
-    "update", "download", "install", "به‌روزرسانی", "بروزرسانی",
-    "به روزرسانی", "نصب", "دانلود",
+    "update", "download", "install", "install update", "به‌روزرسانی", "بروزرسانی",
+    "به روزرسانی", "نصب", "دانلود", "نصب به روزرسانی", "نصب به روز رسانی",
 }
 ONBOARDING_NEXT_LABELS = {"بعدی", "بعد", "next", "continue", "ادامه", "اجازه vpn", "vpn اجازه", "allow vpn", "vpn permission"}
 BROWSER_OR_CHOOSER = (
@@ -239,6 +239,10 @@ def main():
     print(f"--- foreground package: {resumed_package()} ---")
     print("--- foreground activity ---")
     print(adb("shell", "dumpsys", "activity", "activities")[-12000:])
+    print("--- clickable UI nodes at timeout ---")
+    for node in ui_nodes():
+        if node.get("clickable") == "true":
+            print(f"text={normalized_text(node)!r} resource={node.get('resource-id')!r} bounds={node.get('bounds')!r}")
     print("--- app logcat ---")
     print(adb("logcat", "-d", "-t", "500"))
     if not update_tapped:
