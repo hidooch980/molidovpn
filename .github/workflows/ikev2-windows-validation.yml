@@ -1,6 +1,16 @@
 name: Native IKEv2 Windows validation
 
 on:
+  push:
+    branches: [feat/native-ikev2-both-platforms-2026-11]
+    paths:
+      - 'lib/core/windows_ikev2.dart'
+      - 'lib/core/windows_engine.dart'
+      - 'lib/core/server.dart'
+      - 'lib/ui/import_screen.dart'
+      - 'windows/ikev2/**'
+      - 'test/**'
+      - '.github/workflows/ikev2-windows-validation.yml'
   pull_request:
     paths:
       - 'lib/core/windows_ikev2.dart'
