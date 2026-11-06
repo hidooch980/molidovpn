@@ -124,14 +124,29 @@ class PublicProfileSources {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
     client.findProxy = (_) => 'DIRECT';
-    client.connectionFactory = (uri, proxyHost, proxyPort) {
+    client.connectionFactory = (uri, proxyHost, proxyPort) async {
       if (proxyHost != null || proxyPort != null ||
           uri.host.toLowerCase() != parsed.host.toLowerCase() ||
           uri.port != parsed.port) {
         throw const FormatException('Public source connection target changed');
       }
-      final address = addresses[nextAddress++ % addresses.length];
-      return Socket.startConnect(address, uri.port);
+      Object? lastError;
+      for (var attempt = 0; attempt < addresses.length; attempt++) {
+        final address = addresses[nextAddress++ % addresses.length];
+        try {
+          final task = await Socket.startConnect(address, uri.port);
+          try {
+            await task.socket.timeout(const Duration(seconds: 10));
+            return task;
+          } catch (error) {
+            task.cancel();
+            lastError = error;
+          }
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw SocketException('No validated public address was reachable: $lastError');
     };
     try {
       final req = await client.getUrl(parsed);
