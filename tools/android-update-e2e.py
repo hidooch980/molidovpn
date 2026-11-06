@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """End-to-end test for the Android in-app update flow.
 
-Installs the previous signed APK, waits for the current home-screen update
-banner, follows its confirmation, and verifies the Android package-installer
-handoff and resulting installed version. Older releases that still use a
-browser hand-off remain supported.
+Installs the previous signed APK, finds the version-labelled update card,
+starts the in-app update, and verifies that the target version is actually
+installed. A browser hand-off is reported as unsupported rather than a pass.
 
 usage: android-update-e2e.py <old.apk> <new-version>
 """
@@ -131,8 +130,7 @@ def main():
             is_installer = any(token in normalized for token in INSTALLER_OR_SETTINGS)
             if is_browser:
                 shot("3-browser-handoff")
-                print(f"✅ legacy browser hand-off opened {foreground}")
-                return
+                raise SystemExit(f"browser hand-off is not an installed update: {foreground}")
             if is_installer:
                 # Confirm the Android system installer when its confirmation button appears.
                 install_buttons = [
@@ -158,15 +156,18 @@ def main():
                 print(f"dismissed first-run sheet: {sheet[0].get('text')!r}")
             elif new_version in texts and not banner_tapped:
                 # Current app exposes a tappable version card; the version text is its label.
+                def normalized_node_text(node):
+                    raw = (node.get("text") or "") + " " + (node.get("content-desc") or "")
+                    return raw.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
                 version_nodes = [
                     n for n in nodes
-                    if new_version in ((n.get("text") or "") + " " + (n.get("content-desc") or ""))
+                    if new_version in normalized_node_text(n)
                 ]
                 clickable = [
                     n for n in nodes
                     if n.get("clickable") == "true"
                     and (
-                        new_version in ((n.get("text") or "") + " " + (n.get("content-desc") or ""))
+                        new_version in normalized_node_text(n)
                         or any(label in (n.get("text") or "").strip().lower() for label in UPDATE_ACTION_LABELS)
                     )
                 ]
