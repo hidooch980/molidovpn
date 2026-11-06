@@ -75,6 +75,9 @@ void main() {
     await expectLater(PublicProfileSources.fetch('file:///etc/passwd'), throwsA(isA<FormatException>()));
     await expectLater(PublicProfileSources.fetch('https://user:password@example.com/feed'), throwsA(isA<FormatException>()));
     await expectLater(PublicProfileSources.fetch('not-a-url'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://127.0.0.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://10.0.0.1/feed'), throwsA(isA<FormatException>()));
+    await expectLater(PublicProfileSources.fetch('http://169.254.169.254/latest/meta-data'), throwsA(isA<FormatException>()));
   });
 
   test('real published subscription parses', () {
