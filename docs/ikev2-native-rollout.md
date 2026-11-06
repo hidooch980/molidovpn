@@ -18,6 +18,7 @@ or committed to the repository.
 - API 33+ uses startProvisionedVpnProfileSession; API 30–32 use the deprecated
   no-return start method.
 - The OS owns this tunnel. Do not start MolidoVpnService or create a second TUN.
+- The Android app exposes an IKEv2 selection and collects host, identity, username and password at connection time. Credentials are not written to app preferences.
 - Credentials are handed to the OS profile and must not be logged or stored by
   MolidoVPN.
 - Older devices keep existing transports and report IKEv2 as unsupported.
@@ -45,6 +46,13 @@ Implementation helper: windows/ikev2/Molido-Ikev2.ps1.
    connected. Cap retries and expose manual retry.
 6. Native OS failover may briefly interrupt traffic; do not promise seamless
    failover until a kill switch and leak tests pass.
+
+## Current implementation status
+
+- Windows parser/engine and native rasphone login path are wired into the Flutter Windows engine; each endpoint has a separate OS profile.
+- Android protocol selection and native VpnManager consent/start/stop flow are wired in PR #107.
+- The implementation has not yet been verified against a live IKEv2 server on either platform. CI builds and unit tests are not equivalent to a successful VPN handshake.
+- No production MolidoVPN-owned IKEv2 endpoint or credentials are currently registered in the repository.
 
 ## Release gates — not yet satisfied
 
