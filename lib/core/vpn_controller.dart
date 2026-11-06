@@ -326,6 +326,7 @@ class VpnController extends ChangeNotifier {
 
   int _healthFailures = 0;
   bool _watching = false;
+  bool _switchingAway = false;
 
   /// Servers that recently dropped, skipped until the time stored here.
   final Map<String, DateTime> _badUntil = {};
@@ -410,16 +411,26 @@ class VpnController extends ChangeNotifier {
 
   /// Auto mode: the connected server stopped working — put it aside for 10 minutes and connect to another one.
   Future<void> _switchAway(Server? dropped, {bool alreadyDisconnected = false}) async {
-    _healthFailures = 0;
-    if (dropped != null) {
-      _badUntil[dropped.uri] = DateTime.now().add(const Duration(minutes: 10));
-      AppLog.add('auto switch: leaving ${dropped.displayName}');
+    // The engine state stream and watchdog can report the same outage almost simultaneously.
+    // Serialize recovery so two reconnect runs cannot race and leave the UI stuck on a dead route.
+    if (_switchingAway || !settings.autoReconnect) return;
+    _switchingAway = true;
+    try {
+      _healthFailures = 0;
+      if (dropped != null) {
+        _badUntil[dropped.uri] = DateTime.now().add(const Duration(minutes: 10));
+        AppLog.add('auto switch: leaving ${dropped.displayName}');
+      }
+      if (!alreadyDisconnected && state != VpnState.disconnected) await disconnect();
+      if (state != VpnState.disconnected) return;
+      error = 'سرور ${dropped?.displayName ?? ''} قطع شد؛ جابه‌جایی خودکار به سرور دیگر…';
+      phase = 'انتخاب سرور جایگزین…';
+      unawaited(Diagnostics.record('drop', dropped != null ? _routeOf(dropped) : null, 'server stopped working; switching'));
+      notifyListeners();
+      await connect();
+    } finally {
+      _switchingAway = false;
     }
-    if (!alreadyDisconnected) await disconnect();
-    error = 'سرور ${dropped?.displayName ?? ''} قطع شد؛ جابه‌جایی خودکار به سرور دیگر…';
-    unawaited(Diagnostics.record('drop', dropped != null ? _routeOf(dropped) : null, 'server stopped working; switching'));
-    notifyListeners();
-    await connect();
   }
 
   /// Sends traffic used since the last report; disconnects when the panel has turned the account off.
