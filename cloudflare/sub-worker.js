@@ -2024,7 +2024,8 @@ if(key&&${keySet})load();
 // Memory also works when Cache API is unavailable (e.g. local preview).
 const catalogMemo = new Map();
 const catalogInflight = new Map();
-const CATALOG_TTL_MS = 60_000;
+const CATALOG_TTL_MS = 5 * 60_000;
+const CATALOG_STALE_IF_ERROR_MS = 30 * 60_000;
 let catalogChars = 0;
 
 function catalogKey(url) {
@@ -2052,7 +2053,9 @@ async function cachedCatalog(request, url, ctx, build) {
   if (path === null) return new Response('not found', { status: 404 });
   const key = `${url.origin}/__catalog/v2${path}`;
   const old = catalogMemo.get(key);
-  if (old && Date.now() - old.at < CATALOG_TTL_MS) return catalogResponse(old, request);
+  const now = Date.now();
+  const stale = old && old.status === 200 && now - old.at <= CATALOG_STALE_IF_ERROR_MS ? old : null;
+  if (old && old.status === 200 && now - old.at < CATALOG_TTL_MS) return catalogResponse(old, request);
   // Never use the caller's arbitrary query string or conditional headers as
   // a cache key: cache-busting polls must share the same computed catalog.
   try {
@@ -2062,13 +2065,24 @@ async function cachedCatalog(request, url, ctx, build) {
   let pending = catalogInflight.get(key);
   if (!pending) {
     pending = (async () => {
-      const response = await build();
+      let response;
+      try {
+        response = await build();
+      } catch {
+        if (stale) return stale;
+        return { status: 503, body: 'subscription temporarily unavailable', headers: [['retry-after', '30']] };
+      }
       const body = await response.text();
       const headers = new Headers(response.headers);
-      if (response.status !== 200) return { status: response.status, body, headers: [...headers] };
+      if (response.status !== 200) {
+        if (stale) return stale;
+        if (response.status === 429 && !headers.has('retry-after')) headers.set('retry-after', '30');
+        return { status: response.status, body, headers: [...headers] };
+      }
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)));
       headers.set('etag', '"' + Array.from(digest, b => b.toString(16).padStart(2, '0')).join('') + '"');
-      headers.set('cache-control', 'public, max-age=60');
+      headers.set('cache-control', 'public, max-age=300');
+      headers.set('x-molido-catalog-cache', 'refresh');
       const entry = { status: 200, body, headers: [...headers], at: Date.now() };
       if (body.length <= 1_000_000) {
         const previous = catalogMemo.get(key);
@@ -2088,8 +2102,16 @@ async function cachedCatalog(request, url, ctx, build) {
     catalogInflight.set(key, pending);
   }
   const entry = await pending;
-  return entry.status === 200 ? catalogResponse(entry, request) :
-    new Response(request.method === 'HEAD' ? null : entry.body, { status: entry.status, headers: entry.headers });
+  if (entry.status === 200) {
+    if (entry === stale) {
+      const headers = new Headers(entry.headers);
+      headers.set('x-molido-catalog-cache', 'stale-if-error');
+      headers.set('warning', '110 - "Response is stale because the subscription source is temporarily unavailable"');
+      return new Response(request.method === 'HEAD' ? null : entry.body, { status: 200, headers });
+    }
+    return catalogResponse(entry, request);
+  }
+  return new Response(request.method === 'HEAD' ? null : entry.body, { status: entry.status, headers: entry.headers });
 }
 
 export default {
