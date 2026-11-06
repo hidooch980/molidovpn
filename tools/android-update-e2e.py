@@ -7,6 +7,7 @@ handoff and resulting installed version. Older releases that still use a
 browser hand-off remain supported.
 
 usage: android-update-e2e.py <old.apk> <new-version>
+"""
 
 import re
 import subprocess
