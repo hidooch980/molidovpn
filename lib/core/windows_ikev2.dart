@@ -14,9 +14,9 @@ class WindowsIkev2 {
       );
 
   bool validHost(String host) {
-    if (host.isEmpty || host.length > 253 || host.contains(RegExp(r'\\s')) || host.contains('/') || host.contains('\\')) return false;
+    if (host.isEmpty || host.length > 253 || host.contains(RegExp(r'\s')) || host.contains('/') || host.contains('\\')) return false;
     if (InternetAddress.tryParse(host) != null) return true;
-    return RegExp(r'^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*
+    return RegExp(r'^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*
 
   Future<bool> connect(String host, {Duration timeout = const Duration(seconds: 75)}) async {
     if (!Platform.isWindows || !validHost(host)) return false;
