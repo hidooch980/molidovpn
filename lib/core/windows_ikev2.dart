@@ -87,8 +87,8 @@ class WindowsIkev2 {
     if (!Platform.isWindows || !validHost(host)) return false;
     try {
       final result = await _powershell(
-        "\\$p=Get-VpnConnection -Name ${_quote(profileNameFor(host))} -ErrorAction SilentlyContinue; "
-        "if (\\$p) { [Console]::Write(\\$p.ConnectionStatus) }"
+        "\$p=Get-VpnConnection -Name ${_quote(profileNameFor(host))} -ErrorAction SilentlyContinue; "
+        "if (\$p) { [Console]::Write(\$p.ConnectionStatus) }"
       );
       return result.exitCode == 0 && result.stdout.toString().trim().toLowerCase() == 'connected';
     } on TimeoutException {
