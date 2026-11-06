@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +17,16 @@ class NetworkInfo extends ChangeNotifier {
   String? carrier; // SIM operator name from Android
   String? ip, isp, countryCode;
   bool loading = false;
+  bool _hasPendingRefresh = false;
+  String? _pendingProxy;
+
+  /// Drop the previous network address immediately when the tunnel state changes.
+  void clearLookup() {
+    ip = null;
+    isp = null;
+    countryCode = null;
+    notifyListeners();
+  }
 
   String get typeLabel => switch (type) {
         'wifi' => 'وای‌فای',
@@ -151,7 +162,12 @@ class NetworkInfo extends ChangeNotifier {
   static Future<int> tunMtu(int manual) async => manual > 0 ? manual : (await cellularLike() ? 1340 : 1420);
 
   Future<void> refresh({String? proxy}) async {
-    if (loading) return;
+    if (loading) {
+      // Do not lose a tunnel lookup if the initial device-IP request is still running.
+      _pendingProxy = proxy;
+      _hasPendingRefresh = true;
+      return;
+    }
     loading = true;
     notifyListeners();
     try {
@@ -173,6 +189,12 @@ class NetworkInfo extends ChangeNotifier {
     } finally {
       loading = false;
       notifyListeners();
+      if (_hasPendingRefresh) {
+        final nextProxy = _pendingProxy;
+        _pendingProxy = null;
+        _hasPendingRefresh = false;
+        unawaited(refresh(proxy: nextProxy));
+      }
     }
   }
 

@@ -22,9 +22,8 @@ import 'style.dart';
 import 'support.dart';
 import 'widgets.dart';
 
-/// Single scrolling home. Simple view (default): header, connect squircle, one plain status line (or a friendly
-/// error with a retry button), location card and support. Advanced view ("حالت پیشرفته", remembered): status
-/// details, exit card, mode chips, DNS chip, servers row, stats and network facts. Settings and Servers open as pages.
+/// Single unified scrolling home: connection status, live IP, location, route/DNS controls,
+/// servers, traffic stats, network facts and support. Settings and Servers open as pages.
 class ConsoleHome extends StatefulWidget {
   const ConsoleHome({super.key, required this.controller});
 
@@ -62,11 +61,10 @@ class _ConsoleHomeState extends State<ConsoleHome> {
     unawaited(_firstRun());
   }
 
-  /// Once settings are loaded: simple view always uses automatic mode, first-launch steps, then the reports question.
+  /// First-launch steps, then the anonymous reports consent question.
   Future<void> _firstRun() async {
     await c.ready.future;
     final s = c.settings;
-    if (!s.homeAdvanced && s.transport != 'auto') await s.update((x) => x.transport = 'auto');
     if (mounted && !s.onboarded) {
       await showOnboarding(context);
       await s.update((x) => x.onboarded = true);
@@ -121,6 +119,8 @@ class _ConsoleHomeState extends State<ConsoleHome> {
       _probe?.cancel();
     }
     if (c.state == VpnState.connected || c.state == VpnState.disconnected) {
+      // Never leave the previous route's address visible while the new route is checked.
+      network.clearLookup();
       Future<void>.delayed(const Duration(milliseconds: 1500), () => network.refresh(proxy: c.engine.httpProxy));
     }
   }
@@ -156,8 +156,6 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         ListenableBuilder(
         listenable: Listenable.merge([c, network, c.settings]),
         builder: (context, _) {
-          final lastMs = _latency.isEmpty ? null : _latency.last;
-          final advanced = c.settings.homeAdvanced;
           return SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -172,16 +170,12 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     const SizedBox(height: 14),
                     Center(child: _Squircle(controller: c)),
                     SmartConnectPanel(run: c.smart, state: c.state),
-                    if (!advanced) ...[
-                      _SimpleStatus(controller: c),
-                      const SizedBox(height: 16),
-                      _LocationCard(controller: c),
-                      const SizedBox(height: 12),
-                      const CardGroup(children: [TelegramSupportRow(), ShareFriendsRow()]),
-                    ] else ...[
-                    _Status(controller: c, latency: lastMs),
+                    _SimpleStatus(controller: c),
                     const SizedBox(height: 12),
+                    // Unified home: live IP and all connection controls stay together.
                     _ExitCard(controller: c, network: network, latency: _latency),
+                    const SizedBox(height: 12),
+                    _LocationCard(controller: c),
                     const SizedBox(height: 12),
                     _ModeChips(controller: c),
                     const SizedBox(height: 8),
@@ -195,14 +189,12 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                         onTap: _openServers,
                       ),
                       const TelegramSupportRow(),
+                      const ShareFriendsRow(),
                     ]),
                     const SizedBox(height: 12),
                     _Tiles(controller: c),
                     SectionHeader(tr('شبکه', 'Network')),
                     _Facts(controller: c, network: network, latency: _latency),
-                    ],
-                    const SizedBox(height: 12),
-                    _AdvancedToggle(controller: c),
                   ],
                 ),
               ),
@@ -323,30 +315,6 @@ class _NoticeBanner extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// "حالت پیشرفته" switch on home; turning it off returns to automatic mode.
-class _AdvancedToggle extends StatelessWidget {
-  const _AdvancedToggle({required this.controller});
-
-  final VpnController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = controller.settings;
-    return CardGroup(children: [
-      SwitchSettingRow(
-        icon: Icons.tune_rounded,
-        title: tr('حالت پیشرفته', 'Advanced mode'),
-        subtitle: tr('انتخاب نوع اتصال، DNS، لیست سرورها و آمار', 'Connection type, DNS, server list and statistics'),
-        value: s.homeAdvanced,
-        onChanged: (v) => s.update((x) {
-          x.homeAdvanced = v;
-          if (!v) x.transport = 'auto';
-        }),
-      ),
-    ]);
   }
 }
 
@@ -772,80 +740,6 @@ class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixi
     );
   }
 }
-
-/// Title + two-line detail + "`mode` · latency `ms`".
-class _Status extends StatelessWidget {
-  const _Status({required this.controller, required this.latency});
-
-  final VpnController controller;
-  final int? latency;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = controller;
-    final (title, color, _) = _stateLook(c);
-    final failed = c.state == VpnState.disconnected && c.error != null;
-    final idle = c.state == VpnState.disconnected && !failed;
-    final connected = c.state == VpnState.connected;
-    final detail = switch (c.state) {
-      VpnState.connected => c.current == null
-          ? '${c.dnsOnlyNote ?? ''}${c.exitInIran ? ' · ${tr(VpnController.exitIranMessage, 'Exit is in Iran; some services (like Gemini) will not work')}' : ''}'
-          : '${c.activeMember != null ? '${serverTitle(c.current!)} · ${tr('مسیر فعال', 'active path')}: ${c.activeMember}' : c.switchedToBackup ? '${serverTitle(c.current!)} · ${tr('به سرور پشتیبان منتقل شد', 'switched to backup server')}' : serverTitle(c.current!)}'
-              '${c.exitInIran ? ' · ${tr(VpnController.exitIranMessage, 'Exit is in Iran; some services (like Gemini) will not work')}' : ''}',
-      VpnState.connecting => c.phase ?? '',
-      _ => failed ? c.error! : '',
-    };
-    final ms = connected ? (latency ?? c.currentDelay) : null;
-    final mode = connected && c.current != null ? c.current!.protocolLabel : _routeShort(c.settings.transport);
-    final chipColor = Palette.muted.withValues(alpha: 0.95);
-    return Column(children: [
-      if (!idle) ...[
-        const SizedBox(height: 4),
-        Text(connected ? tr('متصل هستید', 'You are protected') : title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: L10n.en ? 21.0 : 25.0,
-                fontWeight: FontWeight.w700,
-                color: connected ? Palette.connected : (failed ? Palette.errorText : color))),
-        const SizedBox(height: 3),
-        GestureDetector(
-          onTap: failed ? c.clearError : null,
-          child: Text(detail,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5, height: 1.5, color: failed ? Palette.danger : Palette.muted)),
-        ),
-        if (failed) const _SupportButton(),
-      ],
-      if (c.state == VpnState.connecting && c.progress != null)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 4),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(value: c.progress, minHeight: 3, color: Palette.connecting, backgroundColor: Palette.raised),
-          ),
-        ),
-      const SizedBox(height: 7),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text(mode, style: TextStyle(fontSize: 12, color: chipColor)),
-        Text('  ·  ', style: TextStyle(fontSize: 12, color: Palette.muted.withValues(alpha: 0.5))),
-        Text(ms == null ? tr('تاخیر —', 'Latency —') : tr('تاخیر ${digits(ms)} ms', 'Latency $ms ms'),
-            style: TextStyle(fontSize: 12, color: ms == null ? chipColor : Palette.forDelay(ms))),
-      ]),
-    ]);
-  }
-}
-
-String _routeShort(String transport) => switch (transport) {
-      'v2ray' => 'V2Ray',
-      'warp' => 'WARP',
-      'psiphon' => 'Psiphon',
-      'tor' => 'Tor',
-      'dns' => 'DNS',
-      'amnezia' => 'Amnezia',
-      _ => tr('خودکار', 'Auto'),
-    };
 
 /// Android ExitNodeCard: flag tile, caption, big monospace IP, country line, sparkline. Opens the location picker.
 class _ExitCard extends StatelessWidget {
