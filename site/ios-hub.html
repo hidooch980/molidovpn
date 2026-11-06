@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1120">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Molido iOS Hub">
+<meta name="description" content="مرکز اتصال MolidoVPN برای آیفون؛ انتخاب کلاینت، مدیریت اشتراک و راهنمای اتصال">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./logo-mark.svg">
+<title>Molido iOS Hub · MolidoVPN</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1120;--panel:#131d31;--panel2:#1a2943;--line:#2a3955;--ink:#edf4ff;--muted:#9eacc5;--accent:#45d6c1;--warn:#f4bc62;--bad:#ef7373}
+:root[data-theme=light]{color-scheme:light;--bg:#f3f6fb;--panel:#fff;--panel2:#edf2f8;--line:#dce4ef;--ink:#152238;--muted:#60708a;--accent:#087f73;--warn:#9a6100;--bad:#c93f4b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 85% 0,#15504c55,transparent 38%),var(--bg);color:var(--ink);font:15px/1.7 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;padding-bottom:calc(26px + env(safe-area-inset-bottom))}
+a{color:var(--accent);text-decoration:none}button{font:inherit;color:inherit;cursor:pointer}.wrap{max-width:760px;margin:auto;padding:18px 16px 40px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.brand{font-size:18px;font-weight:900}.brand small{display:block;font-size:11px;color:var(--muted);font-weight:500}.iconbtn,.btn{border:1px solid var(--line);background:var(--panel);border-radius:13px;padding:9px 13px}.hero,.panel{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:19px;margin:14px 0}.hero{background:linear-gradient(140deg,#17434aaa,var(--panel) 65%)}.eyebrow{color:var(--accent);font-size:12px;font-weight:800}.hero h1{font-size:26px;line-height:1.4;margin:6px 0}.muted{color:var(--muted)}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.primary{background:var(--accent);color:#06201d;border-color:transparent;font-weight:850}.client{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0;background:var(--panel)}.client b{display:block}.client small{color:var(--muted)}.client .btn{white-space:nowrap}.tag{font-size:11px;border:1px solid var(--line);padding:2px 8px;border-radius:99px;color:var(--muted)}h2{font-size:18px;margin:0 0 8px}.url{direction:ltr;text-align:left;overflow-wrap:anywhere;background:var(--panel2);padding:10px;border-radius:11px;font-size:12px;color:var(--muted);margin:9px 0}.status{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}.status:last-child{border:0}.ok{color:var(--accent)}.bad{color:var(--bad)}.warn{color:var(--warn)}.steps{padding-right:22px}.steps li{margin:7px 0}.note{border-right:3px solid var(--warn);padding:9px 12px;background:#49361d33;border-radius:9px;color:var(--muted);font-size:13px}footer{text-align:center;color:var(--muted);font-size:12px;margin-top:22px}
+@media(max-width:380px){.client{grid-template-columns:1fr}.client .btn{width:100%}.hero h1{font-size:23px}}
+</style>
+</head>
+<body><main class="wrap">
+<header><a class="brand" href="./app.html">MolidoVPN <small>مرکز اتصال آیفون · iOS Hub</small></a><button class="iconbtn" id="theme" aria-label="تغییر پوسته">◐</button></header>
+<section class="hero">
+<div class="eyebrow">MOLIDO IOS HUB · نسخه اولیه</div>
+<h1>یک مرکز ساده برای اتصال آیفون</h1>
+<p class="muted">کلاینت سازگار را انتخاب کن، اشتراک را وارد کن و وضعیت سرویس را بررسی کن.</p>
+<div class="row"><a class="btn primary" href="#clients">انتخاب کلاینت</a><a class="btn" href="#subscription">مشاهده اشتراک</a></div>
+</section>
+<section class="panel" id="clients"><h2>۱. انتخاب کلاینت اتصال</h2><p class="muted">یکی از برنامه‌های نصب‌شده را انتخاب کن. اگر برنامه نصب نیست، ابتدا آن را از App Store دریافت کن.</p>
+<div class="client"><div><b>Hiddify <span class="tag">پیشنهادی</span></b><small>ورود اشتراک با لینک اختصاصی</small></div><a class="btn primary" id="hiddify" href="https://apps.apple.com/search?term=Hiddify">بازکردن / نصب</a></div>
+<div class="client"><div><b>Streisand</b><small>واردکردن اشتراک در کلاینت Streisand</small></div><a class="btn" id="streisand" href="https://apps.apple.com/search?term=Streisand">بازکردن / نصب</a></div>
+<div class="client"><div><b>Karing</b><small>افزودن پروفایل از طریق لینک</small></div><a class="btn" id="karing" href="https://apps.apple.com/search?term=Karing">بازکردن / نصب</a></div>
+<div class="client"><div><b>sing-box</b><small>پروفایل JSON؛ نیازمند کلاینت سازگار</small></div><a class="btn" id="singbox" href="https://molido-sub.hidooch980.workers.dev/ios/singbox">دریافت پروفایل</a></div>
+<p class="note">بازشدن لینک به نصب‌بودن برنامه و پشتیبانی همان نسخه از URL scheme بستگی دارد. اگر باز نشد، لینک اشتراک را کپی و از داخل برنامه Import کن.</p>
+</section>
+<section class="panel" id="subscription"><h2>۲. اشتراک اصلی آیفون</h2><p class="muted">برای کلاینت‌های سازگار با فرمت خروجی سرویس.</p><div class="url" id="subUrl">https://molido-sub.hidooch980.workers.dev/ios</div><div class="row"><button class="btn primary" id="copy">کپی لینک اشتراک</button><a class="btn" id="openSub" href="https://molido-sub.hidooch980.workers.dev/ios">بازکردن اشتراک</a></div>
+<div class="status"><span>تعداد کانفیگ‌های قابل‌شمارش</span><b id="count">در حال بررسی…</b></div><div class="status"><span>دسترسی سرویس</span><b id="service">در حال بررسی…</b></div><div class="status"><span>آخرین بررسی</span><b id="checked">—</b></div>
+</section>
+<section class="panel"><h2>۳. راه‌اندازی روی آیفون</h2><ol class="steps"><li>Safari را باز کن و <a href="./app.html">داشبورد MolidoVPN</a> را به صفحه اصلی اضافه کن: Share سپس Add to Home Screen.</li><li>یک کلاینت سازگار را نصب و باز کن.</li><li>در این صفحه کلاینت را انتخاب کن یا لینک اشتراک را کپی کن.</li><li>در کلاینت گزینه Import / Add subscription را بزن و اتصال را فعال کن.</li></ol>
+<p class="note">این صفحه یک PWA است و خودش تونل VPN سیستمی ایجاد نمی‌کند. اتصال واقعی توسط کلاینت نصب‌شده و پروفایل معتبر انجام می‌شود. وضعیت اتصال داخل کلاینت را بررسی کن.</p></section>
+<section class="panel"><h2>۴. حریم خصوصی و پشتیبانی</h2><div class="status"><span>ذخیره رمز عبور</span><b class="ok">انجام نمی‌شود</b></div><div class="status"><span>تازه‌سازی اشتراک</span><b>دستی از کلاینت / لینک</b></div><div class="status"><span>پشتیبانی</span><a href="https://t.me/Molido_Vpn">تلگرام MolidoVPN ←</a></div><div class="status"><span>گزارش نسخه‌ها</span><a href="https://github.com/hidooch980/molidovpn/releases">GitHub Releases ←</a></div></section>
+<footer>MolidoVPN · iOS Hub · <a href="./app.html">بازگشت به داشبورد</a></footer>
+</main>
+<script>
+const BASE='https://molido-sub.hidooch980.workers.dev',sub=BASE+'/ios';
+const deep={hiddify:'hiddify://import/'+BASE+'/hiddify#MolidoVPN',streisand:'streisand://import/'+sub+'#MolidoVPN',karing:'karing://install-config?url='+encodeURIComponent(sub)+'&name=MolidoVPN'};
+for(const id of Object.keys(deep))document.getElementById(id).href=deep[id];
+document.getElementById('theme').onclick=()=>{const root=document.documentElement,next=root.dataset.theme==='light'?'dark':'light';root.dataset.theme=next;try{localStorage.setItem('molido-theme',next)}catch{}};
+try{const saved=localStorage.getItem('molido-theme');if(saved)document.documentElement.dataset.theme=saved}catch{}
+document.getElementById('copy').onclick=async()=>{try{await navigator.clipboard.writeText(sub);document.getElementById('copy').textContent='کپی شد'}catch{document.getElementById('copy').textContent='کپی نشد؛ لینک را لمس طولانی کن'}};
+async function check(){try{const r=await fetch(sub,{cache:'no-store'});if(!r.ok)throw Error(r.status);let t=await r.text(),s=t.trim();if(!s.includes('://')){try{s=atob(s.replace(/\s/g,''))}catch{}}const n=s.split(/\r?\n/).filter(x=>/^[a-z0-9]+:\/\//i.test(x.trim())).length;document.getElementById('count').textContent=n+' کانفیگ';document.getElementById('service').textContent='در دسترس';document.getElementById('service').className='ok';}catch{document.getElementById('count').textContent='نامشخص';document.getElementById('service').textContent='خطا در دریافت';document.getElementById('service').className='bad'}document.getElementById('checked').textContent=new Date().toLocaleTimeString('fa-IR')}
+check();
+</script></body></html>
