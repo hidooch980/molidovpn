@@ -14,6 +14,12 @@ void main() {
     expect(manager.validHost('example.com.'), isFalse);
     expect(manager.validHost(''), isFalse);
     expect(manager.profileNameFor('vpn-a.example.com'), isNot(manager.profileNameFor('vpn-b.example.com')));
-    expect(manager.profileNameFor('vpn-a.example.com').length, lessThan(64));
+    final prefix = 'vpn-NaN';
+    expect(
+      manager.profileNameFor('$prefix-one.example.com'),
+      isNot(manager.profileNameFor('$prefix-two.example.com')),
+    );
+    expect(manager.profileNameFor('$prefix-one.example.com').length, lessThan(64));
+    expect(manager.profileNameFor('VPN.Example.COM'), manager.profileNameFor('vpn.example.com'));
   });
 }
