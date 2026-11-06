@@ -313,7 +313,7 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
-    if (options.tunMode && !isAdmin) throw const AdminRequiredError();
+    if (options.tunMode && !isAdmin && server.protocol != Protocol.ikev2) throw const AdminRequiredError();
     await disconnect();
     if (server.protocol == Protocol.ikev2) {
       final uri = Uri.tryParse(server.uri);
