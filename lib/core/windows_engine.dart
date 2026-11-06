@@ -17,6 +17,7 @@ import 'server.dart';
 import 'singbox_core.dart';
 import 'singbox_outbound.dart';
 import 'warp.dart';
+import 'windows_ikev2.dart';
 import 'win_free_routes.dart';
 import 'win_system_proxy.dart';
 import 'xray_bridge.dart';
@@ -29,6 +30,9 @@ class WindowsEngine implements VpnEngine {
   final _traffic = StreamController<TrafficStat>.broadcast();
   late SingboxCore _core;
   late WinFreeRoutes _free;
+  final WindowsIkev2 _ikev2 = WindowsIkev2();
+  bool _ikev2Active = false;
+  String? _ikev2Host;
 
   /// Local Xray-core for XHTTP servers (sing-box 1.12 has no XHTTP transport).
   late XrayBridge _xray;
@@ -88,6 +92,7 @@ class WindowsEngine implements VpnEngine {
 
   @override
   bool supports(Server server) =>
+      server.protocol == Protocol.ikev2 ||
       server.uri.startsWith('warp://') ||
       FreeRoutes.isFree(server) ||
       WinFreeRoutes.isChain(server) ||
@@ -149,6 +154,7 @@ class WindowsEngine implements VpnEngine {
   /// Quick check (one request, 4 s) so a frozen tunnel is noticed within a few seconds.
   @override
   Future<bool> healthCheck(EngineOptions options) async {
+    if (_ikev2Active && _ikev2Host != null) return _ikev2.isConnected(_ikev2Host!);
     if (_dnsOnly) return _core.process != null && await _systemLookupOk();
     if (_awgActive) return await _cfTrace(const Duration(seconds: 4)) != null;
     final port = _proxyPort;
@@ -308,8 +314,25 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Future<bool> connect(Server server, EngineOptions options) async {
-    if (options.tunMode && !isAdmin) throw const AdminRequiredError();
+    if (options.tunMode && !isAdmin && server.protocol != Protocol.ikev2) throw const AdminRequiredError();
     await disconnect();
+    if (server.protocol == Protocol.ikev2) {
+      final uri = Uri.tryParse(server.uri);
+      final host = uri?.host ?? '';
+      if (host.isEmpty) return false;
+      onPhase?.call('Opening native Windows IKEv2 login…');
+      final connected = await _ikev2.connect(host, timeout: const Duration(seconds: 90));
+      _ikev2Active = connected;
+      _ikev2Host = connected ? host : null;
+      if (connected) {
+        AppLog.add('windows: native IKEv2 connected to $host');
+        _states.add(VpnState.connected);
+      } else {
+        AppLog.add('windows: native IKEv2 connection was not verified for $host');
+        _states.add(VpnState.disconnected);
+      }
+      return connected;
+    }
     final free = FreeRoutes.isFree(server);
     final chain = WinFreeRoutes.isChain(server);
     final deadlineAt = free || chain ? null : deadline;
@@ -656,6 +679,9 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Future<void> disconnect() async {
+    if (_ikev2Active && _ikev2Host != null) await _ikev2.disconnect(_ikev2Host!);
+    _ikev2Active = false;
+    _ikev2Host = null;
     _proxyPort = null;
     _api = null;
     _activeStandby = const [];

@@ -89,7 +89,7 @@ class ImportScreen extends StatelessWidget {
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(tr('کانفیگ‌های من', 'My configs'), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Palette.text)),
-                            Text(tr('VLESS، VMess، Trojan، SS، Hysteria2، TUIC، AnyTLS، WireGuard، SOCKS، HTTP', 'VLESS, VMess, Trojan, SS, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS, HTTP'),
+                            Text(tr('VLESS، VMess، Trojan، SS، Hysteria2، TUIC، AnyTLS، WireGuard، SOCKS، HTTP، IKEv2', 'VLESS, VMess, Trojan, SS, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS, HTTP, IKEv2'),
                                 style: TextStyle(fontSize: 11.5, color: Palette.muted)),
                           ]),
                         ),
@@ -139,6 +139,10 @@ class ImportScreen extends StatelessWidget {
                         style: TextStyle(fontSize: 12, color: Palette.muted, height: 1.6),
                       ),
                       const SizedBox(height: 14),
+                      if (Platform.isWindows) Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(tr('برای افزودن IKEv2، آدرس سرور را به شکل ikev2://vpn.example.com وارد کنید. هنگام اتصال، پنجره امن ورود ویندوز باز می‌شود.', 'To add IKEv2, paste a server as ikev2://vpn.example.com. Windows opens its native secure sign-in prompt when connecting.'), style: TextStyle(fontSize: 12, color: Palette.muted, height: 1.5)),
+                      ),
                       _SubscriptionBox(controller: controller),
                       const SizedBox(height: 14),
                       if (mine.isNotEmpty)
