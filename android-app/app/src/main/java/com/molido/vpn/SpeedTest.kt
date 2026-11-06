@@ -52,7 +52,11 @@ object SpeedTest {
         return try {
             val probes = (0 until PROBE_COUNT).mapNotNull { timed(proxy, "$BASE/__down?bytes=0") }
             val sorted = probes.sorted()
-            val ping = sorted.getOrNull(sorted.size / 2)
+            val ping = when {
+                sorted.isEmpty() -> null
+                sorted.size % 2 == 1 -> sorted[sorted.size / 2]
+                else -> (sorted[sorted.size / 2 - 1] + sorted[sorted.size / 2]) / 2
+            }
             val jitter = if (probes.size < 2) null else
                 probes.zipWithNext().map { (a, b) -> kotlin.math.abs(b - a).toDouble() }.average()
             val down = download(proxy)
@@ -79,6 +83,7 @@ object SpeedTest {
         val t0 = SystemClock.elapsedRealtime()
         val c = open(proxy, url)
         try {
+            c.readTimeout = PROBE_LIMIT_MS.toInt()
             if (c.responseCode != HttpURLConnection.HTTP_OK) return null
             c.inputStream.use { input ->
                 val buf = ByteArray(1024)
@@ -98,11 +103,12 @@ object SpeedTest {
         if (ms <= 0) 0.0 else bytes * 8.0 / 1_000_000.0 / (ms / 1000.0)
 
     private fun download(proxy: Proxy): Double? {
+        val t0 = SystemClock.elapsedRealtime()
         val c = open(proxy, "$BASE/__down?bytes=$DOWN_BYTES")
         try {
             if (c.responseCode != HttpURLConnection.HTTP_OK) return null
             if (c.contentLengthLong >= 0 && c.contentLengthLong != DOWN_BYTES.toLong()) return null
-            val t0 = SystemClock.elapsedRealtime()
+            if (SystemClock.elapsedRealtime() - t0 >= TRANSFER_LIMIT_MS) return null
             var total = 0L
             c.inputStream.use { input ->
                 val buf = ByteArray(64 * 1024)
