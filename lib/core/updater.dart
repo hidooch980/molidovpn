@@ -1,7 +1,8 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show TimeoutException, unawaited;
 import 'dart:convert';
 import 'dart:ffi' show Abi;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:cryptography/cryptography.dart' show Sha256;
@@ -36,6 +37,10 @@ class UpdateInfo {
 /// In-app updates from this repo's latest GitHub Release.
 class Updater {
   static const _repo = 'hidooch980/molidovpn';
+  static const _maxMetadataBytes = 1024 * 1024;
+  static const _maxUpdateBytes = 512 * 1024 * 1024;
+  static const _metadataTimeout = Duration(seconds: 20);
+  static const _downloadTimeout = Duration(minutes: 5);
   static const releasesPage = 'https://github.com/$_repo/releases/latest';
 
   /// Per-ABI APK (~50 MB) matching the running build; universal (~140 MB) only for other CPUs.
@@ -96,35 +101,84 @@ class Updater {
     _mirrorApi,
   ];
 
-  /// Release JSON (GitHub shape, or our mirrors' with `sha256`/`critical`) → the asset for this build.
+  /// Release JSON → the exact asset for this build. Only trusted GitHub release
+  /// URLs with a bounded size and a SHA-256 digest are eligible for updates.
   static UpdateInfo? parseRelease(Map<String, dynamic> json, String assetName) {
-    final version = '${json['tag_name']}'.replaceFirst(RegExp('^v'), '');
-    final asset = (json['assets'] as List).cast<Map<String, dynamic>>().where((a) => a['name'] == assetName).firstOrNull;
+    final rawTag = json['tag_name'];
+    if (rawTag is! String || !RegExp(r'^v?[0-9]+(?:\\.[0-9]+)*$').hasMatch(rawTag)) return null;
+    final version = rawTag.replaceFirst(RegExp(r'^v'), '');
+    final assets = json['assets'];
+    if (assets is! List) return null;
+    Map<String, dynamic>? asset;
+    for (final item in assets) {
+      if (item is Map<String, dynamic> && item['name'] == assetName) {
+        asset = item;
+        break;
+      }
+    }
     if (asset == null) return null;
+
+    final rawUrl = asset['browser_download_url'];
+    if (rawUrl is! String || !_isTrustedAssetUrl(rawUrl, rawTag, assetName)) return null;
+    final rawSize = asset['size'];
+    if (rawSize is! num || !rawSize.isFinite) return null;
+    final size = rawSize.toInt();
+    if (size <= 0 || size > _maxUpdateBytes) return null;
+
     final digest = '${asset['digest'] ?? ''}';
     var sha = '${asset['sha256'] ?? ''}'.toLowerCase();
     if (sha.isEmpty && digest.startsWith('sha256:')) sha = digest.substring(7).toLowerCase();
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(sha)) return null;
+
     return UpdateInfo(
       version: version,
-      url: asset['browser_download_url'] as String,
+      url: rawUrl,
       assetName: assetName,
-      size: (asset['size'] as num?)?.toInt() ?? 0,
-      sha256: RegExp(r'^[0-9a-f]{64}$').hasMatch(sha) ? sha : null,
+      size: size,
+      sha256: sha,
       critical: json['critical'] == true || '${json['body'] ?? ''}'.toLowerCase().contains('[critical]'),
     );
+  }
+
+  static bool _isTrustedAssetUrl(String rawUrl, String tag, String assetName) {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com' ||
+        uri.userInfo.isNotEmpty || uri.hasPort || uri.hasQuery || uri.hasFragment) return false;
+    final p = uri.pathSegments;
+    return p.length == 6 &&
+        p[0] == 'hidooch980' &&
+        p[1] == 'molidovpn' &&
+        p[2] == 'releases' &&
+        p[3] == 'download' &&
+        p[4] == tag &&
+        p[5] == assetName;
   }
 
   Future<UpdateInfo?> _fromApi(String installed, String? proxy, String url) async {
     final client = _client(proxy);
     try {
-      final req = await client.getUrl(Uri.parse(url));
+      final watch = Stopwatch()..start();
+      final req = await client.getUrl(Uri.parse(url)).timeout(_metadataTimeout);
       req.headers
         ..set(HttpHeaders.userAgentHeader, 'MobinVPN/$installed')
         ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
-      final res = await req.close().timeout(const Duration(seconds: 20));
-      final body = await res.transform(utf8.decoder).join();
-      if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
-      return parseRelease(jsonDecode(body) as Map<String, dynamic>, _assetName);
+      final res = await req.close().timeout(_metadataTimeout);
+      if (res.statusCode != HttpStatus.ok) throw HttpException('HTTP ${res.statusCode}');
+      final bytes = BytesBuilder(copy: false);
+      var received = 0;
+      await for (final chunk in res.timeout(_metadataTimeout)) {
+        received += chunk.length;
+        if (received > _maxMetadataBytes || watch.elapsed > _metadataTimeout) {
+          throw const FormatException('release metadata exceeded its size/time limit');
+        }
+        bytes.add(chunk);
+      }
+      if (watch.elapsed > _metadataTimeout) {
+        throw TimeoutException('release metadata timed out');
+      }
+      final decoded = jsonDecode(utf8.decode(bytes.takeBytes()));
+      if (decoded is! Map<String, dynamic>) throw const FormatException('invalid release metadata');
+      return parseRelease(decoded, _assetName);
     } finally {
       client.close(force: true);
     }
@@ -134,18 +188,18 @@ class Updater {
   Future<UpdateInfo?> _fromRedirect(String? proxy) async {
     final client = _client(proxy);
     try {
-      final req = await client.getUrl(Uri.parse(releasesPage));
+      final req = await client.getUrl(Uri.parse(releasesPage)).timeout(_metadataTimeout);
       req.followRedirects = false;
-      final res = await req.close().timeout(const Duration(seconds: 20));
-      await res.drain<void>();
+      final res = await req.close().timeout(_metadataTimeout);
       final location = res.headers.value(HttpHeaders.locationHeader) ?? '';
       final tag = parseRedirectTag(location);
-      if (tag == null) return null;
-      return UpdateInfo(
-        version: tag.replaceFirst(RegExp('^v'), ''),
-        url: 'https://github.com/$_repo/releases/download/$tag/$_assetName',
-        assetName: _assetName,
-        size: 0,
+      if (tag == null || res.statusCode < 300 || res.statusCode >= 400) return null;
+      // A redirect supplies only a tag, not integrity metadata. Resolve the exact
+      // release through the API and refuse the update if its SHA-256/size are absent.
+      return await _fromApi(
+        'update-check',
+        proxy,
+        'https://api.github.com/repos/$_repo/releases/tags/$tag',
       );
     } finally {
       client.close(force: true);
@@ -156,7 +210,7 @@ class Updater {
   /// Rejects other hosts and paths so an untrusted redirect cannot supply a tag.
   static String? parseRedirectTag(String location) {
     final uri = Uri.tryParse(location);
-    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') { return null; }
+    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') {\n      return null;\n    }
     final segments = uri.pathSegments;
     if (segments.length != 5 ||
         segments[0] != 'hidooch980' ||
@@ -178,35 +232,62 @@ class Updater {
   }
 
   Future<File> download(UpdateInfo update, {String? proxy, required void Function(double progress) onProgress}) async {
+    if (update.sha256 == null ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(update.sha256!) ||
+        update.size <= 0 ||
+        update.size > _maxUpdateBytes ||
+        !_isTrustedAssetUrl(update.url, 'v${update.version}', update.assetName) &&
+            !_isTrustedAssetUrl(update.url, update.version, update.assetName)) {
+      throw const FormatException('update metadata failed integrity validation');
+    }
+
     final file = File('${(await getTemporaryDirectory()).path}${Platform.pathSeparator}${update.assetName}');
     final client = _client(proxy);
+    final watch = Stopwatch()..start();
     AppLog.add('update: downloading ${update.url}${proxy != null ? ' via $proxy' : ''}');
     try {
-      final res = await (await client.getUrl(Uri.parse(update.url))).close();
-      if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
-      final total = res.contentLength > 0 ? res.contentLength : update.size;
+      if (await file.exists()) await file.delete();
+      final req = await client.getUrl(Uri.parse(update.url)).timeout(_metadataTimeout);
+      req.headers.set(HttpHeaders.userAgentHeader, 'MobinVPN updater');
+      final res = await req.close().timeout(_metadataTimeout);
+      if (res.statusCode != HttpStatus.ok) throw HttpException('HTTP ${res.statusCode}');
+      if (res.contentLength >= 0 && res.contentLength != update.size) {
+        throw FileSystemException('unexpected content length: ${res.contentLength}, expected ${update.size}');
+      }
+
       final sink = file.openWrite();
       var received = 0;
       try {
         await for (final chunk in res.timeout(const Duration(seconds: 60))) {
-          sink.add(chunk);
+          if (watch.elapsed > _downloadTimeout) {
+            throw TimeoutException('update download exceeded $_downloadTimeout');
+          }
           received += chunk.length;
-          if (total > 0) onProgress(received / total);
+          if (received > update.size || received > _maxUpdateBytes) {
+            throw FileSystemException('update download exceeded its declared size');
+          }
+          sink.add(chunk);
+          onProgress((received / update.size).clamp(0.0, 1.0));
         }
       } finally {
         await sink.close();
       }
-      if (total > 0 && received != total) throw FileSystemException('download incomplete: $received of $total bytes');
-      final want = update.sha256;
-      if (want != null) {
-        final got = await sha256File(file);
-        if (got != want) {
-          await file.delete();
-          throw FileSystemException('download damaged (sha256 $got, expected $want)');
-        }
+      if (watch.elapsed > _downloadTimeout) {
+        throw TimeoutException('update download exceeded $_downloadTimeout');
       }
-      AppLog.add('update: downloaded $received bytes to ${file.path}');
+      if (received != update.size) {
+        throw FileSystemException('download incomplete: $received of ${update.size} bytes');
+      }
+
+      final got = await sha256File(file);
+      if (got != update.sha256) {
+        throw FileSystemException('download damaged (sha256 $got, expected ${update.sha256})');
+      }
+      AppLog.add('update: downloaded and SHA-256 verified $received bytes to ${file.path}');
       return file;
+    } catch (_) {
+      if (await file.exists()) await file.delete();
+      rethrow;
     } finally {
       client.close(force: true);
     }
