@@ -54,7 +54,7 @@ void main() {
 
     test('rejects untrusted hosts and paths', () {
       expect(
-        Updater.parseRelease(_release(url: 'https://evil.example/$ _assetName'), _assetName),
+        Updater.parseRelease(_release(url: 'https://evil.example/releases/download/v4.0.10/$_assetName'), _assetName),
         isNull,
       );
       expect(
