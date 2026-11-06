@@ -85,8 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
           # shellcheck disable=SC2153
+          set -euo pipefail
           repo='hidooch980/molidovpn-android'
           release_version="$VERSION"
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
