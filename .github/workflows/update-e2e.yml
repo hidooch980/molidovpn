@@ -1,6 +1,10 @@
 name: Update e2e (Android)
 
 on:
+  pull_request:
+    paths:
+      - "tools/android-update-e2e.py"
+      - ".github/workflows/update-e2e.yml"
   workflow_dispatch:
     inputs:
       old:
@@ -11,7 +15,7 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   e2e:
@@ -35,13 +39,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: python3 tools/android-update-e2e.py old.apk ${{ inputs.new }}
-      - name: Publish screenshots (branch previews-update)
+          script: python3 tools/android-update-e2e.py old.apk ${{ inputs.new || '4.0.9' }}
+      - name: Upload update-flow screenshots
         if: always()
-        run: |
-          [ -d shots ] || exit 0
-          cd shots
-          git init -q -b previews-update
-          git config user.name molido-bot && git config user.email molido-bot@users.noreply.github.com
-          git add . && git commit -qm "Update e2e screenshots"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews-update
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-update-e2e-screenshots
+          path: shots/*.png
+          if-no-files-found: ignore
