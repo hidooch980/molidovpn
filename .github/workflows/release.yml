@@ -65,6 +65,7 @@ jobs:
           # shellcheck disable=SC2153
           repo='hidooch980/molidovpn-android'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
+          # shellcheck disable=SC2153
           test "$tag" = "v$VERSION" || { echo "::error::Android release $tag does not match requested desktop version v$VERSION"; exit 1; }
           mkdir -p dist previous
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-arm64.apk' -D dist
