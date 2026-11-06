@@ -39,6 +39,62 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin:25px 0}
 <div class="row"><a class="btn primary" id="quick" href="https://molido-sub.hidooch980.workers.dev/ios">اتصال سریع با کلاینت</a><a class="btn" href="./ios-hub.html">مرکز اتصال آیفون</a><button class="btn" id="refresh">تازه‌سازی اطلاعات</button></div>
 <div class="notice" id="notice"></div>
 </div>
+
+<section id="protocol-center" class="protocol-center" aria-labelledby="protocol-title">
+<style>
+.protocol-center{margin-top:16px;border:1px solid var(--line);border-radius:22px;background:var(--panel);padding:18px;box-shadow:var(--shadow)}
+.protocol-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.protocol-head h2{margin:3px 0 5px}.protocol-kicker{color:var(--a);font-size:12px;font-weight:850}
+.protocol-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.protocol-metric{background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:10px}
+.protocol-metric b{display:block;font-size:18px}.protocol-metric small{color:var(--muted);font-size:11px}
+.protocol-tabs{display:flex;gap:7px;overflow:auto;padding:3px 0 10px}
+.protocol-tabs button{white-space:nowrap;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:999px;padding:7px 11px;font-size:12px}
+.protocol-tabs button[aria-pressed=true]{background:var(--a);border-color:var(--a);color:#06201d;font-weight:800}
+.protocol-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.protocol-item{border:1px solid var(--line);border-radius:13px;padding:11px;min-width:0}
+.protocol-item[hidden]{display:none}.protocol-item b{display:block}.protocol-item small{display:block;color:var(--muted);font-size:11px}
+.protocol-state{display:inline-flex;margin-top:7px;border:1px solid var(--line);border-radius:99px;padding:2px 7px;font-size:10px;color:var(--warn)}
+.transport-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.transport-list span{font-size:11px;padding:4px 8px;border-radius:8px;background:var(--panel2);color:var(--muted)}
+.protocol-note{margin-top:12px;padding:11px;border-radius:12px;background:var(--panel2);color:var(--muted);font-size:12px}
+@media(max-width:420px){.protocol-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.protocol-list{grid-template-columns:1fr}.protocol-center{padding:14px}}
+</style>
+<div class="protocol-head">
+<div><div class="protocol-kicker">MOLIDO · MULTI-PROTOCOL CORE</div><h2 id="protocol-title">مرکز پروتکل‌های ارتباطی</h2><p class="muted" style="margin:0">نمای کلی موتورهای اتصال و روش‌های انتقال؛ فعال‌سازی فقط پس از تست واقعی.</p></div>
+<span class="pill">پیش‌نمایش رابط</span>
+</div>
+<div class="protocol-summary">
+<div class="protocol-metric"><b>۱۰</b><small>موتور فاز اول</small></div>
+<div class="protocol-metric"><b>۱۱</b><small>روش انتقال</small></div>
+<div class="protocol-metric"><b>۰</b><small>تأییدشده در این صفحه</small></div>
+</div>
+<div class="protocol-tabs" role="group" aria-label="فیلتر پروتکل‌ها">
+<button type="button" data-protocol-filter="all" aria-pressed="true">همه</button>
+<button type="button" data-protocol-filter="core" aria-pressed="false">فاز اول</button>
+<button type="button" data-protocol-filter="later" aria-pressed="false">تکمیلی</button>
+</div>
+<div class="protocol-list" id="protocol-list">
+<article class="protocol-item" data-phase="core"><b>VLESS + REALITY</b><small>اتصال امن · موتور Xray</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>VLESS + XHTTP</b><small>انتقال انعطاف‌پذیر · موتور Xray</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>Trojan</b><small>اتصال مبتنی بر TLS</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>Shadowsocks 2022</b><small>پراکسی رمزنگاری‌شده</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>VMess</b><small>سازگاری با پیکربندی‌های موجود</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>WireGuard</b><small>تونل لایه شبکه</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>AmneziaWG</b><small>WireGuard با قابلیت‌های ضدشناسایی</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>Hysteria 2</b><small>انتقال مبتنی بر QUIC</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>TUIC</b><small>پروتکل مبتنی بر QUIC</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="core"><b>OpenVPN</b><small>سازگاری گسترده TCP / UDP</small><span class="protocol-state">در انتظار پیاده‌سازی و تست</span></article>
+<article class="protocol-item" data-phase="later"><b>MTProto Proxy</b><small>پراکسی مخصوص تلگرام؛ نه تونل VPN عمومی</small><span class="protocol-state">ماژول مستقل · فاز بعد</span></article>
+<article class="protocol-item" data-phase="later"><b>Tor</b><small>مسیریابی ناشناس؛ سرویس مستقل</small><span class="protocol-state">ماژول مستقل · فاز بعد</span></article>
+</div>
+<h3 style="font-size:14px;margin:16px 0 6px">Transport Engine</h3>
+<div class="transport-list" aria-label="روش‌های انتقال"><span>TCP</span><span>UDP</span><span>QUIC</span><span>WebSocket</span><span>gRPC</span><span>XHTTP</span><span>HTTP/2</span><span>HTTP/3</span><span>HTTPUpgrade</span><span>mKCP</span></div>
+<div class="protocol-note">وضعیت این بخش صرفاً نمایشی است و به معنی فعال بودن تونل‌ها نیست. ترکیب‌های ناسازگار مخفی می‌مانند؛ هر موتور پس از تست سازگاری، سرعت، پایداری و امنیت جداگانه تأیید می‌شود.</div>
+<script>
+(()=>{const root=document.getElementById('protocol-center');if(!root)return;const buttons=[...root.querySelectorAll('[data-protocol-filter]')];const cards=[...root.querySelectorAll('.protocol-item')];buttons.forEach(button=>button.addEventListener('click',()=>{const value=button.dataset.protocolFilter;buttons.forEach(item=>item.setAttribute('aria-pressed',String(item===button)));cards.forEach(card=>card.hidden=value!=='all'&&card.dataset.phase!==value)}));})();
+</script>
+</section>
+
 <div class="grid">
 <div class="stat"><small>سرورهای آماده iOS</small><strong id="serverCount">در حال بررسی…</strong></div>
 <div class="stat"><small>وضعیت سرویس اشتراک</small><strong id="workerState">در حال بررسی…</strong></div>
