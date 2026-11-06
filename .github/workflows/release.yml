@@ -43,7 +43,7 @@ jobs:
             tag=$(gh release view -R hidooch980/molidovpn-android --json tagName --jq .tagName)
             version="${tag#v}"
           fi
-          [[ "$version" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || { echo "::error::Invalid release version: $version"; exit 1; }
+          [[ "$version" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]] || { echo "::error::Invalid release version: $version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Using canonical Android release v$version"
 
