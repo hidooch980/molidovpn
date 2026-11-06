@@ -117,12 +117,11 @@ def main():
     adb("uninstall", PKG)
     adb("install", "-r", old_apk, check=True, timeout=120)
     old_version = installed_version()
-    print(f"installed old version {old_version}; expecting browser hand-off for {new_version}")
+    print(f"installed old version {old_version}; expecting Android installer hand-off for {new_version}")
     if not old_version or old_version == new_version:
         raise SystemExit("old APK version is missing or already equals the target version")
 
-    browser_handler = resolve_https_handler()
-    print(f"resolved HTTPS handler: {browser_handler or 'system chooser / unresolved'}")
+    print("expecting Android package-installer hand-off after the in-app confirmation")
     deadline = time.time() + 7 * 60
     # adb install does not launch the app. Start it before waiting for UI nodes,
     # otherwise the emulator remains on the launcher for the entire timeout.
@@ -153,9 +152,8 @@ def main():
             foreground = resumed_package()
             normalized = foreground.lower()
             is_browser = any(token in normalized for token in UPDATE_HANDOFF)
-            expected = browser_handler.lower()
-            is_expected = bool(expected and normalized == expected)
-            if is_browser or is_expected:
+            is_expected = False
+            if is_browser:
                 shot("3-system-installer-handoff")
                 print(
                     f"SUCCESS: Android update hand-off opened in {foreground}; "
@@ -163,7 +161,7 @@ def main():
                 )
                 return
             # The release notice first opens an in-app confirmation dialog.
-            # Confirm that explicit second step before expecting the browser.
+            # Confirm the in-app prompt before expecting Android's package installer.
             confirm_text = " ".join(normalized_text(node).lower() for node in nodes)
             confirm_buttons = [
                 node for node in nodes
@@ -239,7 +237,7 @@ def main():
                     shot("1-update-dialog")
                     tap(buttons[0])
                     update_tapped = True
-                    print("tapped Update; waiting for HTTPS browser/chooser hand-off")
+                    print("tapped Update; waiting for Android package-installer hand-off")
                 else:
                     # Some UI versions make the version label itself a clickable card.
                     version_nodes = [
@@ -263,7 +261,7 @@ def main():
                                 shot("1-update-card")
                                 tap(min(parents, key=lambda item: item[0])[1])
                                 update_tapped = True
-                                print("tapped version update card; waiting for HTTPS browser/chooser")
+                                print("tapped version update card; waiting for Android package-installer hand-off")
         if not update_tapped and time.time() - last_launch > 60:
             # Recover if the app crashed or left the foreground while polling.
             adb("shell", "am", "force-stop", PKG)
