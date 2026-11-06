@@ -82,10 +82,10 @@ class PublicProfileSources {
     if (b.length != 16 || (b[0] & 0xe0) != 0x20) return false;
     if (b[0] == 0x20 && b[1] == 0x01) {
       if (b[2] == 0x0d && b[3] == 0xb8) return false; // 2001:db8::/32
-      if ((b[2] & 0xf8) == 0x00) return false; // 2001::/23
+      if ((b[2] & 0xfe) == 0x00) return false; // 2001::/23
     }
     if (b[0] == 0x20 && b[1] == 0x02) return false; // 6to4
-    if (b[0] == 0x3f && (b[1] & 0xf0) == 0xf0) return false; // 3fff::/20 docs
+    if (b[0] == 0x3f && b[1] == 0xff && (b[2] & 0xf0) == 0x00) return false; // 3fff::/20 docs
     return true;
   }
 
