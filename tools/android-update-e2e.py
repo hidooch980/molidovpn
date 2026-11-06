@@ -99,8 +99,8 @@ def main():
     if not old_version or old_version == new_version:
         raise SystemExit("old APK version is missing or already equals the target version")
 
-    # The current Android app uses a home-screen banner, then an in-app download
-    # and the Android package installer. Older builds used a dialog + browser.
+    # The current Android app uses a tappable version card, then in-app download
+    # and the Android package installer. Older builds may use a browser hand-off.
     # Grant the install app-op in the disposable emulator so the test can reach
     # the installer without a manual Settings detour.
     adb("shell", "appops", "set", PKG, "REQUEST_INSTALL_PACKAGES", "allow")
@@ -156,35 +156,41 @@ def main():
             if sheet:
                 tap(sheet[0])
                 print(f"dismissed first-run sheet: {sheet[0].get('text')!r}")
-            elif banner_tapped or new_version in texts:
-                if not banner_tapped:
-                    # Current home banner CTA: "Download update" / "Install update".
-                    banner_buttons = [
-                        n for n in nodes
-                        if n.get("clickable") == "true"
-                        and any(label in (n.get("text") or "").strip().lower() for label in UPDATE_ACTION_LABELS)
-                    ]
-                    if banner_buttons:
-                        shot("1-update-banner")
-                        tap(banner_buttons[0])
-                        banner_tapped = True
-                        print("tapped the home-screen update banner")
-                else:
-                    # The banner opens a confirmation dialog. Older releases may show
-                    # the update dialog directly, so accept either path.
-                    confirm_buttons = [
-                        n for n in nodes
-                        if n.get("clickable") == "true"
-                        and (
-                            n.get("resource-id") == "android:id/button1"
-                            or (n.get("text") or "").strip().lower() in UPDATE_CONFIRM_LABELS
-                        )
-                    ]
-                    if confirm_buttons:
-                        shot("2-update-confirm")
-                        tap(confirm_buttons[0])
-                        confirm_tapped = True
-                        print("confirmed update; waiting for browser or Android installer")
+            elif new_version in texts and not banner_tapped:
+                # Current app exposes a tappable version card; the version text is its label.
+                version_nodes = [
+                    n for n in nodes
+                    if new_version in ((n.get("text") or "") + " " + (n.get("content-desc") or ""))
+                ]
+                clickable = [
+                    n for n in nodes
+                    if n.get("clickable") == "true"
+                    and (
+                        new_version in ((n.get("text") or "") + " " + (n.get("content-desc") or ""))
+                        or any(label in (n.get("text") or "").strip().lower() for label in UPDATE_ACTION_LABELS)
+                    )
+                ]
+                if not clickable and version_nodes:
+                    # Text may be a non-clickable child of the tappable AppCard.
+                    def node_bounds(node):
+                        values = list(map(int, re.findall(r"\\d+", node.get("bounds", ""))))
+                        return values if len(values) == 4 else None
+                    target = node_bounds(version_nodes[0])
+                    if target:
+                        cx, cy = (target[0] + target[2]) // 2, (target[1] + target[3]) // 2
+                        parents = []
+                        for node in nodes:
+                            b = node_bounds(node)
+                            if node.get("clickable") == "true" and b and b[0] <= cx <= b[2] and b[1] <= cy <= b[3]:
+                                parents.append(((b[2] - b[0]) * (b[3] - b[1]), node))
+                        if parents:
+                            clickable = [min(parents, key=lambda item: item[0])[1]]
+                if clickable:
+                    shot("1-update-banner")
+                    tap(clickable[0])
+                    banner_tapped = True
+                    confirm_tapped = True  # tapping the card starts the download directly
+                    print("tapped update card; waiting for download and Android installer")
             if not confirm_tapped and time.time() - last_launch > 60:
                 adb("shell", "am", "force-stop", PKG)
                 adb("shell", "am", "start", "-W", "-n", ACTIVITY)
@@ -202,7 +208,7 @@ def main():
     if not banner_tapped:
         raise SystemExit("update banner did not appear or its action was not clickable")
     if not confirm_tapped:
-        raise SystemExit("update banner opened but its confirmation action was not found")
+        raise SystemExit("update card action was not triggered")
     if installed_version() != new_version:
         raise SystemExit("installer handoff was observed, but the target version was not installed")
 
