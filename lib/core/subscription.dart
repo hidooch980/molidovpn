@@ -100,7 +100,7 @@ class PublicProfileSources {
     return List<InternetAddress>.unmodifiable(addresses);
   }
 
-  static Future<String> fetch(String url) async {
+  static Future<String> fetch(String url, {String? proxy}) async {
     final parsed = Uri.tryParse(url.trim());
     if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) ||
         parsed.host.isEmpty || parsed.userInfo.isNotEmpty) {
@@ -108,6 +108,11 @@ class PublicProfileSources {
     }
     if (parsed.hasPort && (parsed.port < 1 || parsed.port > 65535)) {
       throw const FormatException('Invalid public source port');
+    }
+    if (proxy != null && proxy.trim().isNotEmpty) {
+      throw const FormatException(
+        'Public feeds cannot use an unpinned proxy; disable the proxy or use a direct network connection',
+      );
     }
     // Resolve once, reject every non-public answer, and pin the actual TCP
     // connection to one of those validated addresses. The URI hostname remains
