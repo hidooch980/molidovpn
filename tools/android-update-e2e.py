@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""End-to-end test for MolidoVPN's safe browser-based Android update flow.
+"""End-to-end test for MolidoVPN's safe Android system-installer update flow.
 
 The app deliberately does not request REQUEST_INSTALL_PACKAGES or install APKs
 itself. This test installs the previous signed APK, taps the update action, and
-verifies that Android opens the HTTPS download in a browser/chooser while the
-old app version remains installed.
+verifies that the signed APK is handed to Android's package installer while the
+old app version remains installed until the user confirms installation.
 
 usage: android-update-e2e.py <old.apk> <new-version>
 """
@@ -23,9 +23,10 @@ UPDATE_LABELS = {
     "به روزرسانی", "نصب", "دانلود", "نصب به روزرسانی", "نصب به روز رسانی",
 }
 ONBOARDING_NEXT_LABELS = {"بعدی", "بعد", "next", "continue", "ادامه", "اجازه vpn", "vpn اجازه", "allow vpn", "vpn permission"}
-BROWSER_OR_CHOOSER = (
+UPDATE_HANDOFF = (
     "chrome", "browser", "firefox", "intentresolver", "resolver",
-    "chooser", "opera", "brave", "edge",
+    "chooser", "opera", "brave", "edge", "packageinstaller",
+    "permissioncontroller", "com.android.packageinstaller",
 )
 
 
@@ -151,13 +152,13 @@ def main():
         if update_tapped:
             foreground = resumed_package()
             normalized = foreground.lower()
-            is_browser = any(token in normalized for token in BROWSER_OR_CHOOSER)
+            is_browser = any(token in normalized for token in UPDATE_HANDOFF)
             expected = browser_handler.lower()
             is_expected = bool(expected and normalized == expected)
             if is_browser or is_expected:
-                shot("3-browser-handoff")
+                shot("3-system-installer-handoff")
                 print(
-                    f"SUCCESS: HTTPS update opened in {foreground}; "
+                    f"SUCCESS: Android update hand-off opened in {foreground}; "
                     f"version {old_version} remains installed as designed"
                 )
                 return
@@ -179,7 +180,7 @@ def main():
                 tap(confirm_buttons[0])
                 print(
                     f"confirmed update dialog with {normalized_text(confirm_buttons[0])!r}; "
-                    "waiting for HTTPS browser/chooser hand-off",
+                    "waiting for Android package-installer hand-off",
                     flush=True,
                 )
                 time.sleep(2)
@@ -285,7 +286,7 @@ def main():
     if not update_tapped:
         raise SystemExit("update notice did not appear or its Update action was not clickable")
     raise SystemExit(
-        f"Update was tapped but HTTPS browser/chooser hand-off was not observed "
+        f"Update was tapped but Android package-installer hand-off was not observed "
         f"(foreground={resumed_package()!r})"
     )
 
