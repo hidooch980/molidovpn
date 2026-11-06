@@ -98,7 +98,13 @@ object SecureStore {
         val securePrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val encrypted = securePrefs.getString(key, null)
         if (encrypted != null) {
-            return decrypt(encrypted).ifBlank { fallback }
+            val decrypted = decrypt(encrypted)
+            if (decrypted.isBlank()) {
+                // Remove invalid/legacy plaintext entries rather than returning them.
+                removeSecret(context, key)
+                return fallback
+            }
+            return decrypted
         }
         // Fallback to legacy plain settings for migration
         val plainPrefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
