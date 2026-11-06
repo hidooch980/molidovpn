@@ -156,8 +156,6 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         ListenableBuilder(
         listenable: Listenable.merge([c, network, c.settings]),
         builder: (context, _) {
-          final lastMs = _latency.isEmpty ? null : _latency.last;
-          final advanced = c.settings.homeAdvanced;
           return SafeArea(
             child: Center(
               child: ConstrainedBox(
