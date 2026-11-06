@@ -56,3 +56,12 @@ jobs:
           }
       - name: Build Windows release bundle
         run: flutter build windows --release
+      - name: Package Windows preview artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'MolidoVPN-Windows-IKEv2-preview.zip' -Force
+      - uses: actions/upload-artifact@v6
+        with:
+          name: MolidoVPN-Windows-IKEv2-preview
+          path: MolidoVPN-Windows-IKEv2-preview.zip
+          if-no-files-found: error
