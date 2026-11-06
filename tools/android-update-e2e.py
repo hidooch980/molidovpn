@@ -173,7 +173,7 @@ def main():
                 if not clickable and version_nodes:
                     # Text may be a non-clickable child of the tappable AppCard.
                     def node_bounds(node):
-                        values = list(map(int, re.findall(r"\\d+", node.get("bounds", ""))))
+                        values = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
                         return values if len(values) == 4 else None
                     target = node_bounds(version_nodes[0])
                     if target:
