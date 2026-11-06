@@ -2068,9 +2068,9 @@ async function cachedCatalog(request, url, ctx, build) {
       let response;
       try {
         response = await build();
-      } catch {
+      } catch (error) {
         if (stale) return stale;
-        return { status: 503, body: 'subscription temporarily unavailable', headers: [['retry-after', '30']] };
+        throw error;
       }
       const body = await response.text();
       const headers = new Headers(response.headers);
