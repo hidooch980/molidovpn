@@ -321,9 +321,17 @@ class WindowsEngine implements VpnEngine {
       final host = uri?.host ?? '';
       if (host.isEmpty) return false;
       onPhase?.call('Opening native Windows IKEv2 login…');
+      // Publish the in-flight host before opening rasphone so Stop/cancel can
+      // disconnect a session that has not yet reached the connected state.
+      _ikev2Host = host;
+      _ikev2Active = false;
       final connected = await _ikev2.connect(host, timeout: const Duration(seconds: 90));
+      if (_ikev2Host != host) {
+        await _ikev2.disconnect(host);
+        return false; // The user cancelled or switched profiles mid-connect.
+      }
       _ikev2Active = connected;
-      _ikev2Host = connected ? host : null;
+      if (!connected) _ikev2Host = null;
       if (connected) {
         AppLog.add('windows: native IKEv2 connected to $host');
         _states.add(VpnState.connected);
@@ -679,7 +687,8 @@ class WindowsEngine implements VpnEngine {
 
   @override
   Future<void> disconnect() async {
-    if (_ikev2Active && _ikev2Host != null) await _ikev2.disconnect(_ikev2Host!);
+    final ikev2Host = _ikev2Host;
+    if (ikev2Host != null) await _ikev2.disconnect(ikev2Host);
     _ikev2Active = false;
     _ikev2Host = null;
     _proxyPort = null;
