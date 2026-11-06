@@ -217,7 +217,9 @@ class Ikev2Activity : android.app.Activity() {
         }
         val validHostname = server.length <= 253 &&
             android.util.Patterns.DOMAIN_NAME.matcher(server).matches()
-        val validIpv4 = android.util.Patterns.IP_ADDRESS.matcher(server).matches()
+        val validIpv4 = Regex(
+            "^(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])){3}$"
+        ).matches(server)
         if (!validHostname && !validIpv4) {
             serverField.error = "Enter a valid hostname or IPv4 address"
             return
