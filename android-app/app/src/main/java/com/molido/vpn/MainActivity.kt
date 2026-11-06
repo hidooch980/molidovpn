@@ -3553,6 +3553,9 @@ class MainActivity : Activity() {
             Strings.t("IRAN_DIRECT_SUBTITLE"),
             IranDirect.enabled(this),
         ) { on -> IranDirect.setEnabled(this, on) }, mainParams())
+        content.addView(navRow("IKEv2 / IPsec", "Native Android VPN") {
+            startActivity(Intent(this, Ikev2Activity::class.java))
+        }, mainParams())
         content.addView(navRow(Strings.t("Telegram support"), "@Molido_Vpn", iconRes = R.drawable.ic_telegram) {
             openTelegramSupport()
         }, mainParams())

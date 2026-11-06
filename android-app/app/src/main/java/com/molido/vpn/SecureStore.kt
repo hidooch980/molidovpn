@@ -58,8 +58,9 @@ object SecureStore {
             System.arraycopy(iv, 0, combined, 0, iv.size)
             System.arraycopy(cipherText, 0, combined, iv.size, cipherText.size)
             Base64.encodeToString(combined, Base64.NO_WRAP)
-        } catch (_: Exception) {
-            plainText
+        } catch (error: Exception) {
+            // Never persist a secret in plaintext when Keystore encryption fails.
+            throw IllegalStateException("Unable to encrypt secret with Android Keystore", error)
         }
     }
 
@@ -67,7 +68,7 @@ object SecureStore {
         if (encryptedBase64.isEmpty()) return ""
         return try {
             val combined = Base64.decode(encryptedBase64, Base64.NO_WRAP)
-            if (combined.size <= GCM_IV_LENGTH) return encryptedBase64
+            if (combined.size <= GCM_IV_LENGTH) return ""
             val key = getOrCreateKey()
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val spec = GCMParameterSpec(GCM_TAG_LENGTH, combined, 0, GCM_IV_LENGTH)
@@ -75,7 +76,8 @@ object SecureStore {
             val plainBytes = cipher.doFinal(combined, GCM_IV_LENGTH, combined.size - GCM_IV_LENGTH)
             String(plainBytes, Charsets.UTF_8)
         } catch (_: Exception) {
-            encryptedBase64
+            // Corrupt or legacy plaintext values are not returned as credentials.
+            ""
         }
     }
 
@@ -96,14 +98,26 @@ object SecureStore {
         val securePrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val encrypted = securePrefs.getString(key, null)
         if (encrypted != null) {
-            return decrypt(encrypted).ifBlank { fallback }
+            val decrypted = decrypt(encrypted)
+            if (decrypted.isBlank()) {
+                // Remove invalid/legacy plaintext entries rather than returning them.
+                removeSecret(context, key)
+                return fallback
+            }
+            return decrypted
         }
         // Fallback to legacy plain settings for migration
         val plainPrefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val legacy = plainPrefs.getString(key, null)
         if (!legacy.isNullOrBlank()) {
-            putSecret(context, key, legacy)
-            return legacy
+            return try {
+                putSecret(context, key, legacy)
+                legacy
+            } catch (_: Exception) {
+                // Do not leave a plaintext credential behind if secure migration fails.
+                plainPrefs.edit().remove(key).apply()
+                fallback
+            }
         }
         return fallback
     }
@@ -119,3 +133,141 @@ object SecureStore {
             .apply()
     }
 }
+
+/** Native Android IKEv2/IPsec client using the platform VpnManager (Android 11+). */
+class Ikev2Activity : android.app.Activity() {
+    private lateinit var serverField: android.widget.EditText
+    private lateinit var identityField: android.widget.EditText
+    private lateinit var usernameField: android.widget.EditText
+    private lateinit var passwordField: android.widget.EditText
+    private val manager: android.net.VpnManager
+        get() = getSystemService(android.net.VpnManager::class.java)
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            android.widget.Toast.makeText(this, "IKEv2 native mode requires Android 11 or newer.", android.widget.Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        val prefs = getSharedPreferences("ikev2_profile", Context.MODE_PRIVATE)
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 48, 48, 32)
+            setBackgroundColor(android.graphics.Color.rgb(15, 20, 30))
+        }
+        fun field(hintText: String, value: String = "", password: Boolean = false) =
+            android.widget.EditText(this).apply {
+                hint = hintText
+                setText(value)
+                setTextColor(android.graphics.Color.WHITE)
+                setHintTextColor(android.graphics.Color.LTGRAY)
+                textSize = 16f
+                setSingleLine(true)
+                inputType = if (password) android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD else android.text.InputType.TYPE_CLASS_TEXT
+                setPadding(24, 18, 24, 18)
+            }
+        root.addView(android.widget.TextView(this).apply {
+            text = "IKEv2 / IPsec"
+            textSize = 24f
+            setTextColor(android.graphics.Color.WHITE)
+        })
+        root.addView(android.widget.TextView(this).apply {
+            text = "Native Android VPN · Android 11+"
+            textSize = 13f
+            setTextColor(android.graphics.Color.LTGRAY)
+        })
+        serverField = field("VPN server (hostname)", prefs.getString("server", "") ?: "")
+        identityField = field("Remote identity", prefs.getString("identity", "") ?: "")
+        usernameField = field("Username", SecureStore.getSecret(this, "ikev2_username"))
+        passwordField = field("Password", SecureStore.getSecret(this, "ikev2_password"), true)
+        listOf(serverField, identityField, usernameField, passwordField).forEach { input ->
+            root.addView(input, android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 18 })
+        }
+        root.addView(android.widget.Button(this).apply {
+            text = "Connect with IKEv2"
+            setOnClickListener { provisionAndConnect() }
+        }, android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = 24 })
+        root.addView(android.widget.Button(this).apply {
+            text = "Disconnect IKEv2"
+            setOnClickListener {
+                try {
+                    manager.stopProvisionedVpnProfile()
+                    android.widget.Toast.makeText(this@Ikev2Activity, "IKEv2 disconnect requested", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) { showError(e) }
+            }
+        }, android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = 8 })
+        setContentView(android.widget.ScrollView(this).apply { addView(root) })
+    }
+
+    private fun provisionAndConnect() {
+        val server = serverField.text.toString().trim()
+        val identity = identityField.text.toString().trim()
+        val username = usernameField.text.toString()
+        val password = passwordField.text.toString()
+        if (server.isBlank() || identity.isBlank() || username.isBlank() || password.isBlank()) {
+            android.widget.Toast.makeText(this, "Enter server, remote identity, username and password.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        val validHostname = server.length <= 253 &&
+            android.util.Patterns.DOMAIN_NAME.matcher(server).matches()
+        val validIpv4 = Regex(
+            "^(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])){3}$"
+        ).matches(server)
+        if (!validHostname && !validIpv4) {
+            serverField.error = "Enter a valid hostname or IPv4 address"
+            return
+        }
+        try {
+            getSharedPreferences("ikev2_profile", Context.MODE_PRIVATE).edit()
+                .putString("server", server).putString("identity", identity).apply()
+            SecureStore.putSecret(this, "ikev2_username", username)
+            SecureStore.putSecret(this, "ikev2_password", password)
+            val profile = android.net.Ikev2VpnProfile.Builder(server, identity)
+                .setAuthUsernamePassword(username, password, null)
+                .setBypassable(false)
+                .build()
+            val consentIntent = manager.provisionVpnProfile(profile)
+            if (consentIntent == null) {
+                // Android returns null when this app already has VPN consent.
+                // In that case there is no system activity to launch.
+                manager.startProvisionedVpnProfile()
+                android.widget.Toast.makeText(
+                    this,
+                    "IKEv2 connection requested. Android is establishing the tunnel.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            } else {
+                startActivityForResult(consentIntent, REQUEST_PROVISION)
+            }
+        } catch (e: Exception) { showError(e) }
+    }
+
+    @Deprecated("Android platform VPN consent callback")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_PROVISION) return
+        if (resultCode != RESULT_OK) {
+            android.widget.Toast.makeText(this, "IKEv2 permission was not granted.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            manager.startProvisionedVpnProfile()
+            android.widget.Toast.makeText(this, "IKEv2 connection requested. Android is establishing the tunnel.", android.widget.Toast.LENGTH_LONG).show()
+        } catch (e: Exception) { showError(e) }
+    }
+
+    private fun showError(error: Exception) {
+        android.util.Log.e("MolidoIKEv2", "IKEv2 operation failed", error)
+        android.widget.Toast.makeText(this, "IKEv2: ${error.localizedMessage ?: error.javaClass.simpleName}", android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    companion object { private const val REQUEST_PROVISION = 7421 }
+}
+
