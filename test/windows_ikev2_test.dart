@@ -6,6 +6,8 @@ void main() {
     final manager = WindowsIkev2();
     expect(manager.validHost('vpn.example.com'), isTrue);
     expect(manager.validHost('vpn-01.example.net'), isTrue);
+    expect(manager.validHost('192.0.2.10'), isTrue);
+    expect(manager.validHost('2001:db8::1'), isTrue);
     expect(manager.validHost('vpn.example.com; Start-Process calc'), isFalse);
     expect(manager.validHost('https://vpn.example.com'), isFalse);
     expect(manager.validHost('.example.com'), isFalse);
