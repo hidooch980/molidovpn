@@ -54,11 +54,17 @@ class WindowsIkev2 {
 
   Future<bool> isConnected(String host) async {
     if (!Platform.isWindows || !validHost(host)) return false;
-    final result = await _powershell(
-      "\$p=Get-VpnConnection -Name ${_quote(profileNameFor(host))} -ErrorAction SilentlyContinue; "
-      "if (\$p) { [Console]::Write(\$p.ConnectionStatus) }"
-    );
-    return result.exitCode == 0 && result.stdout.toString().trim().toLowerCase() == 'connected';
+    try {
+      final result = await _powershell(
+        "\\$p=Get-VpnConnection -Name ${_quote(profileNameFor(host))} -ErrorAction SilentlyContinue; "
+        "if (\\$p) { [Console]::Write(\\$p.ConnectionStatus) }"
+      );
+      return result.exitCode == 0 && result.stdout.toString().trim().toLowerCase() == 'connected';
+    } on TimeoutException {
+      return false;
+    } on ProcessException {
+      return false;
+    }
   }
 
   Future<void> disconnect(String host) async {
