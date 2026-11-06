@@ -77,7 +77,6 @@ jobs:
           exit 1
 
   android-native-compile:
-    if: contains(github.event.pull_request.changed_files, 0) == false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
