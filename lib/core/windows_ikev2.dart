@@ -14,7 +14,7 @@ class WindowsIkev2 {
       );
 
   bool validHost(String host) {
-    if (host.isEmpty || host.length > 253 || host.contains(RegExp(r'\\s')) || host.contains('/') || host.contains('\\\\')) return false;
+    if (host.isEmpty || host.length > 253 || host.contains(RegExp(r'\s')) || host.contains('/') || host.contains('\\')) return false;
     if (InternetAddress.tryParse(host) != null) return true;
     final labels = host.split('.');
     return labels.every((label) => label.isNotEmpty && label.length <= 63 &&
