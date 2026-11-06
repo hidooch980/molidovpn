@@ -9,9 +9,9 @@ class WindowsIkev2 {
 
   Future<ProcessResult> _powershell(String script) => Process.run(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
         runInShell: false,
-      );
+      ).timeout(const Duration(seconds: 20));
 
   bool validHost(String host) {
     if (host.isEmpty || host.length > 253 || host.contains(RegExp(r'\s')) || host.contains('/') || host.contains('\\')) return false;
@@ -25,6 +25,7 @@ class WindowsIkev2 {
     if (!Platform.isWindows || !validHost(host)) return false;
     final name = _quote(profileNameFor(host));
     final server = _quote(host);
+    try {
     final install = await _powershell(
       "\$ErrorActionPreference='Stop'; "
       "\$p=Get-VpnConnection -Name $name -ErrorAction SilentlyContinue; "
@@ -44,6 +45,11 @@ class WindowsIkev2 {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     return false;
+    } on TimeoutException {
+      return false;
+    } on ProcessException {
+      return false;
+    }
   }
 
   Future<bool> isConnected(String host) async {
@@ -57,17 +63,29 @@ class WindowsIkev2 {
 
   Future<void> disconnect(String host) async {
     if (!Platform.isWindows || !validHost(host)) return;
-    await Process.run(
-      'rasdial.exe',
-      [profileNameFor(host), '/disconnect'],
-      runInShell: false,
-    );
+    try {
+      await Process.run(
+        'rasdial.exe',
+        [profileNameFor(host), '/disconnect'],
+        runInShell: false,
+      ).timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      // A hung rasdial process must not block app shutdown or profile cleanup.
+    } on ProcessException {
+      // The native VPN service may already be stopped; disconnect is best-effort.
+    }
   }
 
   Future<void> removeProfile(String host) async {
     if (!Platform.isWindows || !validHost(host)) return;
     final name = _quote(profileNameFor(host));
     await disconnect(host);
-    await _powershell("Remove-VpnConnection -Name $name -Force -ErrorAction SilentlyContinue");
+    try {
+      await _powershell("Remove-VpnConnection -Name $name -Force -ErrorAction SilentlyContinue");
+    } on TimeoutException {
+      // Leave the profile in place rather than hanging the UI indefinitely.
+    } on ProcessException {
+      // PowerShell unavailable: preserve the profile and report via the caller's state.
+    }
   }
 }
