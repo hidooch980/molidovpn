@@ -3,7 +3,7 @@ import 'dart:io';
 /// Windows' built-in IKEv2 client. Credentials are entered by rasphone's native
 /// UI and are never passed to PowerShell or stored by MolidoVPN.
 class WindowsIkev2 {
-  static const profileName = 'MolidoVPN IKEv2';
+  String profileNameFor(String host) { final safe = host.toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '_'); return 'MolidoVPN IKEv2 ${safe.substring(0, safe.length > 32 ? 32 : safe.length)}'; }
 
   String _quote(String value) => "'${value.replaceAll("'", "''")}'";
 
@@ -21,7 +21,7 @@ class WindowsIkev2 {
 
   Future<bool> connect(String host, {Duration timeout = const Duration(seconds: 75)}) async {
     if (!Platform.isWindows || !validHost(host)) return false;
-    final name = _quote(profileName);
+    final name = _quote(profileNameFor(host));
     final server = _quote(host);
     final install = await _powershell(
       "\$ErrorActionPreference='Stop'; "
@@ -38,33 +38,34 @@ class WindowsIkev2 {
 
     final until = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(until)) {
-      if (await isConnected()) return true;
+      if (await isConnected(host)) return true;
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     return false;
   }
 
-  Future<bool> isConnected() async {
-    if (!Platform.isWindows) return false;
+  Future<bool> isConnected(String host) async {
+    if (!Platform.isWindows || !validHost(host)) return false;
     final result = await _powershell(
-      "\$p=Get-VpnConnection -Name ${_quote(profileName)} -ErrorAction SilentlyContinue; "
+      "\$p=Get-VpnConnection -Name ${_quote(profileNameFor(host))} -ErrorAction SilentlyContinue; "
       "if (\$p) { [Console]::Write(\$p.ConnectionStatus) }"
     );
     return result.exitCode == 0 && result.stdout.toString().trim().toLowerCase() == 'connected';
   }
 
-  Future<void> disconnect() async {
-    if (!Platform.isWindows) return;
+  Future<void> disconnect(String host) async {
+    if (!Platform.isWindows || !validHost(host)) return;
     await Process.run(
       'rasdial.exe',
-      [profileName, '/disconnect'],
+      [profileNameFor(host), '/disconnect'],
       runInShell: false,
     );
   }
 
-  Future<void> removeProfile() async {
-    if (!Platform.isWindows) return;
-    await disconnect();
-    await _powershell("Remove-VpnConnection -Name ${_quote(profileName)} -Force -ErrorAction SilentlyContinue");
+  Future<void> removeProfile(String host) async {
+    if (!Platform.isWindows || !validHost(host)) return;
+    final name = _quote(profileNameFor(host));
+    await disconnect(host);
+    await _powershell("Remove-VpnConnection -Name $name -Force -ErrorAction SilentlyContinue");
   }
 }
