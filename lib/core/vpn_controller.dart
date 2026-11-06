@@ -1013,7 +1013,7 @@ class VpnController extends ChangeNotifier {
     try {
       for (final url in settings.publicSources) {
         try {
-          _publicSourceBodies[url] = await PublicProfileSources.fetch(url, proxy: engine.httpProxy);
+          _publicSourceBodies[url] = await PublicProfileSources.fetch(url);
         } catch (e) {
           AppLog.add('public profile source: refresh failed (${Uri.tryParse(url)?.host ?? 'invalid host'})');
         }
@@ -1032,7 +1032,7 @@ class VpnController extends ChangeNotifier {
     if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) || parsed.host.isEmpty || parsed.userInfo.isNotEmpty) return 0;
     final key = parsed.toString();
     try {
-      final body = await PublicProfileSources.fetch(key, proxy: engine.httpProxy);
+      final body = await PublicProfileSources.fetch(key);
       _publicSourceBodies[key] = body;
       _parsePublicSources();
     } catch (e) {
