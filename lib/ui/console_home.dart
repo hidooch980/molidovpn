@@ -121,6 +121,8 @@ class _ConsoleHomeState extends State<ConsoleHome> {
       _probe?.cancel();
     }
     if (c.state == VpnState.connected || c.state == VpnState.disconnected) {
+      // Never leave the previous route's address visible while the new route is checked.
+      network.clearLookup();
       Future<void>.delayed(const Duration(milliseconds: 1500), () => network.refresh(proxy: c.engine.httpProxy));
     }
   }
