@@ -39,6 +39,11 @@ class SpeedTest {
     }
   }
 
+  static Duration? _remaining(Stopwatch watch, Duration limit) {
+    final remaining = limit - watch.elapsed;
+    return remaining > Duration.zero ? remaining : null;
+  }
+
   static double _mbps(int bytes, Duration elapsed) =>
       elapsed.inMicroseconds <= 0 ? 0 : bytes * 8 / 1e6 / (elapsed.inMicroseconds / 1e6);
 
@@ -65,13 +70,17 @@ class SpeedTest {
       try {
         final req = await client.getUrl(Uri.parse('https://speed.cloudflare.com/__down?bytes=0'))
             .timeout(_probeLimit);
-        final res = await req.close().timeout(_probeLimit);
+        final beforeResponse = _remaining(watch, _probeLimit);
+        if (beforeResponse == null) continue;
+        final res = await req.close().timeout(beforeResponse);
+        final beforeBody = _remaining(watch, _probeLimit);
+        if (beforeBody == null) continue;
         if (res.statusCode != HttpStatus.ok) {
-          await res.drain<void>().timeout(_probeLimit);
+          await res.drain<void>().timeout(beforeBody);
           continue;
         }
-        await res.drain<void>().timeout(_probeLimit);
-        values.add(watch.elapsedMicroseconds / 1000);
+        await res.drain<void>().timeout(beforeBody);
+        if (watch.elapsed <= _probeLimit) values.add(watch.elapsedMicroseconds / 1000);
       } catch (_) {
         // A failed probe is counted in packet loss, not silently omitted from the denominator.
       }
@@ -84,14 +93,18 @@ class SpeedTest {
       final watch = Stopwatch()..start();
       final req = await client.getUrl(Uri.parse('https://speed.cloudflare.com/__down?bytes=$_downBytes'))
           .timeout(_limit);
-      final res = await req.close().timeout(_limit);
+      final beforeResponse = _remaining(watch, _limit);
+      if (beforeResponse == null) return null;
+      final res = await req.close().timeout(beforeResponse);
       if (res.statusCode != HttpStatus.ok ||
           (res.contentLength >= 0 && res.contentLength != _downBytes)) {
         await res.drain<void>().timeout(_limit);
         return null;
       }
+      final beforeBody = _remaining(watch, _limit);
+      if (beforeBody == null) return null;
       var received = 0;
-      await for (final chunk in res.timeout(_limit)) {
+      await for (final chunk in res.timeout(beforeBody)) {
         received += chunk.length;
         if (received > _downBytes || watch.elapsed >= _limit) return null;
       }
@@ -114,8 +127,12 @@ class SpeedTest {
       for (var sent = 0; sent < _upBytes; sent += chunk) {
         req.add(sent + chunk <= _upBytes ? block : block.sublist(0, _upBytes - sent));
       }
-      final res = await req.close().timeout(_limit);
-      await res.drain<void>().timeout(_limit);
+      final beforeResponse = _remaining(watch, _limit);
+      if (beforeResponse == null) return null;
+      final res = await req.close().timeout(beforeResponse);
+      final beforeBody = _remaining(watch, _limit);
+      if (beforeBody == null) return null;
+      await res.drain<void>().timeout(beforeBody);
       if (res.statusCode < HttpStatus.ok || res.statusCode >= HttpStatus.multipleChoices ||
           watch.elapsed > _limit) {
         return null;
