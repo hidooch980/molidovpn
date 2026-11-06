@@ -75,7 +75,7 @@ void main() {
     expect(server, isNotNull);
     expect(server!.protocol, Protocol.ikev2);
     expect(server.protocolLabel, 'IKEV2');
-    expect(server.displayName, 'Germany');
+    expect(server.countryCode, unknownCountry);
     expect(parseOutbound(server.uri), isNull);
   });
 
