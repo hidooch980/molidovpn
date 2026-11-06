@@ -144,6 +144,11 @@ class _ConsoleHomeState extends State<ConsoleHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Palette.bg,
+      bottomNavigationBar: _BottomDock(
+        onHome: () {},
+        onServers: _openServers,
+        onSettings: _openSettings,
+      ),
       body: Stack(children: [
         // Two soft, static ambient glows behind the whole page — the cinematic-dark mood from the
         // approved design. Static (no per-frame work), so they cost nothing.
@@ -176,21 +181,16 @@ class _ConsoleHomeState extends State<ConsoleHome> {
                     const SizedBox(height: 8),
                     _LocationCard(controller: c),
                     const SizedBox(height: 8),
-                    CardGroup(children: [
-                      NavSettingRow(
-                        icon: Icons.dns_outlined,
-                        title: tr('سرورها', 'Servers'),
-                        value: '${digits(c.servers.length)} · ${serversUpdatedAgo(c.updatedAt)}',
-                        onTap: _openServers,
+                    _ServerQuickCard(controller: c, onTap: _openServers),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: AlignmentDirectional.center,
+                      child: TextButton.icon(
+                        onPressed: () => openLink(telegramUrl),
+                        icon: const Icon(Icons.support_agent_rounded, size: 18),
+                        label: Text(tr('پشتیبانی و راهنما', 'Support & help')),
                       ),
-                      NavSettingRow(
-                        icon: Icons.tune_rounded,
-                        title: tr('تنظیمات و امکانات پیشرفته', 'Advanced settings'),
-                        value: tr('پروتکل‌ها، DNS و ابزارهای اتصال', 'Protocols, DNS and connection tools'),
-                        onTap: _openSettings,
-                      ),
-                      const TelegramSupportRow(),
-                    ]),
+                    ),
                   ],
                 ),
               ),
@@ -199,6 +199,127 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         },
         ),
       ]),
+    );
+  }
+}
+
+/// Compact server summary card used on the redesigned home screen.
+class _ServerQuickCard extends StatelessWidget {
+  const _ServerQuickCard({required this.controller, required this.onTap});
+
+  final VpnController controller;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      onTap: onTap,
+      padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 12, 12),
+      child: Row(children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Palette.accent.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(Icons.public_rounded, color: Palette.accent, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('شبکه سرورها', 'Server network'),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Palette.text)),
+            const SizedBox(height: 3),
+            Text(
+              '${digits(controller.servers.length)} ${tr('سرور در دسترس', 'servers available')} · ${serversUpdatedAgo(controller.updatedAt)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5, color: Palette.muted),
+            ),
+          ]),
+        ),
+        Icon(chevronEnd, color: Palette.accent),
+      ]),
+    );
+  }
+}
+
+/// Floating-style bottom navigation: only the three destinations that exist today.
+class _BottomDock extends StatelessWidget {
+  const _BottomDock({required this.onHome, required this.onServers, required this.onSettings});
+
+  final VoidCallback onHome;
+  final VoidCallback onServers;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(18, 4, 18, 10),
+        child: Container(
+          height: 66,
+          decoration: BoxDecoration(
+            color: Palette.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Palette.border.withValues(alpha: 0.75)),
+            boxShadow: Palette.isDark
+                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 22, offset: const Offset(0, 8))]
+                : [BoxShadow(color: Palette.shadow, blurRadius: 16, offset: const Offset(0, 5))],
+          ),
+          child: Row(children: [
+            Expanded(child: _DockItem(
+              icon: Icons.home_rounded,
+              label: tr('خانه', 'Home'),
+              selected: true,
+              onTap: onHome,
+            )),
+            Expanded(child: _DockItem(
+              icon: Icons.dns_rounded,
+              label: tr('سرورها', 'Servers'),
+              onTap: onServers,
+            )),
+            Expanded(child: _DockItem(
+              icon: Icons.tune_rounded,
+              label: tr('تنظیمات', 'Settings'),
+              onTap: onSettings,
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _DockItem extends StatelessWidget {
+  const _DockItem({required this.icon, required this.label, required this.onTap, this.selected = false});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? Palette.accent : Palette.muted;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 21, color: color),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: 10.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: color)),
+          ],
+        ),
+      ),
     );
   }
 }
