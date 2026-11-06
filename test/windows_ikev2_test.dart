@@ -11,5 +11,7 @@ void main() {
     expect(manager.validHost('.example.com'), isFalse);
     expect(manager.validHost('example.com.'), isFalse);
     expect(manager.validHost(''), isFalse);
+    expect(manager.profileNameFor('vpn-a.example.com'), isNot(manager.profileNameFor('vpn-b.example.com')));
+    expect(manager.profileNameFor('vpn-a.example.com').length, lessThan(64));
   });
 }
