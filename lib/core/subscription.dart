@@ -56,17 +56,61 @@ class PublicProfileSources {
     return {for (final url in urls) url: ?prefs.getString('$_textPrefix$url')};
   }
 
+  /// Reject loopback, private, link-local, multicast, reserved and documentation IP ranges.
+  /// Redirects are disabled below so a validated public URL cannot redirect to a private target.
+  static bool _isPublicAddress(InternetAddress address) {
+    final b = address.rawAddress;
+    if (address.type == InternetAddressType.IPv4) {
+      final a = b[0], c = b[1];
+      if (a == 0 || a == 10 || a == 127 || a >= 224) return false;
+      if (a == 169 && c == 254) return false;
+      if (a == 172 && c >= 16 && c <= 31) return false;
+      if (a == 192 && (c == 0 || c == 168)) return false;
+      if (a == 100 && c >= 64 && c <= 127) return false;
+      if (a == 198 && (c == 18 || c == 19 || c == 51)) return false;
+      if (a == 203 && c == 0 && b[2] == 113) return false;
+      return true;
+    }
+    // IPv4-mapped IPv6: apply the IPv4 policy to the embedded address.
+    if (b.length == 16 && b.take(10).every((v) => v == 0) && b[10] == 255 && b[11] == 255) {
+      return _isPublicAddress(InternetAddress.fromRawAddress(b.sublist(12)));
+    }
+    // Permit only global-unicast 2000::/3; reject documentation prefix 2001:db8::/32.
+    if (b.length != 16 || (b[0] & 0xe0) != 0x20) return false;
+    if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == 0xb8) return false;
+    return true;
+  }
+
+  static Future<void> _validatePublicDestination(Uri uri) async {
+    final literal = InternetAddress.tryParse(uri.host);
+    final addresses = literal == null
+        ? await InternetAddress.lookup(uri.host).timeout(const Duration(seconds: 10))
+        : <InternetAddress>[literal];
+    if (addresses.isEmpty || addresses.any((address) => !_isPublicAddress(address))) {
+      throw const FormatException('Public source host resolves to a non-public IP address');
+    }
+  }
+
   static Future<String> fetch(String url, {String? proxy}) async {
     final parsed = Uri.tryParse(url.trim());
-    if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) || parsed.host.isEmpty || parsed.userInfo.isNotEmpty) {
+    if (parsed == null || !(parsed.isScheme('http') || parsed.isScheme('https')) ||
+        parsed.host.isEmpty || parsed.userInfo.isNotEmpty) {
       throw const FormatException('Public source must be an HTTP(S) URL without embedded credentials');
     }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    if (parsed.hasPort && (parsed.port < 1 || parsed.port > 65535)) {
+      throw const FormatException('Invalid public source port');
+    }
+    await _validatePublicDestination(parsed);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10)
+      ..maxRedirects = 0;
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
       final req = await client.getUrl(parsed);
+      req.followRedirects = false;
       req.headers.set(HttpHeaders.acceptHeader, 'text/plain, application/octet-stream, */*');
       final res = await req.close().timeout(const Duration(seconds: 20));
+      if (res.isRedirect) throw const FormatException('Public source redirects are not allowed');
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
       final declaredLength = res.contentLength;
       if (declaredLength > maxBodyBytes) throw const FormatException('Source is larger than 2 MB');
