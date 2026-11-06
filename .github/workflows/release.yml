@@ -7,7 +7,12 @@ on:
       - '**.md'
       - 'cloudflare/**'
       - '.github/workflows/worker-tests.yml'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Android release version to mirror and build for Windows (without v prefix)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION: 4.0.2
+  VERSION: ${{ inputs.version || '4.0.2' }}
 
 jobs:
   test:
@@ -60,7 +65,8 @@ jobs:
           # shellcheck disable=SC2153
           repo='hidooch980/molidovpn-android'
           tag=$(gh release view -R "$repo" --json tagName --jq .tagName)
-          test "$tag" = "v4.0.2" || { echo "::error::Android and desktop versions differ"; exit 1; }
+          # shellcheck disable=SC2153
+          test "$tag" = "v$VERSION" || { echo "::error::Android release $tag does not match requested desktop version v$VERSION"; exit 1; }
           mkdir -p dist previous
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-arm64.apk' -D dist
           gh release download "$tag" -R "$repo" -p 'MolidoMeshAI-android-armv7.apk' -D dist
