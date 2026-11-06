@@ -101,9 +101,7 @@ class PublicProfileSources {
       throw const FormatException('Invalid public source port');
     }
     await _validatePublicDestination(parsed);
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10)
-      ..maxRedirects = 0;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     if (proxy != null) client.findProxy = (_) => 'PROXY $proxy';
     try {
       final req = await client.getUrl(parsed);
