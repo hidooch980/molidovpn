@@ -58,8 +58,9 @@ object SecureStore {
             System.arraycopy(iv, 0, combined, 0, iv.size)
             System.arraycopy(cipherText, 0, combined, iv.size, cipherText.size)
             Base64.encodeToString(combined, Base64.NO_WRAP)
-        } catch (_: Exception) {
-            plainText
+        } catch (error: Exception) {
+            // Never persist a secret in plaintext when Keystore encryption fails.
+            throw IllegalStateException("Unable to encrypt secret with Android Keystore", error)
         }
     }
 
@@ -67,7 +68,7 @@ object SecureStore {
         if (encryptedBase64.isEmpty()) return ""
         return try {
             val combined = Base64.decode(encryptedBase64, Base64.NO_WRAP)
-            if (combined.size <= GCM_IV_LENGTH) return encryptedBase64
+            if (combined.size <= GCM_IV_LENGTH) return ""
             val key = getOrCreateKey()
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val spec = GCMParameterSpec(GCM_TAG_LENGTH, combined, 0, GCM_IV_LENGTH)
@@ -75,7 +76,8 @@ object SecureStore {
             val plainBytes = cipher.doFinal(combined, GCM_IV_LENGTH, combined.size - GCM_IV_LENGTH)
             String(plainBytes, Charsets.UTF_8)
         } catch (_: Exception) {
-            encryptedBase64
+            // Corrupt or legacy plaintext values are not returned as credentials.
+            ""
         }
     }
 
@@ -102,8 +104,14 @@ object SecureStore {
         val plainPrefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val legacy = plainPrefs.getString(key, null)
         if (!legacy.isNullOrBlank()) {
-            putSecret(context, key, legacy)
-            return legacy
+            return try {
+                putSecret(context, key, legacy)
+                legacy
+            } catch (_: Exception) {
+                // Do not leave a plaintext credential behind if secure migration fails.
+                plainPrefs.edit().remove(key).apply()
+                fallback
+            }
         }
         return fallback
     }
