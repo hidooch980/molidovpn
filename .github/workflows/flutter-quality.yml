@@ -93,4 +93,5 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:compileDebugKotlin \
             -x buildRustCoreArm64V8a \
-            -x buildRustCoreArmeabiV7a
+            -x buildRustCoreArmeabiV7a \
+            -x buildRustCoreX86_64
