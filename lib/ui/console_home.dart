@@ -161,26 +161,26 @@ class _ConsoleHomeState extends State<ConsoleHome> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: kContentWidth),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 16),
                   children: [
                     _Header(controller: c, onSettings: _openSettings),
                     if (_whatsNew case final w?) _WhatsNewCard(info: w, onClose: () => setState(() => _whatsNew = null)),
                     if (c.notice case final notice?) _NoticeBanner(notice: notice, onClose: c.dismissNotice),
                     if (c.update != null) _UpdateLine(controller: c),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 8),
                     Center(child: _Squircle(controller: c)),
                     SmartConnectPanel(run: c.smart, state: c.state),
                     _SimpleStatus(controller: c),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     // Unified home: live IP and all connection controls stay together.
                     _ExitCard(controller: c, network: network, latency: _latency),
-                    const SizedBox(height: 12),
-                    _LocationCard(controller: c),
-                    const SizedBox(height: 12),
-                    _ModeChips(controller: c),
                     const SizedBox(height: 8),
+                    _LocationCard(controller: c),
+                    const SizedBox(height: 8),
+                    _ModeChips(controller: c),
+                    const SizedBox(height: 6),
                     _DnsChip(controller: c),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     CardGroup(children: [
                       NavSettingRow(
                         icon: Icons.dns_outlined,
@@ -429,9 +429,9 @@ class _LocationCard extends StatelessWidget {
       opacity: locked ? 0.6 : 1,
       child: AppCard(
         onTap: locked ? null : () => showLocationSheet(context, c),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(children: [
-          FlagBadge(code: code, size: 36),
+          FlagBadge(code: code, size: 30),
           const SizedBox(width: 12),
           Expanded(
             child: Text('${tr('مکان', 'Location')}: $place',
@@ -581,7 +581,7 @@ class _Squircle extends StatefulWidget {
 }
 
 class _SquircleState extends State<_Squircle> with SingleTickerProviderStateMixin {
-  static const double _size = 190, _radius = 64, _ring = 4;
+  static const double _size = 154, _radius = 52, _ring = 4;
   bool _down = false;
   late final _loop = AnimationController(vsync: this, duration: const Duration(milliseconds: 1150));
   Timer? _clock;
@@ -765,7 +765,7 @@ class _ExitCard extends StatelessWidget {
             : country.isNotEmpty
                 ? country
                 : (tunnelled ? tr('از تونل', 'tunnelled') : tr('بدون تونل', 'not tunnelled'));
-    final radius = BorderRadius.circular(22);
+    final radius = BorderRadius.circular(18);
     final fill = Color.lerp(Palette.surface, Palette.text, 0.03)!;
     return Semantics(
       button: !locked,
@@ -780,11 +780,11 @@ class _ExitCard extends StatelessWidget {
         child: InkWell(
           onTap: locked ? null : () => showLocationSheet(context, c),
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(13, 11, 15, 11),
+            padding: const EdgeInsetsDirectional.fromSTEB(11, 8, 12, 8),
             child: Row(children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 36,
+                height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: Color.lerp(Palette.surface, Palette.bg, 0.5),
@@ -980,7 +980,7 @@ class _ModeChip extends StatelessWidget {
           customBorder: shape,
           onTap: onTap,
           child: SizedBox(
-            height: 38,
+            height: 34,
             child: Center(
               child: Text(label,
                   maxLines: 1,
