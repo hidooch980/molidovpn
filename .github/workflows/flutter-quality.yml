@@ -5,6 +5,7 @@ on:
     paths:
       - "lib/**"
       - "test/**"
+      - "android-app/**"
       - "pubspec.yaml"
       - "pubspec.lock"
       - "analysis_options.yaml"
@@ -74,3 +75,23 @@ jobs:
             if [ "$attempt" -lt 3 ]; then echo "Flutter tests failed; retrying ($attempt/3)..." >&2; sleep 15; fi
           done
           exit 1
+
+  android-native-compile:
+    if: contains(github.event.pull_request.changed_files, 0) == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Compile Android Kotlin sources (native Rust core excluded)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileDebugKotlin \
+            -x buildRustCoreArm64V8a \
+            -x buildRustCoreArmeabiV7a
