@@ -174,7 +174,7 @@ class Updater {
         bytes.add(chunk);
       }
       if (watch.elapsed > _metadataTimeout) {
-        throw const TimeoutException('release metadata timed out');
+        throw TimeoutException('release metadata timed out');
       }
       final decoded = jsonDecode(utf8.decode(bytes.takeBytes()));
       if (decoded is! Map<String, dynamic>) throw const FormatException('invalid release metadata');
