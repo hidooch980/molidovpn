@@ -69,6 +69,39 @@ double smartScore(SmartMeasured m, [SmartWeights w = const SmartWeights()]) {
   return m.exitIran ? score * 0.5 : score;
 }
 
+/// Conservative live-switch policy: a healthy route is sticky unless a clearly better,
+/// repeatedly measured candidate is available. A failed health streak may bypass the dwell time.
+class SmartSwitchPolicy {
+  const SmartSwitchPolicy({
+    this.minimumDwell = const Duration(seconds: 90),
+    this.minimumImprovement = 8,
+    this.minimumProbeRounds = 3,
+    this.minimumStability = 2 / 3,
+    this.healthFailuresToOverride = 2,
+  });
+
+  final Duration minimumDwell;
+  final double minimumImprovement;
+  final int minimumProbeRounds;
+  final double minimumStability;
+  final int healthFailuresToOverride;
+
+  bool shouldSwitch({
+    required double currentScore,
+    required SmartMeasured candidate,
+    required Duration connectedFor,
+    int consecutiveHealthFailures = 0,
+  }) {
+    final hasEvidence = candidate.probes.length >= minimumProbeRounds &&
+        candidate.stability >= minimumStability &&
+        candidate.medianMs != null;
+    if (!hasEvidence) return false;
+    if (consecutiveHealthFailures >= healthFailuresToOverride) return true;
+    if (connectedFor < minimumDwell) return false;
+    return smartScore(candidate) >= currentScore + minimumImprovement;
+  }
+}
+
 /// Short reason line for the winner card, e.g. "84ms · 3/3 پایدار".
 String smartReason(SmartMeasured m, {String stableWord = 'پایدار', String iranWord = 'خروجی ایران'}) {
   final parts = <String>[];
