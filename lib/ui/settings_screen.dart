@@ -494,10 +494,13 @@ class SettingsScreen extends StatelessWidget {
                 icon: Icons.insights_outlined,
                 title: tr('گزارش ناشناس کیفیت سرورها', 'Anonymous server quality reports'),
                 subtitle: tr(
-                    'فقط شناسه‌ی ناشناس سرور، موفق یا ناموفق بودن اتصال، تأخیر و نوع شبکه فرستاده می‌شود؛ '
-                        'بدون IP، نام یا اطلاعات وب‌گردی. به انتخاب سرورهای بهتر برای همه کمک می‌کند.',
-                    'Only an anonymous server id, success or failure, latency and network type are sent; '
-                        'no IP, name or browsing data. Helps pick better servers for everyone.'),
+                    'گزارش اختیاری شامل شناسه مستعار سرور، نتیجه، تأخیر، نوع شبکه، دسته اپراتور، حالت و نسخه برنامه است. '
+                        'در Windows، heartbeat نمونه‌برداری‌شده/گزارش خطا ممکن است شناسه نصب تصادفی و رویداد خطای پاک‌سازی‌شده هم داشته باشد. '
+                        'IP شخصی و محتوای ترافیک در بدنه گزارش نیست؛ ارائه‌دهنده زیرساخت هنگام دریافت HTTPS می‌تواند IP مبدأ را ببیند.',
+                    'Optional reports include a pseudonymous server id, result, latency, network type, coarse operator bucket, '
+                        'mode and app version. On Windows, sampled heartbeats/failure diagnostics may include a random install ID '
+                        'and scrubbed error events. Your IP and traffic content are not in the report body; the infrastructure '
+                        'provider can see the source IP when receiving HTTPS.'),
                 value: s.anonymousReports,
                 onChanged: (v) => s.update((x) => x.anonymousReports = v),
               ),
