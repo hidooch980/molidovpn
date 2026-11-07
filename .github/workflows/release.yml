@@ -164,9 +164,9 @@ jobs:
           path: dist/*.apk
 
   android-smoke:
-    # Informational only (does not gate the release).
-    # Installs the universal APK on an emulator, launches it, connects the VPN and loads a page through it.
-    # Any crash or failed connection stops the release.
+    # Release-blocking smoke test: installs the canonical universal APK on the configured emulator,
+    # launches it, connects the VPN and verifies a real page load through the tunnel.
+    # This job is a required dependency of "release"; any failure intentionally blocks publication.
     needs: android
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -583,7 +583,7 @@ jobs:
         with:
           api-level: 30
           target: google_apis
-          arch: x86_64
+          arch: arm64-v8a
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: python3 tools/android-update-e2e.py old.apk ${{ env.VERSION }}
