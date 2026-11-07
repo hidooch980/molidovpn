@@ -118,7 +118,7 @@
 - **UX:** simple/advanced home, onboarding, Persian UI, owner announcements, share-with-friends QR, automatic app updates.
 - **Privacy:** opt-in pseudonymous quality reports. The report payload and D1 quality tables do not store the user's source IP; Cloudflare's HTTPS edge sees it and the Worker uses it for in-memory rate limiting. Sampled Windows heartbeats/diagnostics can include a random install ID and scrubbed events.
 - **Infra:** server aggregator every 15 min (+ hourly source discovery), local Iran testing, Cloudflare subscription worker with owner admin panel, remote mode flags and stats, core auto-updates every 6 h gated by an emulator connect test.
-- **Docs:** [Features (Persian)](docs/FEATURES.md) · [Owner guide (Persian)](docs/OWNER-GUIDE.md) · [Architecture](docs/ARCHITECTURE.md)
+- **Docs:** [Product quality, UX, security and Iran network charter (Persian)](docs/PRODUCT-QUALITY-CHARTER-FA-IR.md) · [Features (Persian)](docs/FEATURES.md) · [Owner guide (Persian)](docs/OWNER-GUIDE.md) · [Architecture](docs/ARCHITECTURE.md)
 - **Support:** Telegram [@Molido_Vpn](https://t.me/Molido_Vpn) · Donate: [reymit.ir/molido](https://reymit.ir/molido)
 
 ## License
