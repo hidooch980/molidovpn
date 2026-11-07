@@ -142,6 +142,9 @@ class QualityAssessment {
     final stability = _stability(m);
     final connect = _connect(m.connectMs);
 
+    // A quality grade requires real throughput plus at least one independent path-quality signal.
+    if (speed == null || (latency == null && stability == null)) return null;
+
     // Keep weights explicit and normalize over actually measured dimensions.
     final weighted = <(double, double?)>[
       (0.25, speed),
