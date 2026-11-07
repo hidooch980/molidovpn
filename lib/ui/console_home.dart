@@ -161,36 +161,39 @@ class _ConsoleHomeState extends State<ConsoleHome> {
         builder: (context, _) {
           return SafeArea(
             child: LayoutBuilder(
-              builder: (context, constraints) => Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: math.min(kContentWidth, constraints.maxWidth),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        _Header(controller: c, onSettings: _openSettings),
-                        if (_whatsNew case final w?)
-                          _WhatsNewCard(info: w, onClose: () => setState(() => _whatsNew = null)),
-                        if (c.notice case final notice?)
-                          _NoticeBanner(notice: notice, onClose: c.dismissNotice),
-                        if (c.update != null) _UpdateLine(controller: c),
-                        const SizedBox(height: 6),
-                        Center(child: _Squircle(controller: c)),
-                        _SimpleStatus(controller: c),
-                        const SizedBox(height: 6),
-                        _ExitCard(controller: c, network: network, latency: _latency),
-                        const SizedBox(height: 6),
-                        _LocationCard(controller: c),
-                        const SizedBox(height: 6),
-                        _ServerQuickCard(controller: c, onTap: _openServers),
-                        TextButton.icon(
-                          onPressed: () => openLink(telegramUrl),
-                          icon: const Icon(Icons.support_agent_rounded, size: 17),
-                          label: Text(tr('پشتیبانی و راهنما', 'Support & help')),
-                        ),
-                      ]),
+              builder: (context, constraints) => SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: SizedBox(
+                      width: math.min(kContentWidth, constraints.maxWidth),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          _Header(controller: c, onSettings: _openSettings),
+                          if (_whatsNew case final w?)
+                            _WhatsNewCard(info: w, onClose: () => setState(() => _whatsNew = null)),
+                          if (c.notice case final notice?)
+                            _NoticeBanner(notice: notice, onClose: c.dismissNotice),
+                          if (c.update != null) _UpdateLine(controller: c),
+                          const SizedBox(height: 14),
+                          Center(child: _Squircle(controller: c)),
+                          const SizedBox(height: 4),
+                          _SimpleStatus(controller: c),
+                          const SizedBox(height: 14),
+                          _ExitCard(controller: c, network: network, latency: _latency),
+                          const SizedBox(height: 10),
+                          _LocationCard(controller: c),
+                          const SizedBox(height: 10),
+                          _ServerQuickCard(controller: c, onTap: _openServers),
+                          TextButton.icon(
+                            onPressed: () => openLink(telegramUrl),
+                            icon: const Icon(Icons.support_agent_rounded, size: 17),
+                            label: Text(tr('پشتیبانی و راهنما', 'Support & help')),
+                          ),
+                        ]),
+                      ),
                     ),
                   ),
                 ),
@@ -576,11 +579,20 @@ class _Header extends StatelessWidget {
     final (label, color, glow) = _stateLook(controller);
     return Row(children: [
       const _Logo(),
-      const SizedBox(width: 10),
-      Text('MolidoVPN',
-          textDirection: TextDirection.ltr,
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Palette.text)),
-      const SizedBox(width: 10),
+      const SizedBox(width: 9),
+      Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('MolidoVPN',
+              textDirection: TextDirection.ltr,
+              style: TextStyle(fontSize: 18, height: 1.05, fontWeight: FontWeight.w900, color: Palette.text)),
+          const SizedBox(height: 3),
+          Text(tr('شبکهٔ هوشمند شما', 'SMART NETWORK'),
+              style: TextStyle(fontSize: 9, letterSpacing: Palette.spacing(0.12, 9), fontWeight: FontWeight.w700, color: Palette.accent2)),
+        ],
+      ),
+      const SizedBox(width: 8),
       Flexible(
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
@@ -607,11 +619,12 @@ class _Header extends StatelessWidget {
         ),
       ),
       const Spacer(),
-      IconButton(
-        tooltip: tr('حمایت مالی', 'Donate'),
-        onPressed: () => showDonateDialog(context),
-        icon: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent, size: 20),
-      ),
+      if (MediaQuery.sizeOf(context).width >= 420)
+        IconButton(
+          tooltip: tr('حمایت مالی', 'Donate'),
+          onPressed: () => showDonateDialog(context),
+          icon: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent, size: 20),
+        ),
       IconButton(
         tooltip: tr('تنظیمات', 'Settings'),
         onPressed: onSettings,
@@ -626,17 +639,31 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Image.asset(
-        'assets/icon/icon.png',
-        width: 32,
-        height: 32,
-        errorBuilder: (context, error, stack) => Container(
-          width: 32,
-          height: 32,
-          color: Palette.accent.withValues(alpha: 0.16),
-          child: Icon(Icons.shield_rounded, size: 20, color: Palette.accent),
+    return Container(
+      width: 38,
+      height: 38,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(13),
+        gradient: LinearGradient(
+          begin: AlignmentDirectional.topStart,
+          end: AlignmentDirectional.bottomEnd,
+          colors: [Palette.accent, Palette.accent2],
+        ),
+        boxShadow: Palette.isDark
+            ? [BoxShadow(color: Palette.accent.withValues(alpha: 0.18), blurRadius: 14, spreadRadius: 1)]
+            : null,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: Image.asset(
+          'assets/icon/icon.png',
+          width: 34,
+          height: 34,
+          errorBuilder: (context, error, stack) => Container(
+            color: Palette.raised,
+            child: Icon(Icons.shield_rounded, size: 21, color: Palette.accent),
+          ),
         ),
       ),
     );
