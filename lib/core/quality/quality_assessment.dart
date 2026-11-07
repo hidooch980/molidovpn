@@ -67,7 +67,6 @@ class QualitySnapshot {
     required this.tunnelVerified,
     required this.metrics,
     required this.security,
-    this.transferredBytes = 0,
   });
 
   final DateTime measuredAt;
@@ -76,7 +75,6 @@ class QualitySnapshot {
   final bool tunnelVerified;
   final QualityMetrics metrics;
   final SecurityEvidence security;
-  final int transferredBytes;
 }
 
 class QualityAssessment {
@@ -160,7 +158,7 @@ class QualityAssessment {
   }
 
   static QualityGrade grade(double? score) {
-    if (score == null || !score.isFinite) return QualityGrade.unknown;
+    if (score == null || !score.isFinite || score < 0 || score > 100) return QualityGrade.unknown;
     if (score >= 85) return QualityGrade.excellent;
     if (score >= 70) return QualityGrade.good;
     if (score >= 50) return QualityGrade.fair;
@@ -176,7 +174,7 @@ class QualityAssessment {
   }
 
   static bool shouldConsiderFailover(double? currentScore, {int consecutiveBadSamples = 0}) {
-    if (currentScore == null || !currentScore.isFinite) return false;
+    if (currentScore == null || !currentScore.isFinite || currentScore < 0 || currentScore > 100) return false;
     return currentScore < minUsefulScore && consecutiveBadSamples >= 2;
   }
 }
