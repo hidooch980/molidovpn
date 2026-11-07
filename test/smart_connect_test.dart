@@ -24,7 +24,7 @@ void main() {
           greaterThan(smartScore(const SmartMeasured(probes: [900, 900]))));
     });
     test('perfect route is 100 with full throughput prior', () {
-      expect(smartScore(const SmartMeasured(probes: [80, 90, 100], throughput: 1)), closeTo(100, 0.01));
+      expect(smartScore(const SmartMeasured(probes: [80, 90, 100], throughput: 1, connectMs: 2000)), closeTo(100, 0.01));
     });
     test('Iran exit halves the score', () {
       final a = smartScore(const SmartMeasured(probes: [200]));
@@ -37,13 +37,80 @@ void main() {
       expect(smartLatencyNorm(3000), closeTo(0, 1e-9));
       expect(smartLatencyNorm(10000), 0);
       expect(smartConnectNorm(1000), 1);
-      expect(smartConnectNorm(90000), 0);
+      expect(smartConnectNorm(2000), 1);
+      expect(smartConnectNorm(90000), closeTo(0, 1e-9));
+    });
+    test('unknown connect time is neutral, not perfect', () {
+      const probes = [100, 100, 100];
+      final unknown = smartScore(const SmartMeasured(probes: probes, throughput: 1));
+      final measuredFast = smartScore(const SmartMeasured(probes: probes, throughput: 1, connectMs: 2000));
+      final measuredSlow = smartScore(const SmartMeasured(probes: probes, throughput: 1, connectMs: 90000));
+      expect(unknown, lessThan(measuredFast));
+      expect(unknown, greaterThan(measuredSlow));
+      expect(unknown, closeTo((measuredFast + measuredSlow) / 2, 1.0));
     });
     test('median and reason', () {
       expect(smartMedian([3, 1, 2]), 2);
       expect(smartMedian([1, 2, 3, 4]), 3);
       expect(smartMedian([]), isNull);
       expect(smartReason(const SmartMeasured(probes: [84, 90, -1]), stableWord: 'stable'), '87ms · 2/3 stable');
+    });
+  });
+
+  group('switch policy', () {
+    const policy = SmartSwitchPolicy();
+    const candidate = SmartMeasured(probes: [100, 110, 105], throughput: 0.8);
+
+    test('does not switch before minimum dwell time', () {
+      expect(policy.shouldSwitch(
+        currentScore: 50,
+        candidate: candidate,
+        connectedFor: const Duration(seconds: 30),
+      ), isFalse);
+    });
+
+    test('switches after dwell only for a meaningful measured improvement', () {
+      expect(policy.shouldSwitch(
+        currentScore: 50,
+        candidate: candidate,
+        connectedFor: const Duration(minutes: 2),
+      ), isTrue);
+      expect(policy.shouldSwitch(
+        currentScore: 90,
+        candidate: candidate,
+        connectedFor: const Duration(minutes: 2),
+      ), isFalse);
+    });
+
+    test('rejects too few or unstable candidate probes', () {
+      expect(policy.shouldSwitch(
+        currentScore: 10,
+        candidate: const SmartMeasured(probes: [80, -1]),
+        connectedFor: const Duration(minutes: 3),
+      ), isFalse);
+      expect(policy.shouldSwitch(
+        currentScore: 10,
+        candidate: const SmartMeasured(probes: [80, -1, -1, -1]),
+        connectedFor: const Duration(minutes: 3),
+      ), isFalse);
+    });
+
+    test('two consecutive failed health checks bypass dwell time', () {
+      expect(policy.shouldSwitch(
+        currentScore: 80,
+        candidate: candidate,
+        connectedFor: const Duration(seconds: 5),
+        consecutiveHealthFailures: 2,
+      ), isTrue);
+    });
+
+    test('one failed health check does not bypass dwell time', () {
+      expect(policy.shouldSwitch(
+        currentScore: 80,
+        candidate: candidate,
+        connectedFor: const Duration(seconds: 5),
+        consecutiveHealthFailures: 1,
+      ), isFalse);
     });
   });
 
