@@ -190,6 +190,12 @@ class QualityAssessment {
         sample.security.verdict == SecurityVerdict.secure;
   }
 
+  /// Automatic ranking must not use routes whose security evidence is failed or incomplete.
+  static bool mayUseForAutomaticSelection(QualitySnapshot sample, {required DateTime now}) {
+    return score(sample, now: now) != null &&
+        sample.security.verdict == SecurityVerdict.secure;
+  }
+
   static bool shouldConsiderFailover(double? currentScore, {int consecutiveBadSamples = 0}) {
     if (currentScore == null || !currentScore.isFinite || currentScore < 0 || currentScore > 100) return false;
     return currentScore < minUsefulScore && consecutiveBadSamples >= 2;
