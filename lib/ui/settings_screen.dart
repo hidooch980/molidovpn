@@ -12,6 +12,7 @@ import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/settings.dart';
 import '../core/speed_test.dart';
+import '../core/quality/quality_assessment.dart';
 import '../core/vpn_controller.dart';
 import '../core/win_startup.dart';
 import '../core/windows_engine.dart';
@@ -584,6 +585,36 @@ class SettingsScreen extends StatelessWidget {
                     _toast(context, tr('تست سرعت در حال انجام…', 'Running speed test…'));
                     final r = await SpeedTest.run(proxy);
                     if (!context.mounted) return;
+                    final measuredAt = DateTime.now();
+                    final assessment = QualitySnapshot(
+                      measuredAt: measuredAt,
+                      provenance: MeasurementProvenance.measured,
+                      viaTunnel: true,
+                      tunnelVerified: true,
+                      metrics: QualityMetrics(
+                        downloadMbps: r.down,
+                        uploadMbps: r.up,
+                        pingMs: r.pingMs,
+                        jitterMs: r.jitterMs,
+                        packetLossPct: r.packetLossPct,
+                      ),
+                      security: const SecurityEvidence(
+                        trafficTraversesTunnel: SecurityCheck.pass,
+                        dnsLeak: SecurityCheck.unknown,
+                        ipv4Leak: SecurityCheck.unknown,
+                        ipv6Leak: SecurityCheck.unknown,
+                        killSwitch: SecurityCheck.unknown,
+                      ),
+                      transferredBytes: 12 * 1000 * 1000,
+                    );
+                    final qualityScore = QualityAssessment.score(assessment, now: measuredAt);
+                    final qualityLabel = switch (QualityAssessment.grade(qualityScore)) {
+                      QualityGrade.excellent => tr('عالی', 'Excellent'),
+                      QualityGrade.good => tr('خوب', 'Good'),
+                      QualityGrade.fair => tr('متوسط', 'Fair'),
+                      QualityGrade.poor => tr('ضعیف', 'Poor'),
+                      QualityGrade.unknown => tr('نامشخص', 'Unknown'),
+                    };
                     String fmt(double? v) => v == null ? tr('ناموفق', 'failed') : '${v.toStringAsFixed(1)} Mbps';
                     await showDialog<void>(
                       context: context,
@@ -595,6 +626,8 @@ class SettingsScreen extends StatelessWidget {
                           '${tr('پینگ میانه', 'Median ping')}: ${r.pingMs == null ? tr('ناموفق', 'failed') : '${r.pingMs!.toStringAsFixed(1)} ms'}\n'
                           '${tr('نوسان پینگ', 'Jitter')}: ${r.jitterMs == null ? tr('نامشخص', 'n/a') : '${r.jitterMs!.toStringAsFixed(1)} ms'}\n'
                           '${tr('از دست‌رفتن درخواست‌ها', 'Probe packet loss')}: ${r.packetLossPct.toStringAsFixed(0)}%\n'
+                          '${tr('امتیاز کیفیت مسیر', 'Route quality score')}: ${qualityScore == null ? tr('نامشخص', 'Unknown') : '${qualityScore.round()}/100 · $qualityLabel'}\\n'
+                          '${tr('امنیت', 'Security')}: ${tr('نشت DNS/IP و Kill Switch در این تست بررسی نشده', 'DNS/IP leaks and Kill Switch were not tested in this run')}\\n'
                           '${tr('مسیر', 'Route')}: ${tr('پروکسی محلی VPN', 'VPN local proxy')}',
                         ),
                         actions: [
