@@ -47,6 +47,63 @@ void main() {
     });
   });
 
+  group('switch policy', () {
+    const policy = SmartSwitchPolicy();
+    const candidate = SmartMeasured(probes: [100, 110, 105], throughput: 0.8);
+
+    test('does not switch before minimum dwell time', () {
+      expect(policy.shouldSwitch(
+        currentScore: 50,
+        candidate: candidate,
+        connectedFor: const Duration(seconds: 30),
+      ), isFalse);
+    });
+
+    test('switches after dwell only for a meaningful measured improvement', () {
+      expect(policy.shouldSwitch(
+        currentScore: 50,
+        candidate: candidate,
+        connectedFor: const Duration(minutes: 2),
+      ), isTrue);
+      expect(policy.shouldSwitch(
+        currentScore: 90,
+        candidate: candidate,
+        connectedFor: const Duration(minutes: 2),
+      ), isFalse);
+    });
+
+    test('rejects too few or unstable candidate probes', () {
+      expect(policy.shouldSwitch(
+        currentScore: 10,
+        candidate: const SmartMeasured(probes: [80, -1]),
+        connectedFor: const Duration(minutes: 3),
+      ), isFalse);
+      expect(policy.shouldSwitch(
+        currentScore: 10,
+        candidate: const SmartMeasured(probes: [80, -1, -1, -1]),
+        connectedFor: const Duration(minutes: 3),
+      ), isFalse);
+    });
+
+    test('two consecutive failed health checks bypass dwell time', () {
+      expect(policy.shouldSwitch(
+        currentScore: 80,
+        candidate: candidate,
+        connectedFor: const Duration(seconds: 5),
+        consecutiveHealthFailures: 2,
+      ), isTrue);
+    });
+
+    test('one failed health check does not bypass dwell time', () {
+      expect(policy.shouldSwitch(
+        currentScore: 80,
+        candidate: candidate,
+        connectedFor: const Duration(seconds: 5),
+        consecutiveHealthFailures: 1,
+      ), isFalse);
+    });
+  });
+
   group('config', () {
     test('defaults when missing or invalid', () {
       expect(SmartConfig.fromJson(null).enabled, isTrue);
