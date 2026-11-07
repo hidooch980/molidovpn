@@ -375,14 +375,21 @@ class DelayPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = ms;
-    final text = d == null ? '—' : (d <= 0 ? tr('قطع', 'fail') : '$d ms');
+    final text = d == null ? '—' : (d <= 0 ? tr('بی‌پاسخ', 'no reply') : '$d ms');
     final color = d == null ? Palette.muted : (d <= 0 ? Palette.failure : Palette.forDelay(d));
-    return Container(
-      constraints: const BoxConstraints(minWidth: 58),
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(Palette.pillRadius)),
-      child: Text(text, textDirection: TextDirection.ltr, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12.5)),
+    return Tooltip(
+      message: d == null
+          ? tr('هنوز آزمایش نشده است.', 'Not tested yet.')
+          : (d <= 0
+              ? tr('پروب پاسخ نگرفت؛ این نتیجه به‌تنهایی قطع بودن سرور را ثابت نمی‌کند.', 'The probe received no reply; this alone does not prove the server is offline.')
+              : tr('تأخیر رفت‌وبرگشت اندازه‌گیری‌شده از شبکهٔ فعلی.', 'Measured round-trip delay from the current network.')),
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 58),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(Palette.pillRadius)),
+        child: Text(text, textDirection: TextDirection.ltr, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12.5)),
+      ),
     );
   }
 }
