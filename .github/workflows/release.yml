@@ -164,8 +164,8 @@ jobs:
           path: dist/*.apk
 
   android-smoke:
-    # Release-blocking smoke test: installs the canonical ARM-capable APK, launches it,
-    # connects the VPN and verifies a real page load through the tunnel.
+    # Release-blocking smoke test: installs the canonical universal APK on the configured emulator,
+    # launches it, connects the VPN and verifies a real page load through the tunnel.
     # This job is a required dependency of "release"; any failure intentionally blocks publication.
     needs: android
     runs-on: ubuntu-24.04
