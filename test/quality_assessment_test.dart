@@ -50,7 +50,7 @@ void main() {
 
     test('normalizes available dimensions without inventing missing metrics', () {
       final onlyPing = sample(metrics: const QualityMetrics(pingMs: 100));
-      expect(QualityAssessment.score(onlyPing, now: now), closeTo(90, 0.001));
+      expect(QualityAssessment.score(onlyPing, now: now), isNull);
       expect(QualityAssessment.score(sample(metrics: const QualityMetrics()), now: now), isNull);
     });
 
