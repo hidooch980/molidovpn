@@ -82,7 +82,7 @@ class QualitySnapshot {
 class QualityAssessment {
   const QualityAssessment._();
 
-  /// Weights: throughput 25%, latency 20%, stability 25%, connection time 10%.
+  /// Weights: throughput 25%, latency 20%, stability 35%, connection time 20%.
   /// Unavailable dimensions are omitted and the remaining weights are normalized.
   static const int maxSampleAgeSeconds = 120;
   static const double minUsefulScore = 35;
@@ -146,8 +146,8 @@ class QualityAssessment {
     final weighted = <(double, double?)>[
       (0.25, speed),
       (0.20, latency),
-      (0.25, stability),
-      (0.10, connect),
+      (0.35, stability),
+      (0.20, connect),
     ];
     final available = weighted.where((item) => item.$2 != null).toList();
     if (available.isEmpty) return null;
