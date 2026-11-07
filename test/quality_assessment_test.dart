@@ -72,6 +72,8 @@ void main() {
       expect(QualityAssessment.grade(55), QualityGrade.fair);
       expect(QualityAssessment.grade(20), QualityGrade.poor);
       expect(QualityAssessment.grade(null), QualityGrade.unknown);
+      expect(QualityAssessment.grade(-1), QualityGrade.unknown);
+      expect(QualityAssessment.grade(101), QualityGrade.unknown);
     });
   });
 
@@ -130,6 +132,8 @@ void main() {
       expect(QualityAssessment.shouldConsiderFailover(20, consecutiveBadSamples: 2), isTrue);
       expect(QualityAssessment.shouldConsiderFailover(null, consecutiveBadSamples: 5), isFalse);
       expect(QualityAssessment.shouldConsiderFailover(50, consecutiveBadSamples: 5), isFalse);
+      expect(QualityAssessment.shouldConsiderFailover(-1, consecutiveBadSamples: 5), isFalse);
+      expect(QualityAssessment.shouldConsiderFailover(101, consecutiveBadSamples: 5), isFalse);
     });
   });
 }
