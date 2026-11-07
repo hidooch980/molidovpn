@@ -64,7 +64,7 @@ class Palette {
       fill = const Color(0x0BFFFFFF);
       fillStrong = const Color(0x17FFFFFF);
       faint = const Color(0xFF66728F);
-      violet = const Color(0xFF7088F2);
+      violet = const Color(0xFF8B7CFF);
       accentText = const Color(0xFF55C7FF);
       errorText = const Color(0xFFF2878A);
     } else {
@@ -83,7 +83,7 @@ class Palette {
       fill = const Color(0x0A0F172A);
       fillStrong = const Color(0x140F172A);
       faint = const Color(0xFF94A0B8);
-      violet = const Color(0xFF4F6BED);
+      violet = const Color(0xFF6758D3);
       accentText = const Color(0xFF1268B5);
       errorText = const Color(0xFFC9363B);
     }
@@ -107,7 +107,7 @@ class Palette {
   /// Numeric face for stats/ping/speed digits (bundled asset, no network dependency).
   static const String numericFamily = 'Space Grotesk';
 
-  /// Brand gradient (firoozeh 400 → 700), used by the connected button and brand marks.
+  /// Brand gradient (Aurora Blue → Indigo), used by the primary action and brand marks.
   static const List<Color> brandGradient = [Color(0xFF55C7FF), Color(0xFF7168F5)];
 
   /// Shown only after a reported connection failure.
