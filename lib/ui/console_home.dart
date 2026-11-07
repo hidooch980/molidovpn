@@ -87,12 +87,17 @@ class _ConsoleHomeState extends State<ConsoleHome> {
       builder: (context) => AlertDialog(
         title: Text(tr('کمک به انتخاب سرورهای بهتر', 'Help pick better servers')),
         content: Text(tr(
-            'اجازه می‌دهید گزارش ناشناس کیفیت اتصال فرستاده شود؟ فقط شناسه‌ی ناشناس سرور، موفق یا ناموفق بودن، '
-                'تأخیر، نوع شبکه و نام کلی اپراتور (مثل همراه اول یا ایرانسل) فرستاده می‌شود؛ بدون IP، نام یا اطلاعات وب‌گردی. '
-                'بعداً از تنظیمات ← حریم خصوصی قابل تغییر است.',
-            'Send anonymous connection quality reports? Only an anonymous server id, success or failure, latency, '
-                'network type and the operator family (e.g. MCI or Irancell) are sent; no IP, name or browsing data. '
-                'You can change this later in Settings → Privacy.')),
+            'گزارش کیفیت اختیاری است و فقط پس از موافقت شما فعال می‌شود. شناسه مستعار سرور، نتیجه اتصال، تأخیر، نوع شبکه، '
+                'دسته اپراتور، حالت اتصال و نسخه برنامه ارسال می‌شود. در Windows، heartbeat نمونه‌برداری‌شده و گزارش خطای مجاز '
+                'ممکن است شناسه نصب تصادفی پایدار و رویدادهای خطای پاک‌سازی‌شده را هم داشته باشد. برنامه IP شخصی، نام، مقصد وب‌گردی '
+                'یا محتوای ترافیک را در بدنه گزارش نمی‌فرستد؛ اما ارائه‌دهنده زیرساخت هنگام اتصال HTTPS می‌تواند IP مبدأ را ببیند '
+                'و برای محدودسازی درخواست استفاده کند. بعداً از تنظیمات ← حریم خصوصی قابل تغییر است.',
+            'Quality reports are optional and enabled only with your consent. They include a pseudonymous server id, result, '
+                'latency, network type, coarse operator bucket, route mode and app version. On Windows, sampled heartbeats and '
+                'permitted failure diagnostics may also include a random persistent install ID and scrubbed error events. '
+                'The app does not put your personal IP, name, browsing destinations or traffic content in the report body; '
+                'however, the infrastructure provider can see the source IP when receiving HTTPS requests and may use it for '
+                'rate limiting. You can change this later in Settings → Privacy.')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(tr('نه، ممنون', 'No thanks'))),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(tr('موافقم', 'Allow'))),
