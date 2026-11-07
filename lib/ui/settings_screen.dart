@@ -626,8 +626,8 @@ class SettingsScreen extends StatelessWidget {
                           '${tr('پینگ میانه', 'Median ping')}: ${r.pingMs == null ? tr('ناموفق', 'failed') : '${r.pingMs!.toStringAsFixed(1)} ms'}\n'
                           '${tr('نوسان پینگ', 'Jitter')}: ${r.jitterMs == null ? tr('نامشخص', 'n/a') : '${r.jitterMs!.toStringAsFixed(1)} ms'}\n'
                           '${tr('از دست‌رفتن درخواست‌ها', 'Probe packet loss')}: ${r.packetLossPct.toStringAsFixed(0)}%\n'
-                          '${tr('امتیاز کیفیت مسیر', 'Route quality score')}: ${qualityScore == null ? tr('نامشخص', 'Unknown') : '${qualityScore.round()}/100 · $qualityLabel'}\\n'
-                          '${tr('امنیت', 'Security')}: ${tr('نشت DNS/IP و Kill Switch در این تست بررسی نشده', 'DNS/IP leaks and Kill Switch were not tested in this run')}\\n'
+                          '${tr('امتیاز کیفیت مسیر', 'Route quality score')}: ${qualityScore == null ? tr('نامشخص', 'Unknown') : '${qualityScore.round()}/100 · $qualityLabel'}\n'
+                          '${tr('امنیت', 'Security')}: ${tr('نشت DNS/IP و Kill Switch در این تست بررسی نشده', 'DNS/IP leaks and Kill Switch were not tested in this run')}\n'
                           '${tr('مسیر', 'Route')}: ${tr('پروکسی محلی VPN', 'VPN local proxy')}',
                         ),
                         actions: [
