@@ -590,7 +590,8 @@ class SettingsScreen extends StatelessWidget {
                       measuredAt: measuredAt,
                       provenance: MeasurementProvenance.measured,
                       viaTunnel: true,
-                      tunnelVerified: true,
+                      // A local proxy was used, but this speed test does not independently attest the OS route.
+                      tunnelVerified: false,
                       metrics: QualityMetrics(
                         downloadMbps: r.down,
                         uploadMbps: r.up,
