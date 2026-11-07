@@ -619,11 +619,12 @@ class _Header extends StatelessWidget {
         ),
       ),
       const Spacer(),
-      IconButton(
-        tooltip: tr('حمایت مالی', 'Donate'),
-        onPressed: () => showDonateDialog(context),
-        icon: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent, size: 20),
-      ),
+      if (MediaQuery.sizeOf(context).width >= 420)
+        IconButton(
+          tooltip: tr('حمایت مالی', 'Donate'),
+          onPressed: () => showDonateDialog(context),
+          icon: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent, size: 20),
+        ),
       IconButton(
         tooltip: tr('تنظیمات', 'Settings'),
         onPressed: onSettings,
