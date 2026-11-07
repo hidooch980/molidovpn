@@ -12,6 +12,7 @@ import '../core/engine.dart';
 import '../core/server.dart';
 import '../core/settings.dart';
 import '../core/speed_test.dart';
+import '../core/quality/quality_assessment.dart';
 import '../core/vpn_controller.dart';
 import '../core/win_startup.dart';
 import '../core/windows_engine.dart';
@@ -493,10 +494,13 @@ class SettingsScreen extends StatelessWidget {
                 icon: Icons.insights_outlined,
                 title: tr('گزارش ناشناس کیفیت سرورها', 'Anonymous server quality reports'),
                 subtitle: tr(
-                    'فقط شناسه‌ی ناشناس سرور، موفق یا ناموفق بودن اتصال، تأخیر و نوع شبکه فرستاده می‌شود؛ '
-                        'بدون IP، نام یا اطلاعات وب‌گردی. به انتخاب سرورهای بهتر برای همه کمک می‌کند.',
-                    'Only an anonymous server id, success or failure, latency and network type are sent; '
-                        'no IP, name or browsing data. Helps pick better servers for everyone.'),
+                    'گزارش اختیاری شامل شناسه مستعار سرور، نتیجه، تأخیر، نوع شبکه، دسته اپراتور، حالت و نسخه برنامه است. '
+                        'در Windows، heartbeat نمونه‌برداری‌شده/گزارش خطا ممکن است شناسه نصب تصادفی و رویداد خطای پاک‌سازی‌شده هم داشته باشد. '
+                        'IP شخصی و محتوای ترافیک در بدنه گزارش نیست؛ ارائه‌دهنده زیرساخت هنگام دریافت HTTPS می‌تواند IP مبدأ را ببیند.',
+                    'Optional reports include a pseudonymous server id, result, latency, network type, coarse operator bucket, '
+                        'mode and app version. On Windows, sampled heartbeats/failure diagnostics may include a random install ID '
+                        'and scrubbed error events. Your IP and traffic content are not in the report body; the infrastructure '
+                        'provider can see the source IP when receiving HTTPS.'),
                 value: s.anonymousReports,
                 onChanged: (v) => s.update((x) => x.anonymousReports = v),
               ),
@@ -579,11 +583,64 @@ class SettingsScreen extends StatelessWidget {
                   subtitle: tr('دانلود و آپلود از داخل VPN (speed.cloudflare.com)',
                       'Download and upload through the VPN (speed.cloudflare.com)'),
                   onTap: () async {
-                    final proxy = controller.engine.httpProxy;
+                    final engineAtStart = controller.engine;
+                    final proxy = engineAtStart.httpProxy;
                     if (proxy == null) return;
                     _toast(context, tr('تست سرعت در حال انجام…', 'Running speed test…'));
+                    var routeHealthyBefore = false;
+                    try {
+                      routeHealthyBefore = await engineAtStart.healthCheck(const EngineOptions());
+                    } catch (_) {
+                      routeHealthyBefore = false;
+                    }
                     final r = await SpeedTest.run(proxy);
+                    var routeHealthyAfter = false;
+                    if (routeHealthyBefore &&
+                        controller.state == VpnState.connected &&
+                        identical(controller.engine, engineAtStart) &&
+                        engineAtStart.httpProxy == proxy) {
+                      try {
+                        routeHealthyAfter = await engineAtStart.healthCheck(const EngineOptions());
+                      } catch (_) {
+                        routeHealthyAfter = false;
+                      }
+                    }
+                    final routeVerified = routeHealthyBefore &&
+                        routeHealthyAfter &&
+                        controller.state == VpnState.connected &&
+                        identical(controller.engine, engineAtStart) &&
+                        engineAtStart.httpProxy == proxy;
                     if (!context.mounted) return;
+                    final measuredAt = DateTime.now();
+                    final assessment = QualitySnapshot(
+                      measuredAt: measuredAt,
+                      provenance: MeasurementProvenance.measured,
+                      viaTunnel: true,
+                      // Require a successful tunnel health probe both before and after the transfer.
+                      tunnelVerified: routeVerified,
+                      metrics: QualityMetrics(
+                        downloadMbps: r.down,
+                        uploadMbps: r.up,
+                        pingMs: r.pingMs,
+                        jitterMs: r.jitterMs,
+                        packetLossPct: r.packetLossPct,
+                      ),
+                      security: const SecurityEvidence(
+                        trafficTraversesTunnel: SecurityCheck.pass,
+                        dnsLeak: SecurityCheck.unknown,
+                        ipv4Leak: SecurityCheck.unknown,
+                        ipv6Leak: SecurityCheck.unknown,
+                        killSwitch: SecurityCheck.unknown,
+                      ),
+                    );
+                    final qualityScore = QualityAssessment.score(assessment, now: measuredAt);
+                    final qualityLabel = switch (QualityAssessment.grade(qualityScore)) {
+                      QualityGrade.excellent => tr('عالی', 'Excellent'),
+                      QualityGrade.good => tr('خوب', 'Good'),
+                      QualityGrade.fair => tr('متوسط', 'Fair'),
+                      QualityGrade.poor => tr('ضعیف', 'Poor'),
+                      QualityGrade.unknown => tr('نامشخص', 'Unknown'),
+                    };
                     String fmt(double? v) => v == null ? tr('ناموفق', 'failed') : '${v.toStringAsFixed(1)} Mbps';
                     await showDialog<void>(
                       context: context,
@@ -595,6 +652,8 @@ class SettingsScreen extends StatelessWidget {
                           '${tr('پینگ میانه', 'Median ping')}: ${r.pingMs == null ? tr('ناموفق', 'failed') : '${r.pingMs!.toStringAsFixed(1)} ms'}\n'
                           '${tr('نوسان پینگ', 'Jitter')}: ${r.jitterMs == null ? tr('نامشخص', 'n/a') : '${r.jitterMs!.toStringAsFixed(1)} ms'}\n'
                           '${tr('از دست‌رفتن درخواست‌ها', 'Probe packet loss')}: ${r.packetLossPct.toStringAsFixed(0)}%\n'
+                          '${tr('امتیاز کیفیت مسیر', 'Route quality score')}: ${qualityScore == null ? tr('نامشخص', 'Unknown') : '${qualityScore.round()}/100 · $qualityLabel'}\n'
+                          '${tr('امنیت', 'Security')}: ${tr('نشت DNS/IP و Kill Switch در این تست بررسی نشده', 'DNS/IP leaks and Kill Switch were not tested in this run')}\n'
                           '${tr('مسیر', 'Route')}: ${tr('پروکسی محلی VPN', 'VPN local proxy')}',
                         ),
                         actions: [
