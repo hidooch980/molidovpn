@@ -44,6 +44,8 @@ void main() {
 
     test('rejects stale, future and unavailable samples', () {
       expect(QualityAssessment.score(sample(at: now.subtract(const Duration(minutes: 3))), now: now), isNull);
+      expect(QualityAssessment.score(sample(at: now.subtract(const Duration(seconds: 120))), now: now), isNotNull);
+      expect(QualityAssessment.score(sample(at: now.subtract(const Duration(seconds: 121))), now: now), isNull);
       expect(QualityAssessment.score(sample(at: now.add(const Duration(seconds: 1))), now: now), isNull);
       expect(QualityAssessment.score(sample(provenance: MeasurementProvenance.unavailable), now: now), isNull);
     });
@@ -64,6 +66,14 @@ void main() {
         connectMs: -1,
       ));
       expect(QualityAssessment.score(bad, now: now), isNull);
+      // A malformed optional field must invalidate the whole sample, not be silently ignored.
+      final partlyBad = sample(metrics: const QualityMetrics(
+        downloadMbps: 50,
+        pingMs: 40,
+        jitterMs: 12,
+        packetLossPct: 101,
+      ));
+      expect(QualityAssessment.score(partlyBad, now: now), isNull);
     });
 
     test('grades boundaries', () {
