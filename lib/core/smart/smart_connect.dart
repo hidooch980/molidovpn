@@ -7,8 +7,8 @@ import '../server.dart';
 /// runner-up warm. The same scoring as the Android app (engine/SmartScore.kt), so both platforms agree on what
 /// "strongest" means. Everything in this file is pure (no I/O) and unit-tested.
 
-/// Weights of the 0..100 score. Stability matters most: a route that answers 3 of 3 probes beats a slightly
-/// faster one that answers 1 of 3.
+/// Weights of the 0..100 score. Kept aligned with Android SmartScore.
+/// Missing measurements are neutral, never silently treated as a perfect connection.
 class SmartWeights {
   const SmartWeights({this.stability = 0.45, this.latency = 0.30, this.throughput = 0.15, this.connect = 0.10});
 
@@ -49,14 +49,16 @@ double _clamp01(double v) => v.isNaN ? 0 : v.clamp(0.0, 1.0).toDouble();
 double smartLatencyNorm(int ms) =>
     _clamp01(1 - (math.log(math.max(ms, 1)) - math.log(100)) / (math.log(3000) - math.log(100)));
 
-/// Connect/bootstrap time: 2 s → 1, 90 s → 0.
-double smartConnectNorm(int ms) => _clamp01(1 - (ms - 2000) / 88000);
+/// Connect/bootstrap time: 2 s → 1, 90 s → 0 (same logarithmic scale as Android).
+double smartConnectNorm(int ms) =>
+    _clamp01(1 - math.log(math.max(ms, 1) / 2000) / math.log(45));
 
 /// 0..100; 0 when no probe succeeded.
 double smartScore(SmartMeasured m, [SmartWeights w = const SmartWeights()]) {
   final median = m.medianMs;
   if (median == null) return 0;
-  final connect = m.connectMs == null ? 1.0 : smartConnectNorm(m.connectMs!);
+  // Unknown connect time is neutral (0.5), not a perfect score.
+  final connect = m.connectMs == null ? 0.5 : smartConnectNorm(m.connectMs!);
   final throughput = m.throughput == null ? 0.5 : _clamp01(m.throughput!);
   final raw = w.stability * m.stability +
       w.latency * smartLatencyNorm(median) +
