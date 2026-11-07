@@ -113,6 +113,7 @@ void main() {
       final fastButLeaking = sample(security: leak);
       expect(QualityAssessment.score(fastButLeaking, now: now), isNotNull);
       expect(QualityAssessment.mayReportConnected(fastButLeaking, now: now), isFalse);
+      expect(QualityAssessment.mayUseForAutomaticSelection(fastButLeaking, now: now), isFalse);
     });
 
     test('does not report connected for unverified security', () {
@@ -124,6 +125,7 @@ void main() {
         killSwitch: SecurityCheck.pass,
       );
       expect(QualityAssessment.mayReportConnected(sample(security: unknown), now: now), isFalse);
+      expect(QualityAssessment.mayUseForAutomaticSelection(sample(security: unknown), now: now), isFalse);
     });
 
     test('kill switch can be explicitly not applicable', () {
