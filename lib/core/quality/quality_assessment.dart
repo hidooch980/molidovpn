@@ -122,6 +122,18 @@ class QualityAssessment {
     return _clamp(1 - v / 30000);
   }
 
+  static bool _metricsAreValid(QualityMetrics metrics) {
+    bool validIfPresent(double? value, {double min = 0, double max = double.infinity}) =>
+        value == null || (value.isFinite && value >= min && value <= max);
+
+    return validIfPresent(metrics.downloadMbps) &&
+        validIfPresent(metrics.uploadMbps) &&
+        validIfPresent(metrics.pingMs, max: 120000) &&
+        validIfPresent(metrics.jitterMs, max: 120000) &&
+        validIfPresent(metrics.packetLossPct, max: 100) &&
+        validIfPresent(metrics.connectMs, max: 120000);
+  }
+
   static bool isFresh(QualitySnapshot sample, DateTime now) {
     if (sample.provenance != MeasurementProvenance.measured) return false;
     final age = now.difference(sample.measuredAt);
@@ -129,7 +141,12 @@ class QualityAssessment {
   }
 
   static double? score(QualitySnapshot sample, {required DateTime now}) {
-    if (!isFresh(sample, now) || !sample.viaTunnel || !sample.tunnelVerified) return null;
+    if (!isFresh(sample, now) ||
+        !sample.viaTunnel ||
+        !sample.tunnelVerified ||
+        !_metricsAreValid(sample.metrics)) {
+      return null;
+    }
     final m = sample.metrics;
     final down = _logSpeed(m.downloadMbps);
     final up = _logSpeed(m.uploadMbps);
