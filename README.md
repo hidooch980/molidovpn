@@ -85,8 +85,8 @@
 - **به‌روزرسانی خودکار** برنامه (حتی وقتی GitHub فیلتر است، از طریق Worker)
 
 ### حریم خصوصی
-- گزارش‌های کیفیت فقط با اجازهٔ کاربر (opt-in) و **ناشناس** هستند: اثرانگشت سرور، موفق/ناموفق، تأخیر، نوع شبکه و اپراتور
-- هیچ IP ای ذخیره نمی‌شود؛ آمار به‌صورت روزانه جمع‌بندی و بعد از ۳۰ روز پاک می‌شود
+- گزارش‌های کیفیت با اجازهٔ کاربر (opt-in) ارسال می‌شوند و شناسه سرور در آن‌ها مستعار است؛ نوع شبکه، دسته اپراتور و نتیجه اتصال هم می‌تواند ثبت شود.
+- IP شخصی در بدنه گزارش کیفیت قرار نمی‌گیرد و در جدول گزارش‌های D1 ذخیره نمی‌شود؛ لایه HTTPS کلادفلر IP مبدأ را می‌بیند و Worker برای محدودسازی درخواست از آن در حافظه موقت استفاده می‌کند. در Windows، heartbeat نمونه‌برداری‌شده و گزارش خطای مجاز ممکن است شناسه نصب تصادفی و رویداد خطای پاک‌سازی‌شده داشته باشد. جزئیات در [منشور حریم خصوصی و کیفیت](docs/PRODUCT-QUALITY-CHARTER-FA-IR.md).
 
 ### زیرساخت
 - **جمع‌کنندهٔ سرور** ([vpn-sub](https://github.com/hidooch980/vpn-sub)) هر ۱۵ دقیقه سرورها را تست می‌کند و هر ساعت منابع جدید پیدا می‌کند
@@ -116,7 +116,7 @@
 - **Modes:** Automatic; V2Ray servers (VLESS, VMess, Trojan, Shadowsocks, Reality, XHTTP, Hysteria2, TUIC, AnyTLS); WARP, MASQUE, WARP-on-WARP (Android); built-in AmneziaWG; Psiphon; Tor; V2Ray over Psiphon; SHARD CDN nodes (Android); gaming-DNS-only.
 - **Smart:** tests all tunnels, avoids Iran exits, best mode per mobile operator, country picker with exit verification, hourly background scanner, anti-freeze failover, "My configs" import (paste/file/QR/subscription/Outline).
 - **UX:** simple/advanced home, onboarding, Persian UI, owner announcements, share-with-friends QR, automatic app updates.
-- **Privacy:** opt-in anonymous quality reports only; no IPs stored.
+- **Privacy:** opt-in pseudonymous quality reports. The report payload and D1 quality tables do not store the user's source IP; Cloudflare's HTTPS edge sees it and the Worker uses it for in-memory rate limiting. Sampled Windows heartbeats/diagnostics can include a random install ID and scrubbed events.
 - **Infra:** server aggregator every 15 min (+ hourly source discovery), local Iran testing, Cloudflare subscription worker with owner admin panel, remote mode flags and stats, core auto-updates every 6 h gated by an emulator connect test.
 - **Docs:** [Features (Persian)](docs/FEATURES.md) · [Owner guide (Persian)](docs/OWNER-GUIDE.md) · [Architecture](docs/ARCHITECTURE.md)
 - **Support:** Telegram [@Molido_Vpn](https://t.me/Molido_Vpn) · Donate: [reymit.ir/molido](https://reymit.ir/molido)
