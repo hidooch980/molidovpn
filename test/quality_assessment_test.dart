@@ -116,6 +116,45 @@ void main() {
       expect(QualityAssessment.mayUseForAutomaticSelection(fastButLeaking, now: now), isFalse);
     });
 
+    test('each critical security failure blocks the route', () {
+      final failures = <SecurityEvidence>[
+        const SecurityEvidence(
+          trafficTraversesTunnel: SecurityCheck.fail,
+          dnsLeak: SecurityCheck.pass,
+          ipv4Leak: SecurityCheck.pass,
+          ipv6Leak: SecurityCheck.pass,
+          killSwitch: SecurityCheck.pass,
+        ),
+        const SecurityEvidence(
+          trafficTraversesTunnel: SecurityCheck.pass,
+          dnsLeak: SecurityCheck.pass,
+          ipv4Leak: SecurityCheck.fail,
+          ipv6Leak: SecurityCheck.pass,
+          killSwitch: SecurityCheck.pass,
+        ),
+        const SecurityEvidence(
+          trafficTraversesTunnel: SecurityCheck.pass,
+          dnsLeak: SecurityCheck.pass,
+          ipv4Leak: SecurityCheck.pass,
+          ipv6Leak: SecurityCheck.fail,
+          killSwitch: SecurityCheck.pass,
+        ),
+        const SecurityEvidence(
+          trafficTraversesTunnel: SecurityCheck.pass,
+          dnsLeak: SecurityCheck.pass,
+          ipv4Leak: SecurityCheck.pass,
+          ipv6Leak: SecurityCheck.pass,
+          killSwitch: SecurityCheck.fail,
+        ),
+      ];
+      for (final evidence in failures) {
+        final candidate = sample(security: evidence);
+        expect(evidence.verdict, SecurityVerdict.blocked);
+        expect(QualityAssessment.mayReportConnected(candidate, now: now), isFalse);
+        expect(QualityAssessment.mayUseForAutomaticSelection(candidate, now: now), isFalse);
+      }
+    });
+
     test('does not report connected for unverified security', () {
       const unknown = SecurityEvidence(
         trafficTraversesTunnel: SecurityCheck.pass,
