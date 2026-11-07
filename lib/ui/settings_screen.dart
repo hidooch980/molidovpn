@@ -605,7 +605,6 @@ class SettingsScreen extends StatelessWidget {
                         ipv6Leak: SecurityCheck.unknown,
                         killSwitch: SecurityCheck.unknown,
                       ),
-                      transferredBytes: 12 * 1000 * 1000,
                     );
                     final qualityScore = QualityAssessment.score(assessment, now: measuredAt);
                     final qualityLabel = switch (QualityAssessment.grade(qualityScore)) {
