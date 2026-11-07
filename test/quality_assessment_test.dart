@@ -99,7 +99,10 @@ void main() {
         killSwitch: SecurityCheck.pass,
       );
       expect(leak.verdict, SecurityVerdict.blocked);
-      expect(QualityAssessment.mayReportConnected(sample(security: leak), now: now), isFalse);
+      // Speed quality and security are independent: a fast leaking route is still blocked.
+      final fastButLeaking = sample(security: leak);
+      expect(QualityAssessment.score(fastButLeaking, now: now), isNotNull);
+      expect(QualityAssessment.mayReportConnected(fastButLeaking, now: now), isFalse);
     });
 
     test('does not report connected for unverified security', () {
