@@ -10,6 +10,8 @@ import 'strings.dart';
 import 'style.dart';
 import 'widgets.dart';
 
+enum _ServerFilter { all, responsive, noReply, untested }
+
 /// Every server with manual ping test and one-tap connect to a specific server.
 class ServersScreen extends StatefulWidget {
   const ServersScreen({super.key, required this.controller, this.embedded = false, this.onConnect});
@@ -29,8 +31,9 @@ class _ServersScreenState extends State<ServersScreen> {
   static const _maxPing = 100000;
   String _query = '';
   bool _byPing = false;
+  _ServerFilter _filter = _ServerFilter.all;
 
-  List<Server> _visible() {
+  List<Server> _matching() {
     final c = widget.controller;
     final q = _query.trim().toLowerCase();
     final list = c.servers
@@ -41,6 +44,21 @@ class _ServersScreenState extends State<ServersScreen> {
             s.countryCode.toLowerCase().contains(q) ||
             s.protocolLabel.toLowerCase().contains(q))
         .toList();
+    return list;
+  }
+
+  List<Server> _visible() {
+    final c = widget.controller;
+    final list = _matching();
+    list.removeWhere((s) {
+      final delay = c.delays[s.uri];
+      return switch (_filter) {
+        _ServerFilter.all => false,
+        _ServerFilter.responsive => delay == null || delay <= 0,
+        _ServerFilter.noReply => delay == null || delay > 0,
+        _ServerFilter.untested => delay != null,
+      };
+    });
     if (_byPing) {
       int key(Server s) {
         final d = c.delays[s.uri];
@@ -52,14 +70,40 @@ class _ServersScreenState extends State<ServersScreen> {
     return list;
   }
 
+  Widget _filterChip(String label, int count, _ServerFilter filter) {
+    final selected = _filter == filter;
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 8),
+      child: ChoiceChip(
+        label: Text('$label $count'),
+        selected: selected,
+        onSelected: (_) => setState(() => _filter = filter),
+        selectedColor: Palette.accent.withValues(alpha: 0.18),
+        backgroundColor: Palette.surface,
+        side: BorderSide(color: selected ? Palette.accent : Palette.border),
+        labelStyle: TextStyle(
+          color: selected ? Palette.accentText : Palette.muted,
+          fontSize: 12,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Palette.pillRadius)),
+        showCheckmark: false,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
     return ListenableBuilder(
       listenable: c,
       builder: (context, _) {
+        final matching = _matching();
         final list = _visible();
-        final tested = list.where((s) => (c.delays[s.uri] ?? 0) > 0).length;
+        final responsive = matching.where((s) => (c.delays[s.uri] ?? 0) > 0).length;
+        final noReply = matching.where((s) => c.delays[s.uri] != null && c.delays[s.uri]! <= 0).length;
+        final untested = matching.where((s) => !c.delays.containsKey(s.uri)).length;
+        final tested = responsive;
         return PageShell(
           title: tr('سرورها', 'Servers'),
           subtitle: '${tr('${list.length} سرور · $tested پاسخ داده', '${list.length} servers · $tested responded')} · '
@@ -114,6 +158,18 @@ class _ServersScreenState extends State<ServersScreen> {
                   label: Text(c.pinging ? tr('در حال تست', 'Testing') : tr('تست پینگ', 'Ping test')),
                 ),
               ]),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 16, 6),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  _filterChip(tr('همه', 'All'), matching.length, _ServerFilter.all),
+                  _filterChip(tr('پاسخ‌دار', 'Responding'), responsive, _ServerFilter.responsive),
+                  _filterChip(tr('بی‌پاسخ', 'No reply'), noReply, _ServerFilter.noReply),
+                  _filterChip(tr('تست‌نشده', 'Untested'), untested, _ServerFilter.untested),
+                ]),
+              ),
             ),
             Expanded(
               child: ListView.builder(
