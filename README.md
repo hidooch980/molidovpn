@@ -7,9 +7,13 @@
 [![Release](https://img.shields.io/github/v/release/hidooch980/molidovpn?style=flat-square)](https://github.com/hidooch980/molidovpn/releases/latest)
 [![Telegram](https://img.shields.io/badge/Telegram-@Molido__Vpn-26A5E4?style=flat-square&logo=telegram)](https://t.me/Molido_Vpn)
 
-[سایت](https://hidooch980.github.io/molidovpn/) · [دانلود](https://github.com/hidooch980/molidovpn/releases/latest) · [قابلیت‌ها](docs/FEATURES.md) · [راهنمای مدیر](docs/OWNER-GUIDE.md) · [English](#english)
+[سایت](https://hidooch980.github.io/molidovpn/) · [دانلود](https://github.com/hidooch980/molidovpn/releases/latest) · [قابلیت‌ها](docs/FEATURES.md) · [منشور کیفیت، طراحی و امنیت](docs/PRODUCT-QUALITY-CHARTER-FA-IR.md) · [راهنمای مدیر](docs/OWNER-GUIDE.md) · [English](#english)
 
 ---
+
+## اصول محصول
+
+**کیفیت، طراحی، امنیت و رضایت کاربر** معیار پذیرش همهٔ بخش‌های MolidoVPN هستند. برای تست در ایران، تفاوت اپراتورها، اینترنت ثابت و همراه، IPv4/IPv6، DNS، نوسان شبکه و محدودیت مصرف داده باید در نظر گرفته شود. جزئیات و معیارهای اجباری در [منشور کیفیت، طراحی و امنیت](docs/PRODUCT-QUALITY-CHARTER-FA-IR.md) آمده است.
 
 ## ساختار پروژهٔ یکپارچه
 
