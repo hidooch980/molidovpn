@@ -84,7 +84,7 @@ class QualityAssessment {
 
   /// Weights: throughput 25%, latency 20%, stability 25%, connection time 10%.
   /// Unavailable dimensions are omitted and the remaining weights are normalized.
-  static const double maxSampleAgeSeconds = 120;
+  static const int maxSampleAgeSeconds = 120;
   static const double minUsefulScore = 35;
 
   static double? _valid(double? value, {double min = 0, double max = double.infinity}) {
@@ -142,9 +142,6 @@ class QualityAssessment {
     final stability = _stability(m);
     final connect = _connect(m.connectMs);
 
-    const dimensions = <(double, double?)>[
-      (0.25, null), // placeholder; values are assembled below
-    ];
     // Keep weights explicit and normalize over actually measured dimensions.
     final weighted = <(double, double?)>[
       (0.25, speed),
