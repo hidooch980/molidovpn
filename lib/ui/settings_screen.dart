@@ -580,18 +580,41 @@ class SettingsScreen extends StatelessWidget {
                   subtitle: tr('دانلود و آپلود از داخل VPN (speed.cloudflare.com)',
                       'Download and upload through the VPN (speed.cloudflare.com)'),
                   onTap: () async {
-                    final proxy = controller.engine.httpProxy;
+                    final engineAtStart = controller.engine;
+                    final proxy = engineAtStart.httpProxy;
                     if (proxy == null) return;
                     _toast(context, tr('تست سرعت در حال انجام…', 'Running speed test…'));
+                    var routeHealthyBefore = false;
+                    try {
+                      routeHealthyBefore = await engineAtStart.healthCheck(const EngineOptions());
+                    } catch (_) {
+                      routeHealthyBefore = false;
+                    }
                     final r = await SpeedTest.run(proxy);
+                    var routeHealthyAfter = false;
+                    if (routeHealthyBefore &&
+                        controller.state == VpnState.connected &&
+                        identical(controller.engine, engineAtStart) &&
+                        engineAtStart.httpProxy == proxy) {
+                      try {
+                        routeHealthyAfter = await engineAtStart.healthCheck(const EngineOptions());
+                      } catch (_) {
+                        routeHealthyAfter = false;
+                      }
+                    }
+                    final routeVerified = routeHealthyBefore &&
+                        routeHealthyAfter &&
+                        controller.state == VpnState.connected &&
+                        identical(controller.engine, engineAtStart) &&
+                        engineAtStart.httpProxy == proxy;
                     if (!context.mounted) return;
                     final measuredAt = DateTime.now();
                     final assessment = QualitySnapshot(
                       measuredAt: measuredAt,
                       provenance: MeasurementProvenance.measured,
                       viaTunnel: true,
-                      // A local proxy was used, but this speed test does not independently attest the OS route.
-                      tunnelVerified: false,
+                      // Require a successful tunnel health probe both before and after the transfer.
+                      tunnelVerified: routeVerified,
                       metrics: QualityMetrics(
                         downloadMbps: r.down,
                         uploadMbps: r.up,
